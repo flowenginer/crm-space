@@ -11714,7 +11714,7 @@ export type Database = {
         Returns: {
           avg_duration_seconds: number
           lead_count: number
-          status_color: string
+          percentage: number
           status_name: string
           status_order: number
         }[]
