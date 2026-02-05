@@ -382,7 +382,8 @@ Deno.serve(async (req) => {
         contact_id: contact_id,
         assigned_to: selectedAgent.id,
         assignment_type: assignmentType,
-        assigned_at: new Date().toISOString()
+        assigned_at: new Date().toISOString(),
+        tenant_id: tenantId
       });
 
     if (historyError) {
