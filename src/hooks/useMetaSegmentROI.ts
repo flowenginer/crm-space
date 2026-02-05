@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserStore } from '@/store/userStore';
 
 export interface SegmentROIData {
   segmentName: string;
@@ -47,24 +48,33 @@ function extractSegmentFromCampaignName(name: string): string {
 }
 
 export function useMetaSegmentROI(dateRange?: DateRange) {
+  // Obter tenant_id do store para filtrar queries
+  const { tenantId } = useUserStore();
+
   return useQuery({
-    queryKey: ['meta_segment_roi', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
+    queryKey: ['meta_segment_roi', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), tenantId],
     queryFn: async (): Promise<SegmentROIData[]> => {
-      // Buscar configurações de conversão dinâmicas
+      if (!tenantId) {
+        return [];
+      }
+
+      // Buscar configurações de conversão dinâmicas - FILTRADO POR TENANT
       const { data: settings } = await supabase
         .from('company_settings')
         .select('conversion_status_ids')
+        .eq('tenant_id', tenantId)
         .limit(1)
         .single();
 
       const conversionStatusIds = settings?.conversion_status_ids || [];
 
-      // Buscar nomes dos status de conversão
+      // Buscar nomes dos status de conversão - FILTRADO POR TENANT
       let conversionStatusNames = new Set<string>();
       if (conversionStatusIds.length > 0) {
         const { data: conversionStatuses } = await supabase
           .from('lead_statuses')
           .select('name')
+          .eq('tenant_id', tenantId)
           .in('id', conversionStatusIds);
         
         conversionStatuses?.forEach(s => {
@@ -77,10 +87,11 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
         conversionStatusNames.add('07 - Pedido Fechado');
       }
 
-      // Buscar campanhas (todas, não apenas ativas)
+      // Buscar campanhas (todas, não apenas ativas) - FILTRADO POR TENANT
       const { data: campaigns } = await supabase
         .from('meta_campaigns')
-        .select('id, campaign_id, name, status');
+        .select('id, campaign_id, name, status')
+        .eq('tenant_id', tenantId);
 
       const campaignIdMap: Record<string, { name: string; segment: string }> = {};
       campaigns?.forEach(c => {
@@ -90,10 +101,11 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
         };
       });
 
-      // Buscar insights agregados
+      // Buscar insights agregados - FILTRADO POR TENANT
       let insightsQuery = supabase
         .from('meta_campaign_insights')
-        .select('campaign_id, spend, impressions, clicks');
+        .select('campaign_id, spend, impressions, clicks')
+        .eq('tenant_id', tenantId);
 
       if (dateRange?.from) {
         insightsQuery = insightsQuery.gte('date_start', dateRange.from.toISOString().split('T')[0]);
@@ -119,10 +131,11 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
         segmentInsightsMap[segment].clicks += Number(i.clicks || 0);
       });
 
-      // Buscar meta_ads para mapear sourceId → segment
+      // Buscar meta_ads para mapear sourceId → segment - FILTRADO POR TENANT
       const { data: metaAds } = await supabase
         .from('meta_ads')
-        .select('ad_id, campaign_id');
+        .select('ad_id, campaign_id')
+        .eq('tenant_id', tenantId);
 
       const adToSegmentMap: Record<string, string> = {};
       metaAds?.forEach(ad => {

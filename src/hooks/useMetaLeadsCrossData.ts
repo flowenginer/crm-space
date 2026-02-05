@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserStore } from '@/store/userStore';
 
 export interface CrossDataRow {
   sourceId: string;
@@ -57,23 +58,32 @@ function findSegmentInCampaignName(campaignName: string, segments: { id: string;
 }
 
 export function useMetaLeadsCrossData(dateRange?: DateRange) {
+  // Obter tenant_id do store para filtrar queries
+  const { tenantId } = useUserStore();
+
   return useQuery({
-    queryKey: ['meta_leads_cross_data', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
+    queryKey: ['meta_leads_cross_data', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), tenantId],
     queryFn: async (): Promise<{ rows: CrossDataRow[]; summary: CrossDataSummary }> => {
-      // Fetch active segments for matching
+      if (!tenantId) {
+        return { rows: [], summary: { totalLeads: 0, catalogoCount: 0, layoutCount: 0, pedidoFechadoCount: 0, totalRevenue: 0 } };
+      }
+
+      // Fetch active segments for matching - FILTRADO POR TENANT
       const { data: segments } = await supabase
         .from('segments')
         .select('id, name')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .eq('tenant_id', tenantId);
 
-      // Fetch meta ads with campaign name (all campaigns, including paused)
+      // Fetch meta ads with campaign name (all campaigns, including paused) - FILTRADO POR TENANT
       const { data: metaAds } = await supabase
         .from('meta_ads')
         .select(`
-          ad_id, 
+          ad_id,
           name,
           campaign:meta_campaigns(name, status)
-        `);
+        `)
+        .eq('tenant_id', tenantId);
       const adInfoMap = new Map<string, { adName: string; campaignName: string; segmentName: string }>();
       metaAds?.forEach((ad: any) => {
         const campaignName = ad.campaign?.name || '';
