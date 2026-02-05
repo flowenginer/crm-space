@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserStore } from '@/store/userStore';
 
 export interface CampaignROIData {
   campaignId: string;
@@ -52,26 +53,35 @@ function toUTCDate(date: Date, isEndOfDay: boolean = false): string {
 }
 
 export function useMetaCampaignROI(dateRange?: DateRange) {
+  // Obter tenant_id do store para filtrar queries
+  const { tenantId } = useUserStore();
+
   return useQuery({
-    queryKey: ['meta_campaign_roi', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
+    queryKey: ['meta_campaign_roi', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), tenantId],
     queryFn: async (): Promise<{ campaigns: CampaignROIData[]; summary: ROISummary }> => {
-      // Buscar configurações de conversão dinâmicas
+      if (!tenantId) {
+        return { campaigns: [], summary: { totalSpend: 0, totalLeads: 0, totalConversions: 0, totalRevenue: 0, averageCPL: 0, averageCAC: 0, overallROI: 0, overallROAS: 0 } };
+      }
+
+      // Buscar configurações de conversão dinâmicas - FILTRADO POR TENANT
       const { data: settings } = await supabase
         .from('company_settings')
         .select('conversion_status_ids')
+        .eq('tenant_id', tenantId)
         .limit(1)
         .single();
 
       const conversionStatusIds = settings?.conversion_status_ids || [];
 
-      // Buscar nomes dos status de conversão
+      // Buscar nomes dos status de conversão - FILTRADO POR TENANT
       let conversionStatusNames = new Set<string>();
       if (conversionStatusIds.length > 0) {
         const { data: conversionStatuses } = await supabase
           .from('lead_statuses')
           .select('name')
+          .eq('tenant_id', tenantId)
           .in('id', conversionStatusIds);
-        
+
         conversionStatuses?.forEach(s => {
           if (s.name) conversionStatusNames.add(s.name);
         });
@@ -82,7 +92,7 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         conversionStatusNames.add('07 - Pedido Fechado');
       }
 
-      // Buscar TODAS campanhas (não apenas ativas) para incluir leads de campanhas pausadas
+      // Buscar TODAS campanhas (não apenas ativas) para incluir leads de campanhas pausadas - FILTRADO POR TENANT
       const { data: campaigns } = await supabase
         .from('meta_campaigns')
         .select(`
@@ -90,17 +100,19 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
           campaign_id,
           name,
           status
-        `);
+        `)
+        .eq('tenant_id', tenantId);
 
       const campaignIdMap: Record<string, { name: string; internalId: string }> = {};
       campaigns?.forEach(c => {
         campaignIdMap[c.id] = { name: c.name, internalId: c.campaign_id };
       });
 
-      // Buscar insights agregados por campanha
+      // Buscar insights agregados por campanha - FILTRADO POR TENANT
       let insightsQuery = supabase
         .from('meta_campaign_insights')
-        .select('campaign_id, spend, impressions, clicks');
+        .select('campaign_id, spend, impressions, clicks')
+        .eq('tenant_id', tenantId);
 
       if (dateRange?.from) {
         insightsQuery = insightsQuery.gte('date_start', dateRange.from.toISOString().split('T')[0]);
@@ -122,10 +134,11 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         insightsMap[i.campaign_id].clicks += Number(i.clicks || 0);
       });
 
-      // Buscar meta_ads para mapear sourceId → campaign
+      // Buscar meta_ads para mapear sourceId → campaign - FILTRADO POR TENANT
       const { data: metaAds } = await supabase
         .from('meta_ads')
-        .select('ad_id, campaign_id');
+        .select('ad_id, campaign_id')
+        .eq('tenant_id', tenantId);
 
       const adToCampaignMap: Record<string, string> = {};
       metaAds?.forEach(ad => {

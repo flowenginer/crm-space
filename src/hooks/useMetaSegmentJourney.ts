@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserStore } from '@/store/userStore';
 
 export interface SegmentBreakdown {
   assignedSegment: string;
@@ -51,24 +52,33 @@ function extractSegmentFromCampaignName(campaignName: string, segments: { id: st
 }
 
 export function useMetaSegmentJourney(dateRange?: DateRange) {
+  // Obter tenant_id do store para filtrar queries
+  const { tenantId } = useUserStore();
+
   return useQuery({
-    queryKey: ['meta_segment_journey', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
+    queryKey: ['meta_segment_journey', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), tenantId],
     queryFn: async (): Promise<SegmentJourneyData[]> => {
-      // Buscar configurações de conversão dinâmicas
+      if (!tenantId) {
+        return [];
+      }
+
+      // Buscar configurações de conversão dinâmicas - FILTRADO POR TENANT
       const { data: settings } = await supabase
         .from('company_settings')
         .select('conversion_status_ids')
+        .eq('tenant_id', tenantId)
         .limit(1)
         .single();
 
       const conversionStatusIds = settings?.conversion_status_ids || [];
 
-      // Buscar nomes dos status de conversão
+      // Buscar nomes dos status de conversão - FILTRADO POR TENANT
       let conversionStatusNames = new Set<string>();
       if (conversionStatusIds.length > 0) {
         const { data: conversionStatuses } = await supabase
           .from('lead_statuses')
           .select('name')
+          .eq('tenant_id', tenantId)
           .in('id', conversionStatusIds);
         
         conversionStatuses?.forEach(s => {
@@ -81,20 +91,22 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
         conversionStatusNames.add('07 - Pedido Fechado');
       }
 
-      // Buscar todos os segmentos
+      // Buscar todos os segmentos - FILTRADO POR TENANT
       const { data: segments } = await supabase
         .from('segments')
         .select('id, name')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .eq('tenant_id', tenantId);
 
       if (!segments || segments.length === 0) {
         return [];
       }
 
-      // Buscar TODAS campanhas (não apenas ativas) para incluir leads de campanhas pausadas
+      // Buscar TODAS campanhas (não apenas ativas) para incluir leads de campanhas pausadas - FILTRADO POR TENANT
       const { data: campaigns } = await supabase
         .from('meta_campaigns')
-        .select('id, name');
+        .select('id, name')
+        .eq('tenant_id', tenantId);
 
       if (!campaigns || campaigns.length === 0) {
         return [];
@@ -109,10 +121,11 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
         }
       });
 
-      // Buscar meta_ads para mapear sourceId → campaign
+      // Buscar meta_ads para mapear sourceId → campaign - FILTRADO POR TENANT
       const { data: metaAds } = await supabase
         .from('meta_ads')
-        .select('ad_id, campaign_id');
+        .select('ad_id, campaign_id')
+        .eq('tenant_id', tenantId);
 
       const adToCampaignMap: Record<string, string> = {};
       metaAds?.forEach(ad => {
