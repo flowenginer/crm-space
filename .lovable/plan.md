@@ -1,98 +1,114 @@
 
-# Plano: Atualização em Tempo Real do Contador "Aguardando Resposta"
+# Plano: Mostrar Nome do Vendedor de Origem nas Transferências
 
 ## Problema Identificado
 
-Quando o vendedor envia uma mensagem respondendo ao cliente, o contador "Aguardando resposta: (16)" não diminui imediatamente. O usuário precisa esperar até 30 segundos (refetchInterval) ou receber um evento real-time (que pode ter latência).
+Quando um vendedor transfere uma conversa, o card mostra "Sistema → Destino" ao invés de "Vendedor → Destino" porque:
 
-## Causa Raiz
+1. **A função RPC `transfer_conversation`** grava apenas os IDs no evento, não os nomes
+2. **O componente `TransferEventCard`** busca o nome do usuário **destino** mas **NÃO busca o nome da origem**
 
-O hook `useSendMessage` em `src/hooks/useConversations.ts` invalida apenas as queries:
-- `['messages', conversation_id]`
-- `['conversations']`
-- `['conversations-paginated']`
-
-Mas **NÃO invalida** as queries:
-- `['my-waiting-count']`
-- `['my-waiting-conversations']`
-
-O real-time subscription existe, mas conforme documentado, não é confiável para ações do próprio usuário devido a latência de rede, carga do servidor, e políticas RLS complexas.
+**Evidência no banco:**
+```json
+{
+  "from_user_id": "30ff01f0-...",   // Rafik - SAC (ID existe, nome não)
+  "to_user_id": "290087bf-...",     // Diego (ID existe, nome não)
+  "from_user_name": null,           // ❌ Não foi salvo
+  "to_user_name": null              // ❌ Não foi salvo
+}
+```
 
 ## Solução Proposta
 
-Adicionar invalidação direta das queries de "aguardando resposta" no hook `useSendMessage`, garantindo atualização instantânea quando o próprio vendedor envia uma mensagem.
+### Parte 1: Buscar nome da origem no Frontend (correção imediata)
 
-### Alteração no Arquivo
+Adicionar uma query no `TransferEventCard.tsx` para buscar o nome do `from_user_id`, seguindo o mesmo padrão já usado para `to_user_id`.
 
-**Arquivo:** `src/hooks/useConversations.ts`
+**Arquivo:** `src/components/conversations/TransferEventCard.tsx`
 
-**Localização:** Bloco `onSettled` do hook `useSendMessage` (linhas 284-290)
+**Adicionar nova query após a query de `toUser` (linhas 29-42):**
 
-**Antes:**
 ```typescript
-onSettled: (_, __, variables) => {
-  // Always refetch after error or success to sync with server
-  queryClient.invalidateQueries({ queryKey: ['messages', variables.conversation_id] });
-  queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversation_id] });
-  queryClient.invalidateQueries({ queryKey: ['conversations'] });
-  queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
-},
+// Buscar nome do usuário origem se não estiver no data
+const { data: fromUser } = useQuery({
+  queryKey: ['profile-name', data.from_user_id],
+  queryFn: async () => {
+    if (!data.from_user_id) return null;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', data.from_user_id)
+      .single();
+    return profile;
+  },
+  enabled: !!data.from_user_id && !data.from_user_name,
+  staleTime: 60000,
+});
 ```
 
-**Depois:**
+**Modificar a linha 62 para usar o nome buscado:**
+
 ```typescript
-onSettled: (_, __, variables) => {
-  // Always refetch after error or success to sync with server
-  queryClient.invalidateQueries({ queryKey: ['messages', variables.conversation_id] });
-  queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversation_id] });
-  queryClient.invalidateQueries({ queryKey: ['conversations'] });
-  queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+// Antes
+const fromName = data.from_user_name || (isAutoDistribution ? 'Distribuição Automática' : 'Sistema');
+
+// Depois
+const fromName = data.from_user_name || fromUser?.full_name || 
+  (isAutoDistribution ? 'Distribuição Automática' : 'Sistema');
+```
+
+### Parte 2: Gravar nomes na RPC (otimização futura)
+
+Para evitar queries adicionais no frontend, também atualizaremos a função RPC para incluir os nomes diretamente.
+
+**Arquivo:** Nova migration SQL
+
+**Alteração na função `transfer_conversation`:**
+
+```sql
+DECLARE
+  v_from_user_name text;
+  v_to_user_name text;
+  v_to_department_name text;
+BEGIN
+  -- Buscar nomes dos usuários
+  SELECT full_name INTO v_from_user_name
+  FROM profiles WHERE id = v_from_user_id;
   
-  // Invalidar contadores de "aguardando resposta" para atualização instantânea
-  // Real-time tem latência, então invalidamos diretamente após ações do próprio usuário
-  queryClient.invalidateQueries({ queryKey: ['my-waiting-count'] });
-  queryClient.invalidateQueries({ queryKey: ['my-waiting-conversations'] });
-},
+  SELECT full_name INTO v_to_user_name
+  FROM profiles WHERE id = p_to_user_id;
+  
+  SELECT name INTO v_to_department_name
+  FROM departments WHERE id = v_final_department_id;
+
+  -- No INSERT do evento, incluir os nomes:
+  INSERT INTO conversation_events (...) VALUES (
+    ...,
+    json_build_object(
+      'from_user_id', v_from_user_id,
+      'from_user_name', v_from_user_name,  -- NOVO
+      'to_user_id', p_to_user_id,
+      'to_user_name', v_to_user_name,      -- NOVO
+      'from_department_id', v_from_department_id,
+      'to_department_id', v_final_department_id,
+      'to_department_name', v_to_department_name,  -- NOVO
+      'note', p_note
+    ),
+    ...
+  );
 ```
 
-## Por que essa solução funciona?
+## Resultado Esperado
 
-1. **Ação do próprio usuário**: Quando o vendedor envia uma mensagem, o banco atualiza `last_message_is_from_me = true` na conversa
-2. **RPC recalcula**: A função `get_agent_waiting_conversations` exclui conversas onde `last_message_is_from_me = true`
-3. **Invalidação direta**: Forçamos o React Query a refazer a consulta imediatamente, sem esperar o real-time
-4. **Resultado**: O contador diminui instantaneamente (2-3x mais rápido que esperar o real-time)
+| Antes | Depois |
+|-------|--------|
+| Sistema → Rafik - SAC | Diego → Rafik - SAC |
+| Sistema → Diego | Rafik - SAC → Diego |
+| Distribuição Automática → Diego | Distribuição Automática → Diego (sem mudança) |
 
-## Fluxo Visual
+## Resumo
 
-```text
-Vendedor envia mensagem
-        ↓
-sendMessage.mutateAsync() salva no banco
-        ↓
-Trigger atualiza conversations.last_message_is_from_me = true
-        ↓
-onSettled invalida ['my-waiting-count']
-        ↓
-React Query refaz a RPC get_agent_waiting_conversations
-        ↓
-Conversa respondida não aparece mais (filtrada pelo is_from_me = false)
-        ↓
-Contador atualiza instantaneamente de (16) para (15)
-```
-
-## Impacto
-
-- **1 arquivo alterado**: `src/hooks/useConversations.ts`
-- **2 linhas adicionadas** no bloco `onSettled`
-- **Benefício**: Contador atualiza instantaneamente após o vendedor responder
-- **Risco**: Nenhum - apenas adiciona invalidação de cache (operação idempotente)
-- **Performance**: Mínimo impacto - a RPC é leve e já é chamada regularmente
-
-## Bônus: Real-time continua funcionando
-
-O real-time subscription em `useMyWaitingConversations` continua funcionando para:
-- Novas mensagens de clientes (aumentar o contador)
-- Ações de outros vendedores
-- Sincronização entre abas/dispositivos
-
-A invalidação direta é um **complemento**, não uma substituição do real-time.
+- **2 alterações no frontend**: Query + lógica de fallback no `TransferEventCard.tsx`
+- **1 migration SQL**: Atualizar função `transfer_conversation` para gravar nomes
+- **Benefício**: Nome do vendedor de origem sempre visível
+- **Compatibilidade**: Eventos antigos funcionarão via query de fallback
