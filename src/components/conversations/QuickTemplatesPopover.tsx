@@ -460,7 +460,7 @@ export function QuickTemplatesPopover({
                         {template.language}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                    <p className="text-xs text-muted-foreground line-clamp-3 mt-0.5">
                       {getTemplateBody(template.components)}
                     </p>
                   </div>
@@ -536,7 +536,7 @@ export function QuickTemplatesPopover({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                    <p className="text-xs text-muted-foreground line-clamp-3 mt-0.5">
                       {template.content}
                     </p>
                   </div>
