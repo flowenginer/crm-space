@@ -3047,6 +3047,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         setReplyingTo(null);
       } else if (hasFiles) {
         // For files, we need to upload first (can't be avoided)
+        let captionUsed = false;  // Track if caption was already used for a media file
+        
         for (const file of selectedFiles) {
           const result = await uploadAttachment(file, selectedConversationId);
           
@@ -3059,18 +3061,43 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             messageType = 'audio';
           }
 
+          // Determine content: use text as caption for first image/video, markers for others
+          let messageContent: string;
+          let captionForWhatsApp: string | undefined;
+          
+          if ((messageType === 'image' || messageType === 'video') && hasText && !captionUsed) {
+            // Use text as caption for first image/video
+            const textContent = messageInput.trim();
+            messageContent = addSignatureToContent(textContent);
+            captionForWhatsApp = messageContent;
+            captionUsed = true;
+          } else {
+            // Default markers for media without text, or subsequent files
+            if (messageType === 'image') messageContent = '[Imagem]';
+            else if (messageType === 'video') messageContent = '[Vídeo]';
+            else if (messageType === 'audio') messageContent = '[Áudio]';
+            else messageContent = file.name;  // Documents keep filename
+          }
+
           // INSTANT: Save to database first - use mutateAsync for message ID
           sendMessage.mutateAsync({
             conversation_id: selectedConversationId,
-            content: file.name,
+            content: messageContent,
             is_from_me: true,
             message_type: messageType,
             media_url: result.url,
             media_mime_type: result.mimeType,
             reply_to_message_id: replyingTo?.id,
           }).then(async (savedMessage) => {
-            // BACKGROUND: Send to WhatsApp
-            const whatsAppId = await sendViaWhatsApp(file.name, messageType, result.url, quotedWhatsAppId);
+            // BACKGROUND: Send to WhatsApp with caption for media or filename for documents
+            const contentToSend = captionForWhatsApp || (messageType === 'document' ? file.name : messageContent);
+            const whatsAppId = await sendViaWhatsApp(
+              contentToSend, 
+              messageType, 
+              result.url, 
+              quotedWhatsAppId,
+              messageType === 'document' ? file.name : undefined
+            );
             
             // Update the message with the WhatsApp message ID for future reply linking
             if (whatsAppId && savedMessage?.id) {
@@ -3079,8 +3106,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           }).catch(console.error);
         }
         
-        // Send text after files if exists
-        if (hasText) {
+        // Send text separately ONLY if it wasn't used as a caption
+        if (hasText && !captionUsed) {
           const textContent = messageInput.trim();
           // Add signature BEFORE saving to database for consistency
           const contentWithSignature = addSignatureToContent(textContent);
