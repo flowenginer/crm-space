@@ -4697,15 +4697,35 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                               }
                               
                               try {
+                                console.log('[ChannelChange] Iniciando mudança de canal (não-oficial):', {
+                                  conversationId: selectedConversationId,
+                                  contactId: selectedConversation?.contact_id,
+                                  fromChannel: selectedConversation?.channel_id,
+                                  toChannel: channel.id,
+                                  toChannelName: channel.name
+                                });
+
+                                // Validar contact_id antes de consultar
+                                if (!selectedConversation?.contact_id) {
+                                  toast.error('Erro: Contato não encontrado para esta conversa');
+                                  console.error('[ChannelChange] contact_id missing from selectedConversation');
+                                  return;
+                                }
+
                                 // Check if there's already an open/pending conversation for this contact on the target channel
-                                const { data: existingConv } = await supabase
+                                const { data: existingConv, error: checkError } = await supabase
                                   .from('conversations')
                                   .select('id')
-                                  .eq('contact_id', selectedConversation?.contact_id)
+                                  .eq('contact_id', selectedConversation.contact_id)
                                   .eq('channel_id', channel.id)
                                   .in('status', ['open', 'pending'])
                                   .neq('id', selectedConversationId)
                                   .maybeSingle();
+
+                                if (checkError) {
+                                  console.error('[ChannelChange] Error checking existing conv:', checkError);
+                                  throw checkError;
+                                }
 
                                 if (existingConv) {
                                   toast.error(
@@ -4716,18 +4736,27 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                                 
                                 const updateData: any = { channel_id: channel.id };
                                 
+                                console.log('[ChannelChange] Executando UPDATE:', { updateData, conversationId: selectedConversationId });
+                                
                                 const { error } = await supabase
                                   .from('conversations')
                                   .update(updateData)
                                   .eq('id', selectedConversationId);
-                                if (error) throw error;
+                                  
+                                if (error) {
+                                  console.error('[ChannelChange] Erro no UPDATE:', error);
+                                  throw error;
+                                }
+                                
+                                console.log('[ChannelChange] UPDATE bem sucedido, invalidando queries...');
                                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
                                 queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
                                 queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
                                 
                                 toast.success(`Canal alterado para ${channel.name}`);
-                              } catch (error) {
-                                toast.error('Erro ao alterar canal');
+                              } catch (error: any) {
+                                console.error('[ChannelChange] Erro ao alterar canal:', error);
+                                toast.error(`Erro ao alterar canal: ${error?.message || 'Erro desconhecido'}`);
                               }
                             }}
                             className={cn(
@@ -6471,15 +6500,36 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 if (!selectedConversationId || !channelChangeDialog.channel) return;
                 
                 try {
+                  console.log('[ChannelChange] Iniciando mudança para canal OFICIAL:', {
+                    conversationId: selectedConversationId,
+                    contactId: selectedConversation?.contact_id,
+                    fromChannel: selectedConversation?.channel_id,
+                    toChannel: channelChangeDialog.channel.id,
+                    toChannelName: channelChangeDialog.channel.name
+                  });
+
+                  // Validar contact_id antes de consultar
+                  if (!selectedConversation?.contact_id) {
+                    toast.error('Erro: Contato não encontrado para esta conversa');
+                    console.error('[ChannelChange] contact_id missing from selectedConversation');
+                    setChannelChangeDialog({ open: false, channel: null });
+                    return;
+                  }
+
                   // Check if there's already an open/pending conversation for this contact on the target channel
-                  const { data: existingConv } = await supabase
+                  const { data: existingConv, error: checkError } = await supabase
                     .from('conversations')
                     .select('id')
-                    .eq('contact_id', selectedConversation?.contact_id)
+                    .eq('contact_id', selectedConversation.contact_id)
                     .eq('channel_id', channelChangeDialog.channel.id)
                     .in('status', ['open', 'pending'])
                     .neq('id', selectedConversationId)
                     .maybeSingle();
+
+                  if (checkError) {
+                    console.error('[ChannelChange] Error checking existing conv:', checkError);
+                    throw checkError;
+                  }
 
                   if (existingConv) {
                     toast.error(
@@ -6496,20 +6546,28 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                     last_client_message_at: null 
                   };
                   
+                  console.log('[ChannelChange] Executando UPDATE para canal oficial:', { updateData, conversationId: selectedConversationId });
+                  
                   const { error } = await supabase
                     .from('conversations')
                     .update(updateData)
                     .eq('id', selectedConversationId);
-                  if (error) throw error;
+                    
+                  if (error) {
+                    console.error('[ChannelChange] Erro no UPDATE:', error);
+                    throw error;
+                  }
                   
+                  console.log('[ChannelChange] UPDATE bem sucedido para canal oficial, invalidando queries...');
                   queryClient.invalidateQueries({ queryKey: ['conversations'] });
                   queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
                   queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
                   
                   toast.success(`Canal alterado para ${channelChangeDialog.channel.name}. Aguarde resposta do cliente ou envie um Template.`);
                   setChannelChangeDialog({ open: false, channel: null });
-                } catch (error) {
-                  toast.error('Erro ao alterar canal');
+                } catch (error: any) {
+                  console.error('[ChannelChange] Erro ao alterar canal:', error);
+                  toast.error(`Erro ao alterar canal: ${error?.message || 'Erro desconhecido'}`);
                   setChannelChangeDialog({ open: false, channel: null });
                 }
               }}
