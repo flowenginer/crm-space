@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // VERSIONAMENTO: Alterações importantes devem atualizar esta versão
-const VERSION = '2026-02-06.1400';
+const VERSION = '2026-02-06.1800';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -727,7 +727,7 @@ async function executeAction(
         // 1. Atualizar o contato (com filtro de tenant_id para triggers funcionarem)
         const { error: contactError } = await supabase
           .from('contacts')
-          .update({ lead_status: newStatus })
+          .update({ lead_status: newStatus, tenant_id: execution.tenant_id })
           .eq('id', execution.contact_id)
           .eq('tenant_id', execution.tenant_id);
 
@@ -742,7 +742,7 @@ async function executeAction(
         if (execution.conversation_id) {
           const { error: convError } = await supabase
             .from('conversations')
-            .update({ lead_status: newStatus })
+            .update({ lead_status: newStatus, tenant_id: execution.tenant_id })
             .eq('id', execution.conversation_id)
             .eq('tenant_id', execution.tenant_id);
 
@@ -756,7 +756,7 @@ async function executeAction(
         // 3. Também atualizar outras conversas abertas/pending do mesmo contato
         const { error: otherConvsError } = await supabase
           .from('conversations')
-          .update({ lead_status: newStatus })
+          .update({ lead_status: newStatus, tenant_id: execution.tenant_id })
           .eq('contact_id', execution.contact_id)
           .eq('tenant_id', execution.tenant_id)
           .in('status', ['open', 'pending'])
