@@ -1,34 +1,50 @@
 
+# Correção URGENTE: Atendente Atual não preenchido na Distribuição
 
-# Correção: Forçar Deploy do `distribute-lead` com Verificação
+## Causa Raiz Identificada
 
-## Diagnóstico
+O problema NAO e no codigo da Edge Function `distribute-lead` -- o `tenant_id` ja esta sendo passado corretamente. O problema e um **trigger do banco de dados** que cria um efeito cascata:
 
-O código no repositório **JA ESTA CORRETO** -- a linha 382 de `distribute-lead/index.ts` inclui `tenant_id: tenantId`. Porém, os logs de produção de agora (17:33 UTC) **ainda mostram o erro P0001**, o que prova que a versão deployada NAO e a versão atual do código.
+```text
+distribute-lead faz UPDATE em conversations (com tenant_id) 
+    --> trigger track_conversation_assignment dispara (BEFORE UPDATE OF assigned_to)
+        --> INSERT em lead_assignment_history SEM tenant_id
+            --> trigger set_tenant_id_from_user tenta resolver via auth.uid()
+                --> auth.uid() = NULL (Service Role)
+                    --> ERRO P0001: "tenant_id e obrigatorio"
+                        --> UPDATE inteiro e REJEITADO
+                            --> assigned_to NAO e atualizado
+```
 
-## Plano
+## Correção
 
-### 1. Adicionar constante VERSION ao `distribute-lead`
+Alterar a funcao `track_conversation_assignment` no banco de dados para incluir `NEW.tenant_id` no INSERT em `lead_assignment_history`.
 
-Adicionar `const VERSION = '2026-02-06-v2';` no topo do arquivo e logar no início da execução. Isso permite confirmar nos logs que a versão correta foi deployada.
+### Antes (linha problemática):
+```sql
+INSERT INTO lead_assignment_history (
+  contact_id, conversation_id, assigned_from, assigned_to, 
+  assigned_by, assignment_type, time_to_assign_seconds
+) VALUES (
+  NEW.contact_id, NEW.id, OLD.assigned_to, NEW.assigned_to,
+  auth.uid(), v_assignment_type, v_time_to_assign
+);
+```
 
-### 2. Forçar redeploy
+### Depois (com tenant_id):
+```sql
+INSERT INTO lead_assignment_history (
+  contact_id, conversation_id, assigned_from, assigned_to, 
+  assigned_by, assignment_type, time_to_assign_seconds, tenant_id
+) VALUES (
+  NEW.contact_id, NEW.id, OLD.assigned_to, NEW.assigned_to,
+  auth.uid(), v_assignment_type, v_time_to_assign, NEW.tenant_id
+);
+```
 
-Redeployar a função `distribute-lead` (e `execute-flow-node` por segurança).
+## Impacto
 
-### 3. Verificar nos logs
-
-Após o deploy, verificar nos logs se a nova versão aparece e se o erro P0001 desaparece.
-
-## Arquivo alterado
-
-| Arquivo | Alteração |
-|---|---|
-| `supabase/functions/distribute-lead/index.ts` | Adicionar `const VERSION = '2026-02-06-v2'` e log da versão no início da execução |
-
-## Resultado Esperado
-
-- Logs mostram `[distribute-lead] VERSION: 2026-02-06-v2` confirmando deploy correto
-- Erro P0001 desaparece
-- "Atendente Atual" é preenchido corretamente para todos os tenants
-
+- Funciona para TODOS os tenants existentes (usa `NEW.tenant_id` dinamicamente)
+- Funciona para futuros tenants (mesma logica)
+- Nao quebra nenhum fluxo existente (apenas adiciona um campo que antes faltava)
+- Resolve tanto a distribuicao automatica do departamento quanto a transferencia via automacao
