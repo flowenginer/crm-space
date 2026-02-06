@@ -1,61 +1,54 @@
 
-# Desvinculação: Atendente Atual vs Responsável
+# Correção: Atendente Atual não preenchido na automação "Transferir Departamento"
 
-## Regra de Negócio (Nova)
+## Problema
 
-Alterar o **Atendente Atual** (conversations.assigned_to) de forma manual **NÃO** deve alterar o **Atendente Responsável** (contacts.assigned_to). São campos independentes.
+Os logs de 15:13 confirmam que o erro **ainda persiste**:
 
-## O que será alterado
-
-### 1. RPC `update_conversation_assignment` (Migration SQL)
-
-Remover o bloco que sincroniza o contato (linhas 213-222 da migration mais recente). Atualmente:
-
-```text
--- SEMPRE sincronizar o contato quando há mudança de atribuição
-IF p_assigned_to IS NOT NULL OR p_department_id IS NOT NULL THEN
-  UPDATE contacts
-  SET
-    assigned_to = COALESCE(p_assigned_to, assigned_to),
-    department_id = COALESCE(p_department_id, department_id),
-    updated_at = NOW()
-  WHERE id = v_contact_id
-    AND tenant_id = v_conversation.tenant_id;
-END IF;
+```
+Error updating conversation cb7d464f-...: {
+  code: "P0001",
+  message: "tenant_id é obrigatório e não foi possível determinar automaticamente"
+}
 ```
 
-Esse bloco será **removido** da função, de modo que alterar o atendente atual na sidebar da conversa não toque no contato.
+Existem **dois pontos** que precisam de correção:
 
-### 2. RPC `transfer_conversation`
+### 1. `execute-flow-node/index.ts` (linhas 784-790)
 
-Remover o bloco que sincroniza o contato (linhas 132-138):
+Quando a ação `transfer_department` executa, ela faz um UPDATE na conversa para limpar o `assigned_to` e definir o `department_id`, mas **sem incluir `tenant_id`**. Isso faz o trigger do banco rejeitar a operação.
 
-```text
--- Sincronizar o contato com a conversa
-UPDATE contacts
-SET
-  assigned_to = p_to_user_id,
-  department_id = COALESCE(v_final_department_id, department_id),
-  updated_at = NOW()
-WHERE id = v_contact_id;
+**Antes:**
+```
+.update({
+  department_id: targetDepartmentId,
+  assigned_to: null
+})
 ```
 
-Esse bloco também será **removido**, pois a transferência de conversa é uma ação sobre o atendente atual, não sobre o responsável do contato.
+**Depois:**
+```
+.update({
+  department_id: targetDepartmentId,
+  assigned_to: null,
+  tenant_id: execution.tenant_id
+})
+```
 
-### 3. Nenhuma alteração no frontend
+### 2. `distribute-lead/index.ts` - Redesploying
 
-O frontend da sidebar já tem mutations separadas para "Atendente Atual" (`updateAssignedUser`) e "Atendente Responsável" (`updateOwnerAgent`). Essa separação já está correta -- o problema é exclusivamente no backend (RPCs) que forçavam a sincronização.
+A correção anterior (adicionar `tenant_id: tenantId` no update da conversa) ja esta no codigo, mas precisa ser redeployada para garantir que esta ativa em producao.
 
-## Resumo Técnico
+## Arquivos a alterar
 
-| Componente | Alteração |
+| Arquivo | Alteracao |
 |---|---|
-| Nova migration SQL | Recria `update_conversation_assignment` SEM o bloco de UPDATE no contacts |
-| Nova migration SQL | Recria `transfer_conversation` SEM o bloco de UPDATE no contacts |
-| Frontend | Nenhuma alteração necessária |
+| `supabase/functions/execute-flow-node/index.ts` | Adicionar `tenant_id: execution.tenant_id` no UPDATE da conversa (linha 786) |
+| `supabase/functions/distribute-lead/index.ts` | Redeploy (codigo ja esta correto) |
 
-## Resultado
+## Resultado Esperado
 
-- Mudar o **Atendente Atual** (conversa) = só muda a conversa
-- Mudar o **Responsável** (contato) = só muda o contato (já funciona separado via `updateOwnerAgent`)
-- O **modal de transferência** também não tocará mais no responsável do contato
+Apos a correção, o fluxo da automacao sera:
+1. `execute-flow-node` limpa o `assigned_to` e define o departamento (com `tenant_id`) -- funciona
+2. `distribute-lead` seleciona agente e atualiza a conversa (com `tenant_id`) -- funciona
+3. Tanto o "Atendente Atual" quanto o "Atendente Responsavel" serao preenchidos corretamente
