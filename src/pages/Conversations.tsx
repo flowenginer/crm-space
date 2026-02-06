@@ -4623,11 +4623,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             />
                           </div>
                           
-                          <div className="max-h-48 overflow-y-auto space-y-0.5">
+                          <div className="max-h-72 overflow-y-auto space-y-0.5">
                             {tags
                               .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
                               .filter((t: any) => t.name.toLowerCase().includes(tagSearchQuery.toLowerCase()))
-                              .slice(0, 15)
                               .map((tag: any) => (
                                 <button
                                   key={tag.id}
@@ -4950,11 +4949,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           />
                         </div>
                         
-                        <div className="max-h-48 overflow-y-auto space-y-0.5">
+                        <div className="max-h-72 overflow-y-auto space-y-0.5">
                           {tags
                             .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
                             .filter((t: any) => t.name.toLowerCase().includes(tagSearchQuery.toLowerCase()))
-                            .slice(0, 15)
                             .map((tag: any) => (
                               <button
                                 key={tag.id}
