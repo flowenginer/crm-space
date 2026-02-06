@@ -1,59 +1,61 @@
 
-# Correção: "Atendente Atual" não preenchido na distribuição de leads
+# Desvinculação: Atendente Atual vs Responsável
 
-## Problema Identificado
+## Regra de Negócio (Nova)
 
-Nos logs da Edge Function `distribute-lead`, encontrei o erro exato:
+Alterar o **Atendente Atual** (conversations.assigned_to) de forma manual **NÃO** deve alterar o **Atendente Responsável** (contacts.assigned_to). São campos independentes.
 
-```text
-Error updating conversation 178d0cd3-...: {
-  code: "P0001",
-  message: "tenant_id é obrigatório e não foi possível determinar automaticamente"
-}
-```
+## O que será alterado
 
-O que acontece:
-1. O contato (`contacts.assigned_to` = atendente responsável) e atualizado com sucesso
-2. A conversa (`conversations.assigned_to` = atendente atual) FALHA porque o UPDATE não inclui o `tenant_id`, e um trigger no banco de dados exige esse campo
+### 1. RPC `update_conversation_assignment` (Migration SQL)
 
-## Solução
-
-Adicionar o campo `tenant_id` no UPDATE da conversa (linha 378), já que o `tenantId` já está disponível na função (extraído do contato na linha 66).
-
-## Alteração
-
-**Arquivo:** `supabase/functions/distribute-lead/index.ts`
-
-Na seção de update das conversas (linhas 375-385), adicionar `tenant_id: tenantId` ao objeto de update:
-
-| Campo | Antes | Depois |
-|-------|-------|--------|
-| Update da conversa | `assigned_to`, `department_id`, `status`, `updated_at` | `assigned_to`, `department_id`, `status`, `updated_at`, **`tenant_id: tenantId`** |
+Remover o bloco que sincroniza o contato (linhas 213-222 da migration mais recente). Atualmente:
 
 ```text
-// ANTES (linha 377-382):
-.update({
-  assigned_to: selectedAgent.id,
-  department_id: departmentId,
-  status: conversationStatus,
-  updated_at: new Date().toISOString()
-})
-
-// DEPOIS:
-.update({
-  assigned_to: selectedAgent.id,
-  department_id: departmentId,
-  status: conversationStatus,
-  updated_at: new Date().toISOString(),
-  tenant_id: tenantId
-})
+-- SEMPRE sincronizar o contato quando há mudança de atribuição
+IF p_assigned_to IS NOT NULL OR p_department_id IS NOT NULL THEN
+  UPDATE contacts
+  SET
+    assigned_to = COALESCE(p_assigned_to, assigned_to),
+    department_id = COALESCE(p_department_id, department_id),
+    updated_at = NOW()
+  WHERE id = v_contact_id
+    AND tenant_id = v_conversation.tenant_id;
+END IF;
 ```
 
-Isso garante que o trigger de validação do banco receba o `tenant_id` e permita o UPDATE, preenchendo corretamente o campo "atendente atual" na conversa.
+Esse bloco será **removido** da função, de modo que alterar o atendente atual na sidebar da conversa não toque no contato.
 
-## Resultado Esperado
+### 2. RPC `transfer_conversation`
 
-Após a correção, quando o n8n chamar `distribute-lead`:
-- Atendente responsável (contacts.assigned_to) = preenchido (já funciona)
-- Atendente atual (conversations.assigned_to) = preenchido (será corrigido)
-- Ambos com o mesmo agente, conforme a regra de sincronização do sistema
+Remover o bloco que sincroniza o contato (linhas 132-138):
+
+```text
+-- Sincronizar o contato com a conversa
+UPDATE contacts
+SET
+  assigned_to = p_to_user_id,
+  department_id = COALESCE(v_final_department_id, department_id),
+  updated_at = NOW()
+WHERE id = v_contact_id;
+```
+
+Esse bloco também será **removido**, pois a transferência de conversa é uma ação sobre o atendente atual, não sobre o responsável do contato.
+
+### 3. Nenhuma alteração no frontend
+
+O frontend da sidebar já tem mutations separadas para "Atendente Atual" (`updateAssignedUser`) e "Atendente Responsável" (`updateOwnerAgent`). Essa separação já está correta -- o problema é exclusivamente no backend (RPCs) que forçavam a sincronização.
+
+## Resumo Técnico
+
+| Componente | Alteração |
+|---|---|
+| Nova migration SQL | Recria `update_conversation_assignment` SEM o bloco de UPDATE no contacts |
+| Nova migration SQL | Recria `transfer_conversation` SEM o bloco de UPDATE no contacts |
+| Frontend | Nenhuma alteração necessária |
+
+## Resultado
+
+- Mudar o **Atendente Atual** (conversa) = só muda a conversa
+- Mudar o **Responsável** (contato) = só muda o contato (já funciona separado via `updateOwnerAgent`)
+- O **modal de transferência** também não tocará mais no responsável do contato
