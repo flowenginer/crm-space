@@ -284,7 +284,7 @@ function FlowEditorInner() {
       
       const { error: connError } = await supabase
         .from('flow_connections')
-        .insert(connectionsData);
+        .insert(connectionsData as any);
       
       if (connError) throw connError;
       

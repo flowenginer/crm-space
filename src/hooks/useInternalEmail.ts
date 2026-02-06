@@ -559,7 +559,7 @@ export function useSendInternalEmail() {
                 email_id: email.id,
                 user_id: userId,
                 recipient_type: 'to' as const
-              }))
+              })) as any
             );
           if (toError) {
             console.error('[useSendInternalEmail] Erro ao criar recipients TO:', toError);
@@ -577,7 +577,7 @@ export function useSendInternalEmail() {
                 email_id: email.id,
                 user_id: userId,
                 recipient_type: 'cc' as const
-              }))
+              })) as any
             );
           if (ccError) {
             console.error('[useSendInternalEmail] Erro ao criar recipients CC:', ccError);
@@ -597,7 +597,7 @@ export function useSendInternalEmail() {
                 file_url: att.file_url,
                 file_size: att.file_size,
                 mime_type: att.mime_type
-              }))
+              })) as any
             );
           if (attachError) {
             console.error('[useSendInternalEmail] Erro ao criar attachments:', attachError);

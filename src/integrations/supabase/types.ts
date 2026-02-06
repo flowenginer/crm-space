@@ -198,7 +198,7 @@ export type Database = {
           responded_at?: string | null
           status?: string | null
           template_id: string
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -295,7 +295,7 @@ export type Database = {
           ip_address?: string | null
           new_values?: Json | null
           old_values?: Json | null
-          tenant_id?: string
+          tenant_id: string
           user_agent?: string | null
           user_id?: string | null
         }
@@ -354,7 +354,7 @@ export type Database = {
           pattern: string
           priority?: number
           source?: string
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string
         }
         Update: {
@@ -402,7 +402,7 @@ export type Database = {
           responded_at?: string | null
           responded_by?: string | null
           status?: string
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -728,7 +728,7 @@ export type Database = {
           responded_at?: string | null
           sent_at?: string | null
           status?: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           active_rescue_id?: string | null
@@ -841,7 +841,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           template_id?: string | null
-          tenant_id?: string
+          tenant_id: string
           total_contacts?: number
           updated_at?: string
         }
@@ -1095,7 +1095,7 @@ export type Database = {
           is_active?: boolean | null
           name: string
           order_position?: number | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           color?: string | null
@@ -1148,7 +1148,7 @@ export type Database = {
           priority?: number | null
           published_at?: string | null
           run_once_per_contact?: boolean | null
-          tenant_id?: string
+          tenant_id: string
           total_completions?: number | null
           total_errors?: number | null
           total_executions?: number | null
@@ -1207,7 +1207,7 @@ export type Database = {
           is_active?: boolean | null
           name: string
           order_position?: number | null
-          tenant_id?: string
+          tenant_id: string
           value: string
         }
         Update: {
@@ -1442,7 +1442,7 @@ export type Database = {
           sla_first_response_minutes?: number | null
           sla_resolution_minutes?: number | null
           state?: string | null
-          tenant_id?: string
+          tenant_id: string
           timezone?: string | null
           updated_at?: string | null
           website?: string | null
@@ -1528,7 +1528,7 @@ export type Database = {
           merged_phone?: string | null
           messages_transferred?: number | null
           tags_transferred?: number | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           conversations_transferred?: number | null
@@ -1584,7 +1584,7 @@ export type Database = {
           responded_by?: string | null
           response_note?: string | null
           status?: string | null
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -2230,7 +2230,7 @@ export type Database = {
           name: string
           options?: Json | null
           order_position?: number | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           created_at?: string
@@ -2361,7 +2361,7 @@ export type Database = {
           created_at?: string | null
           deal_id: string
           tag_id: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           created_at?: string | null
@@ -2576,7 +2576,7 @@ export type Database = {
           details?: Json | null
           email_id: string
           id?: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           action?: string
@@ -2625,7 +2625,7 @@ export type Database = {
           is_active?: boolean | null
           order_position?: number | null
           shared_box_id: string
-          tenant_id?: string
+          tenant_id: string
           user_id: string
         }
         Update: {
@@ -2682,7 +2682,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -2732,7 +2732,7 @@ export type Database = {
           source_role: string
           target_role?: string | null
           target_shared_box_id?: string | null
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -3027,7 +3027,7 @@ export type Database = {
           source_handle?: string | null
           source_node_id?: string | null
           target_node_id?: string | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           created_at?: string | null
@@ -3088,7 +3088,7 @@ export type Database = {
           log_type: string
           message: string
           node_id?: string | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           created_at?: string | null
@@ -3147,7 +3147,7 @@ export type Database = {
           last_activity_at?: string | null
           started_at?: string | null
           status?: string | null
-          tenant_id?: string
+          tenant_id: string
           variables?: Json | null
           waiting_for?: string | null
           waiting_until?: string | null
@@ -3248,7 +3248,7 @@ export type Database = {
           name: string
           node_subtype: string
           node_type: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           category?: string
@@ -3440,7 +3440,7 @@ export type Database = {
           is_read?: boolean | null
           message?: string | null
           related_user_id?: string | null
-          tenant_id?: string
+          tenant_id: string
           user_id: string
         }
         Update: {
@@ -3486,7 +3486,7 @@ export type Database = {
           reference_id?: string | null
           reference_type?: string | null
           reference_value?: number | null
-          tenant_id?: string
+          tenant_id: string
           user_id: string
         }
         Update: {
@@ -3542,7 +3542,7 @@ export type Database = {
           id?: string
           last_sale_date?: string | null
           sounds_enabled?: boolean | null
-          tenant_id?: string
+          tenant_id: string
           total_deals?: number | null
           total_points?: number | null
           total_points_alltime?: number | null
@@ -3602,7 +3602,7 @@ export type Database = {
           period_date: string
           period_type: string
           position?: number | null
-          tenant_id?: string
+          tenant_id: string
           total_deals?: number | null
           total_points?: number | null
           total_sales?: number | null
@@ -3644,7 +3644,7 @@ export type Database = {
           id?: string
           setting_key: string
           setting_value?: Json
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -3697,7 +3697,7 @@ export type Database = {
           status?: string | null
           tags_assigned?: number | null
           tags_created?: number | null
-          tenant_id?: string
+          tenant_id: string
           total_rows?: number | null
           updated?: number | null
         }
@@ -3816,7 +3816,7 @@ export type Database = {
           message_type?: string
           reply_to_message_id?: string | null
           sender_id: string
-          tenant_id?: string
+          tenant_id: string
           thread_id: string
           updated_at?: string
         }
@@ -3881,7 +3881,7 @@ export type Database = {
           is_muted?: boolean
           joined_at?: string
           last_read_at?: string | null
-          tenant_id?: string
+          tenant_id: string
           thread_id: string
           unread_count?: number
           user_id: string
@@ -3935,7 +3935,7 @@ export type Database = {
           last_message_at?: string | null
           last_message_preview?: string | null
           last_message_sender_id?: string | null
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string
         }
         Update: {
@@ -3987,7 +3987,7 @@ export type Database = {
           is_layout_file?: boolean | null
           layout_version?: number | null
           mime_type?: string | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           created_at?: string | null
@@ -4037,7 +4037,7 @@ export type Database = {
           id?: string
           is_system?: boolean | null
           name: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           color?: string | null
@@ -4096,7 +4096,7 @@ export type Database = {
           labels?: string[] | null
           read_at?: string | null
           recipient_type: string
-          tenant_id?: string
+          tenant_id: string
           user_id: string
         }
         Update: {
@@ -4660,7 +4660,7 @@ export type Database = {
           is_active?: boolean | null
           name: string
           order_position: number
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           color?: string | null
@@ -4942,7 +4942,7 @@ export type Database = {
           position?: number
           roles?: string[] | null
           show_badge?: string | null
-          tenant_id?: string
+          tenant_id: string
           title: string
           updated_at?: string | null
         }
@@ -5287,7 +5287,7 @@ export type Database = {
           name: string
           preview_url?: string | null
           status?: string | null
-          tenant_id?: string
+          tenant_id: string
           thumbnail_url?: string | null
           updated_at?: string | null
         }
@@ -5368,7 +5368,7 @@ export type Database = {
           name: string
           status?: string | null
           targeting?: Json | null
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -5450,7 +5450,7 @@ export type Database = {
           impressions?: number | null
           reach?: number | null
           spend?: number | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           actions?: Json | null
@@ -6518,7 +6518,7 @@ export type Database = {
           name: string
           order_position: number
           pipeline_id: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           color?: string | null
@@ -6561,7 +6561,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           created_at?: string
@@ -6759,7 +6759,7 @@ export type Database = {
           id?: string
           is_required?: boolean | null
           product_id: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           attribute_type_id?: string
@@ -7417,7 +7417,7 @@ export type Database = {
           created_at?: string | null
           is_active?: boolean | null
           queue_id: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           agent_id?: string
@@ -7479,7 +7479,7 @@ export type Database = {
           max_per_agent?: number | null
           name: string
           priority?: string | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           auto_assign?: boolean | null
@@ -8526,7 +8526,7 @@ export type Database = {
           sent_at?: string | null
           status?: string | null
           step_number: number
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           attachment_name?: string | null
@@ -8588,7 +8588,7 @@ export type Database = {
           on_reply_action?: string | null
           on_reply_config?: Json | null
           steps?: Json
-          tenant_id?: string
+          tenant_id: string
           title: string
           updated_at?: string | null
         }
@@ -8649,7 +8649,7 @@ export type Database = {
           permissions?: Json | null
           role_key: string
           role_name: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           color?: string | null
@@ -9156,7 +9156,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -9201,7 +9201,7 @@ export type Database = {
           shared_at?: string
           shared_by: string
           shared_with?: string | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           conversation_id?: string
@@ -9263,7 +9263,7 @@ export type Database = {
           id?: number
           message: Json
           session_id: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           id?: number
@@ -9895,7 +9895,7 @@ export type Database = {
           department_id: string
           id?: string
           is_primary?: boolean | null
-          tenant_id?: string
+          tenant_id: string
           user_id: string
         }
         Update: {
@@ -9956,7 +9956,7 @@ export type Database = {
           invited_by: string
           role?: string
           status?: string | null
-          tenant_id?: string
+          tenant_id: string
           token: string
         }
         Update: {
@@ -10099,7 +10099,7 @@ export type Database = {
           os?: string | null
           region?: string | null
           session_token: string
-          tenant_id?: string
+          tenant_id: string
           user_agent?: string | null
           user_id: string
         }
@@ -10168,7 +10168,7 @@ export type Database = {
           last_error?: string | null
           last_sent_at?: string | null
           name: string
-          tenant_id?: string
+          tenant_id: string
           total_failed?: number | null
           total_sent?: number | null
           total_success?: number | null
@@ -10236,7 +10236,7 @@ export type Database = {
           response_time_ms?: number | null
           status?: string | null
           status_code?: number | null
-          tenant_id?: string
+          tenant_id: string
           webhook_id?: string | null
         }
         Update: {
@@ -10293,7 +10293,7 @@ export type Database = {
           payload: Json
           processed?: boolean | null
           provider: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           created_at?: string | null
@@ -10513,7 +10513,7 @@ export type Database = {
           is_configured?: boolean | null
           is_shared?: boolean | null
           name: string
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -10858,7 +10858,7 @@ export type Database = {
         }[]
       }
       check_user_permission: {
-        Args: { permission_key: string; user_id: string }
+        Args: { _permission: string; _user_id: string }
         Returns: boolean
       }
       check_user_tenant_status: {
@@ -11328,6 +11328,7 @@ export type Database = {
           new_leads: number
         }[]
       }
+      get_current_tenant_id: { Args: never; Returns: string }
       get_current_tenant_modules: {
         Args: never
         Returns: {
@@ -11713,7 +11714,7 @@ export type Database = {
         Returns: {
           avg_duration_seconds: number
           lead_count: number
-          status_color: string
+          percentage: number
           status_name: string
           status_order: number
         }[]
@@ -11886,14 +11887,19 @@ export type Database = {
         Returns: undefined
       }
       increment_unread: { Args: { conv_id: string }; Returns: undefined }
-      increment_webhook_stats: {
-        Args: {
-          p_error_message?: string
-          p_is_success: boolean
-          p_webhook_id: string
-        }
-        Returns: undefined
-      }
+      increment_webhook_stats:
+        | {
+            Args: { _success?: boolean; _webhook_id: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_error_message?: string
+              p_is_success: boolean
+              p_webhook_id: string
+            }
+            Returns: undefined
+          }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_admin_or_supervisor: { Args: { _user_id?: string }; Returns: boolean }
       is_conversation_owner: {
@@ -11919,19 +11925,21 @@ export type Database = {
       }
       is_tenant_owner: { Args: { _user_id?: string }; Returns: boolean }
       mask_cpf_cnpj: { Args: { p_cpf_cnpj: string }; Returns: string }
-      merge_duplicate_contacts: {
-        Args: {
-          p_duplicate_contact_id: string
-          p_keep_contact_id: string
-          p_use_duplicate_name?: boolean
-        }
-        Returns: undefined
-      }
+      merge_duplicate_contacts:
+        | {
+            Args: { _keep_contact_id: string; _merge_contact_id: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_duplicate_contact_id: string
+              p_keep_contact_id: string
+              p_use_duplicate_name?: boolean
+            }
+            Returns: undefined
+          }
       merge_duplicate_conversations: {
-        Args: {
-          p_duplicate_conversation_id: string
-          p_keep_conversation_id: string
-        }
+        Args: { _keep_conversation_id: string; _merge_conversation_id: string }
         Returns: undefined
       }
       migrate_user_data_to_correct_tenant: {
@@ -12114,6 +12122,7 @@ export type Database = {
           contact_full_name: string
           contact_id: string
           contact_lead_status: string
+          contact_origin: string
           contact_phone: string
           created_at: string
           department_id: string

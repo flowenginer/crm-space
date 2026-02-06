@@ -352,7 +352,7 @@ export function useClaimEmail() {
           recipient_type: 'to',
           is_read: false,
           folder: 'inbox'
-        });
+        } as any);
 
       // Se já existe (em caso de re-claim), ignorar erro de duplicata
       if (recipientError && !recipientError.message?.includes('duplicate')) {
@@ -490,7 +490,7 @@ export function useAddSharedBoxMember() {
           shared_box_id: sharedBoxId,
           user_id: userId,
           order_position: orderPosition
-        });
+        } as any);
 
       if (error) throw error;
     },

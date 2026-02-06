@@ -87,7 +87,7 @@ export function useCreateSegment() {
         .insert({
           ...segment,
           created_by: user?.id,
-        })
+        } as any)
         .select()
         .single();
 

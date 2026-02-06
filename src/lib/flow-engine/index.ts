@@ -123,7 +123,7 @@ export class FlowEngine {
         channel_id: channelId,
         status: 'running',
         variables: { mensagem_original: triggerMessage },
-      })
+      } as any)
       .select()
       .single();
     
@@ -545,7 +545,7 @@ export class FlowEngine {
       node_id: nodeId,
       log_type: logType,
       message: message,
-    });
+    } as any);
   }
   
   // Continuar execuções após delay de tempo

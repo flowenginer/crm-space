@@ -3047,6 +3047,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         setReplyingTo(null);
       } else if (hasFiles) {
         // For files, we need to upload first (can't be avoided)
+        let captionUsed = false;  // Track if caption was already used for a media file
+        
         for (const file of selectedFiles) {
           const result = await uploadAttachment(file, selectedConversationId);
           
@@ -3059,18 +3061,43 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             messageType = 'audio';
           }
 
+          // Determine content: use text as caption for first image/video, markers for others
+          let messageContent: string;
+          let captionForWhatsApp: string | undefined;
+          
+          if ((messageType === 'image' || messageType === 'video') && hasText && !captionUsed) {
+            // Use text as caption for first image/video
+            const textContent = messageInput.trim();
+            messageContent = addSignatureToContent(textContent);
+            captionForWhatsApp = messageContent;
+            captionUsed = true;
+          } else {
+            // Default markers for media without text, or subsequent files
+            if (messageType === 'image') messageContent = '[Imagem]';
+            else if (messageType === 'video') messageContent = '[Vídeo]';
+            else if (messageType === 'audio') messageContent = '[Áudio]';
+            else messageContent = file.name;  // Documents keep filename
+          }
+
           // INSTANT: Save to database first - use mutateAsync for message ID
           sendMessage.mutateAsync({
             conversation_id: selectedConversationId,
-            content: file.name,
+            content: messageContent,
             is_from_me: true,
             message_type: messageType,
             media_url: result.url,
             media_mime_type: result.mimeType,
             reply_to_message_id: replyingTo?.id,
           }).then(async (savedMessage) => {
-            // BACKGROUND: Send to WhatsApp
-            const whatsAppId = await sendViaWhatsApp(file.name, messageType, result.url, quotedWhatsAppId);
+            // BACKGROUND: Send to WhatsApp with caption for media or filename for documents
+            const contentToSend = captionForWhatsApp || (messageType === 'document' ? file.name : messageContent);
+            const whatsAppId = await sendViaWhatsApp(
+              contentToSend, 
+              messageType, 
+              result.url, 
+              quotedWhatsAppId,
+              messageType === 'document' ? file.name : undefined
+            );
             
             // Update the message with the WhatsApp message ID for future reply linking
             if (whatsAppId && savedMessage?.id) {
@@ -3079,8 +3106,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           }).catch(console.error);
         }
         
-        // Send text after files if exists
-        if (hasText) {
+        // Send text separately ONLY if it wasn't used as a caption
+        if (hasText && !captionUsed) {
           const textContent = messageInput.trim();
           // Add signature BEFORE saving to database for consistency
           const contentWithSignature = addSignatureToContent(textContent);
@@ -4697,15 +4724,35 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                               }
 
                               try {
+                                console.log('[ChannelChange] Iniciando mudança de canal (não-oficial):', {
+                                  conversationId: selectedConversationId,
+                                  contactId: selectedConversation?.contact_id,
+                                  fromChannel: selectedConversation?.channel_id,
+                                  toChannel: channel.id,
+                                  toChannelName: channel.name
+                                });
+
+                                // Validar contact_id antes de consultar
+                                if (!selectedConversation?.contact_id) {
+                                  toast.error('Erro: Contato não encontrado para esta conversa');
+                                  console.error('[ChannelChange] contact_id missing from selectedConversation');
+                                  return;
+                                }
+
                                 // Check if there's already an open/pending conversation for this contact on the target channel
-                                const { data: existingConv } = await supabase
+                                const { data: existingConv, error: checkError } = await supabase
                                   .from('conversations')
                                   .select('id')
-                                  .eq('contact_id', selectedConversation?.contact_id)
+                                  .eq('contact_id', selectedConversation.contact_id)
                                   .eq('channel_id', channel.id)
                                   .in('status', ['open', 'pending'])
                                   .neq('id', selectedConversationId)
                                   .maybeSingle();
+
+                                if (checkError) {
+                                  console.error('[ChannelChange] Error checking existing conv:', checkError);
+                                  throw checkError;
+                                }
 
                                 if (existingConv) {
                                   toast.error(
@@ -4716,18 +4763,27 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
                                 const updateData: any = { channel_id: channel.id };
 
+                                console.log('[ChannelChange] Executando UPDATE:', { updateData, conversationId: selectedConversationId });
+
                                 const { error } = await supabase
                                   .from('conversations')
                                   .update(updateData)
                                   .eq('id', selectedConversationId);
-                                if (error) throw error;
+                                  
+                                if (error) {
+                                  console.error('[ChannelChange] Erro no UPDATE:', error);
+                                  throw error;
+                                }
+                                
+                                console.log('[ChannelChange] UPDATE bem sucedido, invalidando queries...');
                                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
                                 queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
                                 queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
 
                                 toast.success(`Canal alterado para ${channel.name}`);
-                              } catch (error) {
-                                toast.error('Erro ao alterar canal');
+                              } catch (error: any) {
+                                console.error('[ChannelChange] Erro ao alterar canal:', error);
+                                toast.error(`Erro ao alterar canal: ${error?.message || 'Erro desconhecido'}`);
                               }
                             }}
                             className={cn(
@@ -6471,15 +6527,36 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 if (!selectedConversationId || !channelChangeDialog.channel) return;
                 
                 try {
+                  console.log('[ChannelChange] Iniciando mudança para canal OFICIAL:', {
+                    conversationId: selectedConversationId,
+                    contactId: selectedConversation?.contact_id,
+                    fromChannel: selectedConversation?.channel_id,
+                    toChannel: channelChangeDialog.channel.id,
+                    toChannelName: channelChangeDialog.channel.name
+                  });
+
+                  // Validar contact_id antes de consultar
+                  if (!selectedConversation?.contact_id) {
+                    toast.error('Erro: Contato não encontrado para esta conversa');
+                    console.error('[ChannelChange] contact_id missing from selectedConversation');
+                    setChannelChangeDialog({ open: false, channel: null });
+                    return;
+                  }
+
                   // Check if there's already an open/pending conversation for this contact on the target channel
-                  const { data: existingConv } = await supabase
+                  const { data: existingConv, error: checkError } = await supabase
                     .from('conversations')
                     .select('id')
-                    .eq('contact_id', selectedConversation?.contact_id)
+                    .eq('contact_id', selectedConversation.contact_id)
                     .eq('channel_id', channelChangeDialog.channel.id)
                     .in('status', ['open', 'pending'])
                     .neq('id', selectedConversationId)
                     .maybeSingle();
+
+                  if (checkError) {
+                    console.error('[ChannelChange] Error checking existing conv:', checkError);
+                    throw checkError;
+                  }
 
                   if (existingConv) {
                     toast.error(
@@ -6496,20 +6573,28 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                     last_client_message_at: null 
                   };
                   
+                  console.log('[ChannelChange] Executando UPDATE para canal oficial:', { updateData, conversationId: selectedConversationId });
+                  
                   const { error } = await supabase
                     .from('conversations')
                     .update(updateData)
                     .eq('id', selectedConversationId);
-                  if (error) throw error;
+                    
+                  if (error) {
+                    console.error('[ChannelChange] Erro no UPDATE:', error);
+                    throw error;
+                  }
                   
+                  console.log('[ChannelChange] UPDATE bem sucedido para canal oficial, invalidando queries...');
                   queryClient.invalidateQueries({ queryKey: ['conversations'] });
                   queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
                   queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
                   
                   toast.success(`Canal alterado para ${channelChangeDialog.channel.name}. Aguarde resposta do cliente ou envie um Template.`);
                   setChannelChangeDialog({ open: false, channel: null });
-                } catch (error) {
-                  toast.error('Erro ao alterar canal');
+                } catch (error: any) {
+                  console.error('[ChannelChange] Erro ao alterar canal:', error);
+                  toast.error(`Erro ao alterar canal: ${error?.message || 'Erro desconhecido'}`);
                   setChannelChangeDialog({ open: false, channel: null });
                 }
               }}

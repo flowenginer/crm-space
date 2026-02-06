@@ -100,7 +100,7 @@ export function useCreateRescueTemplate() {
           on_reply_action: template.on_reply_action || 'none',
           on_reply_config: (template.on_reply_config || {}) as any,
           created_by: user?.id,
-        })
+        } as any)
         .select()
         .single();
 

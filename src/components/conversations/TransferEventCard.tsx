@@ -41,6 +41,22 @@ export function TransferEventCard({
     staleTime: 60000,
   });
 
+  // Buscar nome do usuário origem se não estiver no data
+  const { data: fromUser } = useQuery({
+    queryKey: ['profile-name', data.from_user_id],
+    queryFn: async () => {
+      if (!data.from_user_id) return null;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', data.from_user_id)
+        .single();
+      return profile;
+    },
+    enabled: !!data.from_user_id && !data.from_user_name,
+    staleTime: 60000,
+  });
+
   // Buscar nome do departamento destino se não estiver no data
   const { data: toDept } = useQuery({
     queryKey: ['department-name', data.to_department_id],
@@ -59,7 +75,8 @@ export function TransferEventCard({
 
   // Determinar origem: se é auto-distribuição ou tem actor, usar nome apropriado
   const isAutoDistribution = (data as any).is_auto_distribution === true;
-  const fromName = data.from_user_name || (isAutoDistribution ? 'Distribuição Automática' : 'Sistema');
+  const fromName = data.from_user_name || fromUser?.full_name || 
+    (isAutoDistribution ? 'Distribuição Automática' : 'Sistema');
   
   // Determinar destino: preferir nome já no evento, senão buscar
   const toName = data.to_user_name || toUser?.full_name || data.to_department_name || toDept?.name || 

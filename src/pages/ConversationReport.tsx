@@ -217,7 +217,8 @@ export default function ConversationReportPage() {
           contact: {
             full_name: row.contact_full_name,
             phone: row.contact_phone,
-            lead_status: row.contact_lead_status
+            lead_status: row.contact_lead_status,
+            origin: row.contact_origin
           },
           channel: {
             name: row.channel_name
@@ -354,18 +355,32 @@ export default function ConversationReportPage() {
       return;
     }
 
+    const formatOrigin = (origin: string | null | undefined) => {
+      if (!origin) return 'Não identificado';
+      const origins: Record<string, string> = {
+        'meta_ads': 'Meta Ads',
+        'whatsapp': 'Orgânico (WhatsApp)',
+        'manual': 'Manual',
+        'import': 'Importação'
+      };
+      return origins[origin] || origin;
+    };
+
     const excelData = dataToExport.map((conv: any) => ({
       '#': conv.protocol_number,
       'Nome': conv.contact?.full_name || '',
       'Contato': conv.contact?.phone || '',
+      'Origem': formatOrigin(conv.contact?.origin),
+      'Status do Lead': conv.contact?.lead_status || '',
       'Canal': conv.channel?.name || '',
       'Agente': conv.assigned_user?.full_name || '',
       'Departamento': conv.department?.name || '',
       'Etiquetas': conv.tags?.map((t: any) => t.tag?.name).join(', ') || '',
+      'Status Conversa': conv.status === 'open' ? 'Ativo' : conv.status === 'pending' ? 'Pendente' : 'Fechado',
+      'Motivo Fechamento': conv.close_reason || '',
       'Data Abertura': format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm'),
       'Data Fechamento': conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '',
-      '1ª Mensagem': conv.first_message || '',
-      'Status': conv.status === 'open' ? 'Ativo' : conv.status === 'pending' ? 'Pendente' : 'Fechado'
+      '1ª Mensagem': conv.first_message || ''
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(excelData);

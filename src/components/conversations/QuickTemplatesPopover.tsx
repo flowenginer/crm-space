@@ -376,7 +376,7 @@ export function QuickTemplatesPopover({
       </div>
 
       {/* Content */}
-      <ScrollArea className="h-[300px]" type="always">
+      <ScrollArea className="h-[380px]" type="always">
         <div className="p-2 space-y-1">
           {activeCategory === 'flows' ? (
             // Flows list
@@ -460,7 +460,7 @@ export function QuickTemplatesPopover({
                         {template.language}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                    <p className="text-xs text-muted-foreground line-clamp-3 mt-0.5">
                       {getTemplateBody(template.components)}
                     </p>
                   </div>
@@ -536,7 +536,7 @@ export function QuickTemplatesPopover({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                    <p className="text-xs text-muted-foreground line-clamp-3 mt-0.5">
                       {template.content}
                     </p>
                   </div>
@@ -580,7 +580,7 @@ export function QuickTemplatesPopover({
               <Sparkles size={22} className="text-muted-foreground" />
             </button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="h-[70vh] p-0">
+          <SheetContent side="bottom" className="h-[80vh] p-0">
             <SheetHeader className="px-4 py-3 border-b border-border">
               <SheetTitle className="text-left flex items-center gap-2">
                 <Sparkles size={18} className="text-primary" />
@@ -625,7 +625,7 @@ export function QuickTemplatesPopover({
         <PopoverContent 
           side="top" 
           align="start" 
-          className="w-[580px] p-0 max-h-[500px] overflow-hidden"
+          className="w-[580px] p-0 max-h-[600px] overflow-hidden"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">

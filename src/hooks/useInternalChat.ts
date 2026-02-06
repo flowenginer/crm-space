@@ -240,7 +240,7 @@ export function useSendInternalMessage() {
           media_name: mediaName,
           media_mime_type: mediaMimeType,
           reply_to_message_id: replyToMessageId
-        })
+        } as any)
         .select()
         .single();
 

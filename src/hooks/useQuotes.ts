@@ -728,7 +728,7 @@ export function useDeleteQuote() {
                 contact_phone: quoteData.contact?.phone,
               },
               description: `Orçamento convertido #${quoteData.quote_number} excluído por administrador`,
-            });
+            } as any);
         }
       }
 
