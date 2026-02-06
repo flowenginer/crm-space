@@ -3745,21 +3745,21 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   <Popover>
                     <PopoverTrigger asChild>
                       <button className="p-2 hover:bg-muted rounded-lg transition-colors relative">
-                        <MessageCircle 
-                          size={18} 
+                        <MessageCircle
+                          size={18}
                           className={cn(
-                            allChannels?.every(c => c.status === 'connected') 
-                              ? "text-green-500" 
-                              : allChannels?.some(c => c.status === 'connected')
+                            userChannels?.every(c => c.status === 'connected')
+                              ? "text-green-500"
+                              : userChannels?.some(c => c.status === 'connected')
                                 ? "text-yellow-500"
                                 : "text-muted-foreground"
-                          )} 
+                          )}
                         />
                         <span className={cn(
                           "absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background",
-                          allChannels?.every(c => c.status === 'connected') 
-                            ? "bg-green-500" 
-                            : allChannels?.some(c => c.status === 'connected')
+                          userChannels?.every(c => c.status === 'connected')
+                            ? "bg-green-500"
+                            : userChannels?.some(c => c.status === 'connected')
                               ? "bg-yellow-500"
                               : "bg-red-500"
                         )} />
@@ -3773,14 +3773,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                         </h4>
                       </div>
                       <div className="max-h-64 overflow-y-auto">
-                        {allChannels?.length === 0 ? (
+                        {userChannels?.length === 0 ? (
                           <div className="p-4 text-center text-sm text-muted-foreground">
                             Nenhum canal configurado
                           </div>
                         ) : (
-                          allChannels?.map(channel => (
-                            <div 
-                              key={channel.id} 
+                          userChannels?.map(channel => (
+                            <div
+                              key={channel.id}
                               className="flex items-center justify-between p-3 hover:bg-muted/50 border-b border-border/50 last:border-b-0"
                             >
                               <div className="flex items-center gap-2">
@@ -3795,8 +3795,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                               </div>
                               <span className={cn(
                                 "text-xs px-2 py-0.5 rounded-full flex-shrink-0",
-                                channel.status === 'connected' 
-                                  ? "bg-green-500/20 text-green-600" 
+                                channel.status === 'connected'
+                                  ? "bg-green-500/20 text-green-600"
                                   : "bg-red-500/20 text-red-600"
                               )}>
                                 {channel.status === 'connected' ? 'Ativo' : 'Inativo'}
@@ -3807,7 +3807,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       </div>
                       <div className="p-3 border-t border-border bg-muted/30">
                         <span className="text-xs text-muted-foreground">
-                          {allChannels?.filter(c => c.status === 'connected').length || 0} ativos · {allChannels?.filter(c => c.status !== 'connected').length || 0} inativos
+                          {userChannels?.filter(c => c.status === 'connected').length || 0} ativos · {userChannels?.filter(c => c.status !== 'connected').length || 0} inativos
                         </span>
                       </div>
                     </PopoverContent>
@@ -4706,23 +4706,23 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b">
                         Canal atual: {allChannels?.find(c => c.id === selectedConversation?.channel_id)?.name || 'Não definido'}
                       </div>
-                      {allChannels?.filter(c => c.status === 'connected').map(channel => {
+                      {userChannels?.filter(c => c.status === 'connected').map(channel => {
                         const isOfficial = (channel as any)?.type === 'official';
                         const currentChannelIsOfficial = (allChannels?.find(c => c.id === selectedConversation?.channel_id) as any)?.type === 'official';
                         const isChangingToOfficial = isOfficial && !currentChannelIsOfficial;
-                        
+
                         return (
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             key={channel.id}
                             onClick={async () => {
                               if (!selectedConversationId || channel.id === selectedConversation?.channel_id) return;
-                              
+
                               // If changing TO official channel, show warning dialog
                               if (isChangingToOfficial) {
                                 setChannelChangeDialog({ open: true, channel: { id: channel.id, name: channel.name } });
                                 return;
                               }
-                              
+
                               try {
                                 console.log('[ChannelChange] Iniciando mudança de canal (não-oficial):', {
                                   conversationId: selectedConversationId,
@@ -4760,11 +4760,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                                   );
                                   return;
                                 }
-                                
+
                                 const updateData: any = { channel_id: channel.id };
-                                
+
                                 console.log('[ChannelChange] Executando UPDATE:', { updateData, conversationId: selectedConversationId });
-                                
+
                                 const { error } = await supabase
                                   .from('conversations')
                                   .update(updateData)
@@ -4779,7 +4779,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
                                 queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
                                 queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
-                                
+
                                 toast.success(`Canal alterado para ${channel.name}`);
                               } catch (error: any) {
                                 console.error('[ChannelChange] Erro ao alterar canal:', error);
@@ -4811,7 +4811,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           </DropdownMenuItem>
                         );
                       })}
-                      {(!allChannels || allChannels.filter(c => c.status === 'connected').length === 0) && (
+                      {(!userChannels || userChannels.filter(c => c.status === 'connected').length === 0) && (
                         <div className="px-3 py-2 text-sm text-muted-foreground">
                           Nenhum canal conectado
                         </div>
