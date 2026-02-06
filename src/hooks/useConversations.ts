@@ -62,6 +62,7 @@ export interface Conversation {
   } | null;
   assignee?: { id: string; full_name: string | null } | null;
   channel?: { id: string; name: string; type?: string } | null;
+  tag_count?: number;
 }
 
 export interface MessageReaction {

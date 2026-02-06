@@ -691,6 +691,16 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
                 </div>
               )}
               
+              {/* Tag Count Badge */}
+              {(conversation as any).tag_count > 0 && (
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-orange-500/20 rounded-full" title={`${(conversation as any).tag_count} etiqueta(s)`}>
+                  <Tag size={10} className="text-orange-600 dark:text-orange-400" />
+                  <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                    {(conversation as any).tag_count}
+                  </span>
+                </div>
+              )}
+
               {/* Reopen Badge */}
               {reopenCount > 0 && (
                 <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 rounded-full" title={`Reaberta ${reopenCount}x`}>
