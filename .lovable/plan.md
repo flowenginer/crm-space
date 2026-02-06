@@ -1,62 +1,64 @@
 
-# Corrigir Plataforma e URL do Anuncio no Relatorio de Atendimentos
+# Corrigir tenant_id no Payload de Update do set_lead_status
 
-## Problema Identificado
+## Problema
 
-O banco de dados armazena `referral_data` em **dois formatos diferentes** dependendo da integracao:
+A correção anterior adicionou `tenant_id` apenas no **filtro** (`.eq('tenant_id', ...)`), mas o trigger do banco de dados precisa que o `tenant_id` esteja presente no **payload do UPDATE** (no objeto passado ao `.update()`). Sem isso, o PostgreSQL trigger que registra o histórico de status (`lead_status_history`) tenta acessar `NEW.tenant_id` e falha com o erro P0001.
 
-- **UAZAPI (nao oficial)**: `{ "sourceApp": "instagram", "sourceUrl": "https://..." }`
-- **CloudAPI (oficial)**: `{ "source_url": "https://www.instagram.com/p/...", "source_id": "..." }` (sem campo `sourceApp`)
-
-A RPC `search_conversations_report` so extrai o formato camelCase:
-```sql
-(c.referral_data->>'sourceApp')::text as referral_source_app,
-(c.referral_data->>'sourceUrl')::text as referral_source_url,
+Os logs confirmam:
+```
+ERROR: "tenant_id é obrigatório e não foi possível determinar automaticamente"
 ```
 
-Resultado: leads vindos da API oficial (CloudAPI) ficam com "Plataforma Anuncio" e "URL Anuncio" vazios no Excel.
+A tag é adicionada com sucesso porque usa outra lógica, mas o status falha por causa desse trigger.
 
-## Solucao
+## Solução
 
-Atualizar a RPC para usar `COALESCE` e verificar ambos os formatos, alem de inferir a plataforma a partir da URL quando `sourceApp` nao existir.
+Incluir `tenant_id: execution.tenant_id` no objeto `.update()` em **3 locais** dentro do case `set_lead_status`:
 
-## Alteracao
+1. **Linha 730** - Update na tabela `contacts`
+2. **Linha 745** - Update na conversa atual (`conversations`)
+3. **Linha ~759** - Update em outras conversas abertas do contato
 
-### Migracao SQL - Recriar RPC `search_conversations_report`
+Também atualizar a constante `VERSION` para confirmar que o novo deploy está ativo.
 
-Alterar as duas linhas de extracao de referral_data de:
+## Alterações
 
-```sql
-(c.referral_data->>'sourceApp')::text as referral_source_app,
-(c.referral_data->>'sourceUrl')::text as referral_source_url,
+### `supabase/functions/execute-flow-node/index.ts`
+
+**Linha 4** - Atualizar versão:
+```
+const VERSION = '2026-02-06.1800';
 ```
 
-Para:
-
-```sql
-COALESCE(
-  c.referral_data->>'sourceApp',
-  CASE
-    WHEN c.referral_data->>'source_url' ILIKE '%instagram.com%' THEN 'instagram'
-    WHEN c.referral_data->>'source_url' ILIKE '%facebook.com%' OR c.referral_data->>'source_url' ILIKE '%fb.me%' THEN 'facebook'
-    ELSE NULL
-  END
-)::text as referral_source_app,
-COALESCE(
-  c.referral_data->>'sourceUrl',
-  c.referral_data->>'source_url'
-)::text as referral_source_url,
+**Linha 730** - Adicionar tenant_id no update de contacts:
+```javascript
+// De:
+.update({ lead_status: newStatus })
+// Para:
+.update({ lead_status: newStatus, tenant_id: execution.tenant_id })
 ```
 
-Isso garante que:
-- Se `sourceApp` existe (UAZAPI), usa diretamente
-- Se nao existe (CloudAPI), infere a plataforma pela URL (`instagram.com` = Instagram, `facebook.com`/`fb.me` = Facebook)
-- Para URL, tenta `sourceUrl` (camelCase) primeiro, depois `source_url` (snake_case)
+**Linha 745** - Adicionar tenant_id no update da conversa atual:
+```javascript
+// De:
+.update({ lead_status: newStatus })
+// Para:
+.update({ lead_status: newStatus, tenant_id: execution.tenant_id })
+```
 
-## Arquivos Alterados
+**Linha ~759** - Adicionar tenant_id no update de outras conversas:
+```javascript
+// De:
+.update({ lead_status: newStatus })
+// Para:
+.update({ lead_status: newStatus, tenant_id: execution.tenant_id })
+```
 
-- Nova migracao SQL para recriar a RPC `search_conversations_report`
+### Deploy
+
+Fazer deploy da edge function `execute-flow-node` após as alterações.
 
 ## Complexidade
 
-**Muito baixa** - apenas ajuste em 2 expressoes SQL dentro da RPC existente.
+**Muito baixa** - adicionar 1 campo em 3 updates e atualizar a versão. Após o deploy, testar a automação novamente para confirmar que os logs mostram a nova versão e que o status atualiza corretamente.
