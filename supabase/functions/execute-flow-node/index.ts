@@ -725,7 +725,7 @@ async function executeAction(
         // 1. Atualizar o contato
         const { error: contactError } = await supabase
           .from('contacts')
-          .update({ lead_status: newStatus })
+          .update({ lead_status: newStatus, tenant_id: execution.tenant_id })
           .eq('id', execution.contact_id);
         
         if (contactError) {
@@ -739,7 +739,7 @@ async function executeAction(
         if (execution.conversation_id) {
           const { error: convError } = await supabase
             .from('conversations')
-            .update({ lead_status: newStatus })
+            .update({ lead_status: newStatus, tenant_id: execution.tenant_id })
             .eq('id', execution.conversation_id);
           
           if (convError) {
@@ -752,7 +752,7 @@ async function executeAction(
         // 3. Também atualizar outras conversas abertas/pending do mesmo contato
         const { error: otherConvsError } = await supabase
           .from('conversations')
-          .update({ lead_status: newStatus })
+          .update({ lead_status: newStatus, tenant_id: execution.tenant_id })
           .eq('contact_id', execution.contact_id)
           .in('status', ['open', 'pending'])
           .neq('id', execution.conversation_id || '');
