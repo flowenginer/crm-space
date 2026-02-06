@@ -785,7 +785,8 @@ async function executeAction(
           .from('conversations')
           .update({
             department_id: targetDepartmentId,
-            assigned_to: null
+            assigned_to: null,
+            tenant_id: execution.tenant_id
           })
           .eq('id', execution.conversation_id);
         
@@ -794,7 +795,8 @@ async function executeAction(
           await supabase
             .from('contacts')
             .update({
-              department_id: targetDepartmentId
+              department_id: targetDepartmentId,
+              tenant_id: execution.tenant_id
             })
             .eq('id', execution.contact_id);
         }
