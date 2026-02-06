@@ -15,6 +15,9 @@ export interface UserChannel {
   };
 }
 
+// Cast to bypass missing 'user_channels' type in auto-generated types
+const db = supabase as any;
+
 /**
  * Hook para buscar os canais configurados para um usuário específico
  */
@@ -26,7 +29,7 @@ export function useUserChannelsConfig(userId?: string) {
     queryFn: async () => {
       if (!userId || !tenantId) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('user_channels')
         .select(`
           id,
@@ -60,7 +63,7 @@ export function useUserChannelIds(userId?: string) {
     queryFn: async () => {
       if (!userId || !tenantId) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('user_channels')
         .select('channel_id')
         .eq('user_id', userId)
@@ -71,7 +74,7 @@ export function useUserChannelIds(userId?: string) {
         return [];
       }
 
-      return (data || []).map(d => d.channel_id);
+      return (data || []).map((d: any) => d.channel_id);
     },
     enabled: !!userId && !!tenantId,
   });
@@ -86,7 +89,7 @@ export function useAddUserChannel() {
 
   return useMutation({
     mutationFn: async ({ userId, channelId }: { userId: string; channelId: string }) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('user_channels')
         .insert({
           user_id: userId,
@@ -99,7 +102,7 @@ export function useAddUserChannel() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_: any, variables: { userId: string }) => {
       queryClient.invalidateQueries({ queryKey: ['user-channels-config', variables.userId] });
       queryClient.invalidateQueries({ queryKey: ['user-channel-ids', variables.userId] });
       queryClient.invalidateQueries({ queryKey: ['user-channels'] });
@@ -116,7 +119,7 @@ export function useRemoveUserChannel() {
 
   return useMutation({
     mutationFn: async ({ userId, channelId }: { userId: string; channelId: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from('user_channels')
         .delete()
         .eq('user_id', userId)
@@ -125,7 +128,7 @@ export function useRemoveUserChannel() {
 
       if (error) throw error;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_: any, variables: { userId: string }) => {
       queryClient.invalidateQueries({ queryKey: ['user-channels-config', variables.userId] });
       queryClient.invalidateQueries({ queryKey: ['user-channel-ids', variables.userId] });
       queryClient.invalidateQueries({ queryKey: ['user-channels'] });
@@ -142,8 +145,7 @@ export function useSyncUserChannels() {
 
   return useMutation({
     mutationFn: async ({ userId, channelIds }: { userId: string; channelIds: string[] }) => {
-      // Primeiro, remove todos os canais existentes
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await db
         .from('user_channels')
         .delete()
         .eq('user_id', userId)
@@ -151,23 +153,21 @@ export function useSyncUserChannels() {
 
       if (deleteError) throw deleteError;
 
-      // Se não há canais para adicionar, retorna
       if (channelIds.length === 0) return;
 
-      // Adiciona os novos canais
       const inserts = channelIds.map(channelId => ({
         user_id: userId,
         channel_id: channelId,
         tenant_id: tenantId,
       }));
 
-      const { error: insertError } = await supabase
+      const { error: insertError } = await db
         .from('user_channels')
         .insert(inserts);
 
       if (insertError) throw insertError;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_: any, variables: { userId: string; channelIds: string[] }) => {
       queryClient.invalidateQueries({ queryKey: ['user-channels-config', variables.userId] });
       queryClient.invalidateQueries({ queryKey: ['user-channel-ids', variables.userId] });
       queryClient.invalidateQueries({ queryKey: ['user-channels'] });
