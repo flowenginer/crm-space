@@ -77,6 +77,8 @@ export interface ConversationFilters {
   canViewUnassigned?: boolean;
   // CRÍTICO: Se false, usuário só vê suas conversas + pendentes do departamento (mesmo com outras permissões)
   canViewAllConversations?: boolean;
+  // IDs dos canais que o usuário pode ver (se vazio, não aplica filtro de canal)
+  allowedChannelIds?: string[];
 }
 
 // Helper para obter início/fim do dia no timezone local convertido para UTC
@@ -218,7 +220,7 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     filterUnread, // New: checkbox filter
     filterNotReplied, // New: checkbox filter
     filterClientNotReplied, // New: checkbox filter
-    channelId, 
+    channelId,
     isUnread,
     departmentId,
     agentId,
@@ -230,6 +232,7 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     searchQuery,
     statusFilter = 'active',
     leadStatusFilter,
+    allowedChannelIds,
   } = filters || {};
 
   // OTIMIZAÇÃO: Usar hooks centralizados ao invés de queries dentro do queryFn
@@ -248,7 +251,7 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
   const isAdminOrSupervisor = userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
   
   return useInfiniteQuery({
-    queryKey: ['conversations-paginated', assignment, effectiveSortOrder, effectiveFilterUnread, effectiveFilterNotReplied, effectiveFilterClientNotReplied, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery, statusFilter, leadStatusFilter, currentUser?.id, userProfile?.role, userDepartmentIds.join(',')],
+    queryKey: ['conversations-paginated', assignment, effectiveSortOrder, effectiveFilterUnread, effectiveFilterNotReplied, effectiveFilterClientNotReplied, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery, statusFilter, leadStatusFilter, currentUser?.id, userProfile?.role, userDepartmentIds.join(','), allowedChannelIds?.join(',')],
     queryFn: async ({ pageParam = 0 }) => {
       // OTIMIZAÇÃO: Usar dados do cache ao invés de fazer query
       const user = currentUser;
@@ -396,7 +399,14 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         }
       }
 
-      // Apply channel filter
+      // CRÍTICO: Filtrar pelos canais permitidos do usuário (se configurado)
+      // Este filtro é aplicado ANTES do filtro de canal selecionado
+      if (allowedChannelIds && allowedChannelIds.length > 0) {
+        // Usuário só pode ver conversas dos canais que tem permissão
+        query = query.in('channel_id', allowedChannelIds);
+      }
+
+      // Apply channel filter (seleção manual do usuário)
       if (channelId && channelId !== 'all') {
         if (channelId === 'no_channel') {
           query = query.is('channel_id', null);
