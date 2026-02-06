@@ -378,7 +378,8 @@ Deno.serve(async (req) => {
             assigned_to: selectedAgent.id,
             department_id: departmentId,
             status: conversationStatus,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            tenant_id: tenantId
           })
           .eq('id', conv.id)
           .select('id, assigned_to, status')
