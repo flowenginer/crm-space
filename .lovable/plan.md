@@ -1,35 +1,34 @@
 
 
-# Correção: Distribuição de Departamento não preenche Atendente Atual
+# Correção: Forçar Deploy do `distribute-lead` com Verificação
 
-## Problema
+## Diagnóstico
 
-Quando a distribuição automática do departamento roda (tanto via automação quanto via configuração do CRM), o "Atendente Responsável" (contacts.assigned_to) é preenchido corretamente, mas o "Atendente Atual" (conversations.assigned_to) fica como "Não atribuído".
+O código no repositório **JA ESTA CORRETO** -- a linha 382 de `distribute-lead/index.ts` inclui `tenant_id: tenantId`. Porém, os logs de produção de agora (17:33 UTC) **ainda mostram o erro P0001**, o que prova que a versão deployada NAO e a versão atual do código.
 
-A causa raiz é que o UPDATE na tabela `conversations` dentro da função `distribute-lead` falha silenciosamente com erro `P0001` (tenant_id obrigatório). A correção de adicionar `tenant_id` já está no código, mas precisa ser redeployada.
+## Plano
 
-Além disso, existem erros de build no TypeScript que impedem o deploy: os hooks `useUserChannels.ts` e `useUserChannelsConfig.ts` referenciam a tabela `user_channels` que não existe no arquivo de tipos auto-gerado do Supabase.
+### 1. Adicionar constante VERSION ao `distribute-lead`
 
-## Correções
+Adicionar `const VERSION = '2026-02-06-v2';` no topo do arquivo e logar no início da execução. Isso permite confirmar nos logs que a versão correta foi deployada.
 
-### 1. Corrigir erros de build (useUserChannels.ts e useUserChannelsConfig.ts)
+### 2. Forçar redeploy
 
-Adicionar `// @ts-ignore` nos acessos à tabela `user_channels` ou usar type casting com `as any` para contornar o fato de que a tabela existe no banco mas não está no arquivo de tipos gerado automaticamente.
+Redeployar a função `distribute-lead` (e `execute-flow-node` por segurança).
 
-Arquivos afetados:
-- `src/hooks/useUserChannels.ts` - cast `.from('user_channels' as any)` na linha 33
-- `src/hooks/useUserChannelsConfig.ts` - cast `.from('user_channels' as any)` nas linhas 29, 64, 90, 120, 147, 165
+### 3. Verificar nos logs
 
-### 2. Redeploy das Edge Functions
+Após o deploy, verificar nos logs se a nova versão aparece e se o erro P0001 desaparece.
 
-Redeployar `distribute-lead` e `execute-flow-node` para garantir que as correções de `tenant_id` estejam ativas em produção.
+## Arquivo alterado
+
+| Arquivo | Alteração |
+|---|---|
+| `supabase/functions/distribute-lead/index.ts` | Adicionar `const VERSION = '2026-02-06-v2'` e log da versão no início da execução |
 
 ## Resultado Esperado
 
-Após as correções:
-- Build passa sem erros de TypeScript
-- Edge functions são redeployadas com o fix de `tenant_id`
-- A distribuição automática preenche TANTO o "Atendente Atual" quanto o "Atendente Responsável"
-- Funciona para TODOS os tenants (o `tenant_id` é extraído do contato, não hardcoded)
-- Funciona para tenants futuros (mesma lógica)
+- Logs mostram `[distribute-lead] VERSION: 2026-02-06-v2` confirmando deploy correto
+- Erro P0001 desaparece
+- "Atendente Atual" é preenchido corretamente para todos os tenants
 
