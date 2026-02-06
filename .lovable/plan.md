@@ -1,55 +1,26 @@
 
 
-# Drag & Drop para Reorganizar Etiquetas
+# Corrigir Limite de Exibicao de Etiquetas no Popover
 
-## O que sera feito
+## Problema Identificado
 
-Adicionar a funcionalidade de arrastar e soltar (drag & drop) nos cards de etiquetas na pagina de configuracoes, permitindo reorganizar a ordem visualmente. A nova ordem sera salva no banco de dados.
+O popover de "Adicionar Etiqueta" na conversa com o lead possui um `.slice(0, 15)` hardcoded que **limita a exibicao a apenas 15 etiquetas**, independente da quantidade total. Como voces possuem mais de 400 tags no banco, a grande maioria fica oculta.
 
-## Alteracoes
+Esse limite existe em **dois locais** no arquivo `src/pages/Conversations.tsx`:
+- Linha 4630: popover do header (desktop)
+- Linha 4957: popover do painel lateral
 
-### 1. Migracao de banco: adicionar coluna `order_position` na tabela `tags`
+## Solucao
 
-A tabela `tags` nao possui coluna de ordenacao. Sera adicionada:
+1. **Remover o `.slice(0, 15)`** nos dois popovers, permitindo que todas as etiquetas aparecam na lista com scroll
+2. **Aumentar a area de scroll** de `max-h-48` para `max-h-72` (de ~192px para ~288px) para exibir mais tags visiveis sem precisar rolar tanto
+3. O campo de busca ja existe, entao o usuario pode filtrar facilmente mesmo com centenas de tags
 
-```sql
-ALTER TABLE tags ADD COLUMN order_position integer DEFAULT 0;
--- Preencher posicoes iniciais baseadas na ordem alfabetica atual
-WITH ranked AS (
-  SELECT id, ROW_NUMBER() OVER (ORDER BY name) as rn
-  FROM tags
-)
-UPDATE tags SET order_position = ranked.rn FROM ranked WHERE tags.id = ranked.id;
-```
+## Arquivos Alterados
 
-### 2. `src/hooks/useTags.ts` - Atualizar queries e adicionar mutation de reordenacao
-
-- Alterar `.order('name')` para `.order('order_position')` nas queries `useTags` e `useAllTags`
-- Adicionar `order_position` na interface `Tag`
-- Criar hook `useReorderTags` que recebe um array de `{ id, order_position }` e faz update em batch
-
-### 3. `src/components/settings/TagManagement.tsx` - Adicionar drag & drop com @dnd-kit
-
-O projeto ja usa `@dnd-kit/core` e `@dnd-kit/sortable` em varios locais (MenuConfiguration, Attributes, DashboardGrid). Seguiremos o mesmo padrao:
-
-- Importar `DndContext`, `closestCenter`, `useSensors`, `PointerSensor`, `KeyboardSensor` de `@dnd-kit/core`
-- Importar `SortableContext`, `rectSortingStrategy`, `arrayMove`, `useSortable` de `@dnd-kit/sortable`
-- Criar componente `SortableTagCard` que encapsula cada card com `useSortable`, adicionando um icone de "grip" (arrastar) visivel no hover
-- Envolver o grid com `DndContext` + `SortableContext`
-- No `onDragEnd`, chamar `arrayMove` para reordenar localmente e `useReorderTags` para persistir
-
-O drag & drop so sera ativo quando **nao** houver filtro de busca ativo (para evitar confusao ao arrastar itens filtrados).
-
-### Detalhes visuais
-
-- Icone `GripVertical` aparece no canto superior esquerdo de cada card (visivel no hover)
-- Durante o arraste, o card tera uma leve sombra/opacidade para feedback visual
-- Layout em grid sera mantido (4 colunas em telas grandes)
-- Quando houver busca ativa, o grip fica oculto e o drag desabilitado
+- `src/pages/Conversations.tsx` - remover `.slice(0, 15)` e ajustar `max-h` em 2 locais
 
 ## Complexidade
 
-**Media**. Envolve:
-- 1 migracao de banco (simples)
-- Ajuste em 2 arquivos existentes
-- Reutiliza padrao ja consolidado no projeto (@dnd-kit)
+**Muito baixa** - apenas remocao de 2 linhas e ajuste de 2 valores CSS.
+
