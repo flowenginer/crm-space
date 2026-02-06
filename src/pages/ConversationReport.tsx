@@ -214,6 +214,8 @@ export default function ConversationReportPage() {
           closed_at: row.closed_at,
           close_reason: row.close_reason,
           last_message_at: row.last_message_at,
+          referral_source_app: row.referral_source_app || '',
+          referral_source_url: row.referral_source_url || '',
           contact: {
             full_name: row.contact_full_name,
             phone: row.contact_phone,
@@ -371,6 +373,8 @@ export default function ConversationReportPage() {
       'Nome': conv.contact?.full_name || '',
       'Contato': conv.contact?.phone || '',
       'Origem': formatOrigin(conv.contact?.origin),
+      'Plataforma Anuncio': conv.referral_source_app || '',
+      'URL Anuncio': conv.referral_source_url || '',
       'Status do Lead': conv.contact?.lead_status || '',
       'Canal': conv.channel?.name || '',
       'Agente': conv.assigned_user?.full_name || '',

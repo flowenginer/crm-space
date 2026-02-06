@@ -12170,6 +12170,8 @@ export type Database = {
           id: string
           last_message_at: string
           lead_status: string
+          referral_source_app: string
+          referral_source_url: string
           status: string
           total_count: number
         }[]
