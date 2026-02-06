@@ -1589,6 +1589,26 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const { data: allChannels = [] } = useChannels();
+  const userChannels = useUserChannels();
+
+  // IDs dos canais permitidos para o usuário (para filtrar conversas)
+  // Se admin/supervisor, não aplica filtro (undefined significa sem restrição)
+  const allowedChannelIds = useMemo(() => {
+    if (isAdmin || isSupervisor) {
+      return undefined; // Admin/Supervisor vê todas as conversas
+    }
+    // Se userChannels está vazio mas allChannels tem canais, provavelmente ainda carregando
+    if (userChannels.length === 0 && allChannels.length > 0) {
+      return undefined; // Aguardando carregamento
+    }
+    // Se userChannels tem canais, retorna os IDs
+    if (userChannels.length > 0) {
+      return userChannels.map(c => c.id);
+    }
+    return undefined;
+  }, [userChannels, allChannels.length, isAdmin, isSupervisor]);
+
   // Build filters for server-side filtering and sorting
   const conversationFilters: ConversationFilters = useMemo(() => ({
     assignment: (quickFilter === 'pinned' || quickFilter === 'shared') ? 'all' : quickFilter === 'pending' ? 'pending' : quickFilter,
@@ -1736,25 +1756,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const createTag = useCreateTag();
   const { data: departments = [] } = useDepartments();
   const { data: userDepartmentsData = [] } = useUserDepartments(profile?.id);
-  const { data: allChannels = [] } = useChannels();
-  const userChannels = useUserChannels();
-
-  // IDs dos canais permitidos para o usuário (para filtrar conversas)
-  // Se admin/supervisor, não aplica filtro (undefined significa sem restrição)
-  const allowedChannelIds = useMemo(() => {
-    if (isAdmin || isSupervisor) {
-      return undefined; // Admin/Supervisor vê todas as conversas
-    }
-    // Se userChannels está vazio mas allChannels tem canais, provavelmente ainda carregando
-    if (userChannels.length === 0 && allChannels.length > 0) {
-      return undefined; // Aguardando carregamento
-    }
-    // Se userChannels tem canais, retorna os IDs
-    if (userChannels.length > 0) {
-      return userChannels.map(c => c.id);
-    }
-    return undefined;
-  }, [userChannels, allChannels.length, isAdmin, isSupervisor]);
 
   const { data: pinnedConversations = [] } = usePinnedConversations();
   const { isPinned, togglePin } = useTogglePinConversation();
