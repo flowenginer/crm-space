@@ -1618,7 +1618,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     canViewUnassigned,
     // CRÍTICO: Controla se pode ver conversas de OUTROS usuários
     canViewAllConversations,
-  }), [quickFilter, sortOrder, statusFiltersSelected, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, leadStatusFilter, canViewPending, canViewUnassigned, canViewAllConversations]);
+    // CRÍTICO: Restringe conversas aos canais que o usuário pode ver
+    allowedChannelIds,
+  }), [quickFilter, sortOrder, statusFiltersSelected, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, leadStatusFilter, canViewPending, canViewUnassigned, canViewAllConversations, allowedChannelIds]);
 
   // Global search hook - for integrated search results
   const searchFilters = useMemo(() => ({
@@ -1736,6 +1738,24 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const { data: userDepartmentsData = [] } = useUserDepartments(profile?.id);
   const { data: allChannels = [] } = useChannels();
   const userChannels = useUserChannels();
+
+  // IDs dos canais permitidos para o usuário (para filtrar conversas)
+  // Se admin/supervisor, não aplica filtro (undefined significa sem restrição)
+  const allowedChannelIds = useMemo(() => {
+    if (isAdmin || isSupervisor) {
+      return undefined; // Admin/Supervisor vê todas as conversas
+    }
+    // Se userChannels está vazio mas allChannels tem canais, provavelmente ainda carregando
+    if (userChannels.length === 0 && allChannels.length > 0) {
+      return undefined; // Aguardando carregamento
+    }
+    // Se userChannels tem canais, retorna os IDs
+    if (userChannels.length > 0) {
+      return userChannels.map(c => c.id);
+    }
+    return undefined;
+  }, [userChannels, allChannels.length, isAdmin, isSupervisor]);
+
   const { data: pinnedConversations = [] } = usePinnedConversations();
   const { isPinned, togglePin } = useTogglePinConversation();
   const { data: sharedConversations = [] } = useSharedConversations();
