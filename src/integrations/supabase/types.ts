@@ -9451,6 +9451,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          order_position: number | null
           tenant_id: string
           usage_count: number | null
           visibility: string | null
@@ -9463,6 +9464,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          order_position?: number | null
           tenant_id: string
           usage_count?: number | null
           visibility?: string | null
@@ -9475,6 +9477,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          order_position?: number | null
           tenant_id?: string
           usage_count?: number | null
           visibility?: string | null

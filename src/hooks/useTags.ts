@@ -56,6 +56,7 @@ export interface Tag {
   visibility: TagVisibility;
   created_by: string | null;
   department_id: string | null;
+  order_position: number | null;
   department?: { id: string; name: string } | null;
   creator?: { id: string; full_name: string | null } | null;
 }
@@ -95,6 +96,7 @@ export function useTags() {
           creator:profiles!tags_created_by_fkey(id, full_name)
         `)
         .or(conditions.join(','))
+        .order('order_position', { ascending: true, nullsFirst: false })
         .order('name');
 
       if (error) throw error;
@@ -117,6 +119,7 @@ export function useAllTags() {
           department:departments(id, name),
           creator:profiles!tags_created_by_fkey(id, full_name)
         `)
+        .order('order_position', { ascending: true, nullsFirst: false })
         .order('name');
 
       if (error) throw error;
@@ -248,6 +251,25 @@ export function useRemoveTagFromContact() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['conversation'] });
+    },
+  });
+}
+
+export function useReorderTags() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (updates: { id: string; order_position: number }[]) => {
+      const promises = updates.map(({ id, order_position }) =>
+        supabase.from('tags').update({ order_position } as any).eq('id', id)
+      );
+      const results = await Promise.all(promises);
+      const error = results.find(r => r.error)?.error;
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: ['all-tags'] });
     },
   });
 }

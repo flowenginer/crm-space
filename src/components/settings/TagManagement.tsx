@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { 
   Plus, 
   Edit3, 
@@ -11,6 +11,9 @@ import {
   Lock,
   Building2
 } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { SortableTagCard } from './SortableTagCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,7 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { useTags, useCreateTag, useUpdateTag, useDeleteTag, Tag as TagType, TagVisibility } from '@/hooks/useTags';
+import { useTags, useCreateTag, useUpdateTag, useDeleteTag, useReorderTags, Tag as TagType, TagVisibility } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useContactsFilterCounts } from '@/hooks/usePaginatedContacts';
 
@@ -46,6 +49,12 @@ export function TagManagement() {
   const createTag = useCreateTag();
   const updateTag = useUpdateTag();
   const deleteTag = useDeleteTag();
+  const reorderTags = useReorderTags();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
 
   // Criar mapa de contagens reais das etiquetas
   const tagCountMap = useMemo(() => {
@@ -70,11 +79,29 @@ export function TagManagement() {
     department_id: '',
   });
 
+  const isSearchActive = searchQuery.length > 0 || visibilityFilter !== 'all';
+
   const filteredTags = tags.filter(tag => {
     const matchesSearch = tag.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesVisibility = visibilityFilter === 'all' || tag.visibility === visibilityFilter;
     return matchesSearch && matchesVisibility;
   });
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = filteredTags.findIndex(t => t.id === active.id);
+    const newIndex = filteredTags.findIndex(t => t.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(filteredTags, oldIndex, newIndex);
+    const updates = reordered.map((tag, index) => ({
+      id: tag.id,
+      order_position: index + 1,
+    }));
+    reorderTags.mutate(updates);
+  }, [filteredTags, reorderTags]);
 
   // Counters by visibility
   const publicCount = tags.filter(t => t.visibility === 'public').length;
@@ -282,64 +309,67 @@ export function TagManagement() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredTags.map((tag) => (
-            <div
-              key={tag.id}
-              className="bg-card rounded-xl border border-border p-4 hover:shadow-md transition-all group"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center"
-                    style={{ backgroundColor: `${tag.color}20` }}
-                  >
-                    <Tag size={20} style={{ color: tag.color || '#8B5CF6' }} />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{tag.name}</h3>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      {getVisibilityIcon(tag.visibility)}
-                      <span>{getVisibilityLabel(tag)}</span>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={filteredTags.map(t => t.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredTags.map((tag) => (
+                <SortableTagCard key={tag.id} id={tag.id} disabled={isSearchActive}>
+                  <div className="bg-card rounded-xl border border-border p-4 hover:shadow-md transition-all group">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-10 h-10 rounded-lg flex items-center justify-center"
+                          style={{ backgroundColor: `${tag.color}20` }}
+                        >
+                          <Tag size={20} style={{ color: tag.color || '#8B5CF6' }} />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-foreground">{tag.name}</h3>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            {getVisibilityIcon(tag.visibility)}
+                            <span>{getVisibilityLabel(tag)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleOpenModal(tag)}
+                          className="p-1.5 hover:bg-muted rounded-lg transition-colors"
+                        >
+                          <Edit3 size={14} className="text-muted-foreground" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(tag)}
+                          className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={14} className="text-destructive" />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {tag.description && (
+                      <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                        {tag.description}
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <span
+                        className="px-3 py-1 rounded-full text-xs font-medium text-white"
+                        style={{ backgroundColor: tag.color || '#8B5CF6' }}
+                      >
+                        {tag.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {tagCountMap.get(tag.id) || 0} uso{(tagCountMap.get(tag.id) || 0) !== 1 ? 's' : ''}
+                      </span>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => handleOpenModal(tag)}
-                    className="p-1.5 hover:bg-muted rounded-lg transition-colors"
-                  >
-                    <Edit3 size={14} className="text-muted-foreground" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(tag)}
-                    className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors"
-                  >
-                    <Trash2 size={14} className="text-destructive" />
-                  </button>
-                </div>
-              </div>
-              
-              {tag.description && (
-                <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                  {tag.description}
-                </p>
-              )}
-
-              <div className="flex items-center justify-between">
-                <span
-                  className="px-3 py-1 rounded-full text-xs font-medium text-white"
-                  style={{ backgroundColor: tag.color || '#8B5CF6' }}
-                >
-                  {tag.name}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {tagCountMap.get(tag.id) || 0} uso{(tagCountMap.get(tag.id) || 0) !== 1 ? 's' : ''}
-                </span>
-              </div>
+                </SortableTagCard>
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {/* Modal */}
