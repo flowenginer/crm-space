@@ -9451,6 +9451,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          order_position: number | null
           tenant_id: string
           usage_count: number | null
           visibility: string | null
@@ -9463,6 +9464,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          order_position?: number | null
           tenant_id: string
           usage_count?: number | null
           visibility?: string | null
@@ -9475,6 +9477,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          order_position?: number | null
           tenant_id?: string
           usage_count?: number | null
           visibility?: string | null
@@ -9877,6 +9880,45 @@ export type Database = {
             columns: ["ticket_id"]
             isOneToOne: false
             referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_channels: {
+        Row: {
+          channel_id: string
+          created_at: string | null
+          id: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string | null
+          id?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string | null
+          id?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_channels_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_channels_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -12131,6 +12173,8 @@ export type Database = {
           id: string
           last_message_at: string
           lead_status: string
+          referral_source_app: string
+          referral_source_url: string
           status: string
           total_count: number
         }[]

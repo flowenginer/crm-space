@@ -691,6 +691,16 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
                 </div>
               )}
               
+              {/* Tag Count Badge */}
+              {(conversation as any).tag_count > 0 && (
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-orange-500/20 rounded-full" title={`${(conversation as any).tag_count} etiqueta(s)`}>
+                  <Tag size={10} className="text-orange-600 dark:text-orange-400" />
+                  <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                    {(conversation as any).tag_count}
+                  </span>
+                </div>
+              )}
+
               {/* Reopen Badge */}
               {reopenCount > 0 && (
                 <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 rounded-full" title={`Reaberta ${reopenCount}x`}>
@@ -1589,6 +1599,26 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const { data: allChannels = [] } = useChannels();
+  const userChannels = useUserChannels();
+
+  // IDs dos canais permitidos para o usuário (para filtrar conversas)
+  // Se admin/supervisor, não aplica filtro (undefined significa sem restrição)
+  const allowedChannelIds = useMemo(() => {
+    if (isAdmin || isSupervisor) {
+      return undefined; // Admin/Supervisor vê todas as conversas
+    }
+    // Se userChannels está vazio mas allChannels tem canais, provavelmente ainda carregando
+    if (userChannels.length === 0 && allChannels.length > 0) {
+      return undefined; // Aguardando carregamento
+    }
+    // Se userChannels tem canais, retorna os IDs
+    if (userChannels.length > 0) {
+      return userChannels.map(c => c.id);
+    }
+    return undefined;
+  }, [userChannels, allChannels.length, isAdmin, isSupervisor]);
+
   // Build filters for server-side filtering and sorting
   const conversationFilters: ConversationFilters = useMemo(() => ({
     assignment: (quickFilter === 'pinned' || quickFilter === 'shared') ? 'all' : quickFilter === 'pending' ? 'pending' : quickFilter,
@@ -1736,25 +1766,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const createTag = useCreateTag();
   const { data: departments = [] } = useDepartments();
   const { data: userDepartmentsData = [] } = useUserDepartments(profile?.id);
-  const { data: allChannels = [] } = useChannels();
-  const userChannels = useUserChannels();
-
-  // IDs dos canais permitidos para o usuário (para filtrar conversas)
-  // Se admin/supervisor, não aplica filtro (undefined significa sem restrição)
-  const allowedChannelIds = useMemo(() => {
-    if (isAdmin || isSupervisor) {
-      return undefined; // Admin/Supervisor vê todas as conversas
-    }
-    // Se userChannels está vazio mas allChannels tem canais, provavelmente ainda carregando
-    if (userChannels.length === 0 && allChannels.length > 0) {
-      return undefined; // Aguardando carregamento
-    }
-    // Se userChannels tem canais, retorna os IDs
-    if (userChannels.length > 0) {
-      return userChannels.map(c => c.id);
-    }
-    return undefined;
-  }, [userChannels, allChannels.length, isAdmin, isSupervisor]);
 
   const { data: pinnedConversations = [] } = usePinnedConversations();
   const { isPinned, togglePin } = useTogglePinConversation();
@@ -4612,11 +4623,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             />
                           </div>
                           
-                          <div className="max-h-48 overflow-y-auto space-y-0.5">
+                          <div className="max-h-72 overflow-y-auto space-y-0.5">
                             {tags
                               .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
                               .filter((t: any) => t.name.toLowerCase().includes(tagSearchQuery.toLowerCase()))
-                              .slice(0, 15)
                               .map((tag: any) => (
                                 <button
                                   key={tag.id}
@@ -4939,11 +4949,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           />
                         </div>
                         
-                        <div className="max-h-48 overflow-y-auto space-y-0.5">
+                        <div className="max-h-72 overflow-y-auto space-y-0.5">
                           {tags
                             .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
                             .filter((t: any) => t.name.toLowerCase().includes(tagSearchQuery.toLowerCase()))
-                            .slice(0, 15)
                             .map((tag: any) => (
                               <button
                                 key={tag.id}

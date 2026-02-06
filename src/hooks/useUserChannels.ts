@@ -30,7 +30,7 @@ export function useUserChannels(): WhatsAppChannel[] {
     queryFn: async () => {
       if (!profile?.id || !tenantId) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('user_channels')
         .select('channel_id')
         .eq('user_id', profile.id)
