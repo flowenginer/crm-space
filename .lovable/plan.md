@@ -1,26 +1,43 @@
 
-
-# Corrigir Limite de Exibicao de Etiquetas no Popover
+# Corrigir Bloco "Alterar Status Lead" na Automacao
 
 ## Problema Identificado
 
-O popover de "Adicionar Etiqueta" na conversa com o lead possui um `.slice(0, 15)` hardcoded que **limita a exibicao a apenas 15 etiquetas**, independente da quantidade total. Como voces possuem mais de 400 tags no banco, a grande maioria fica oculta.
+Os logs mostram claramente o erro:
 
-Esse limite existe em **dois locais** no arquivo `src/pages/Conversations.tsx`:
-- Linha 4630: popover do header (desktop)
-- Linha 4957: popover do painel lateral
+```
+ERROR [execute-flow-node] Erro ao atualizar contacts.lead_status: {
+  code: "P0001",
+  message: "tenant_id é obrigatório e não foi possível determinar automaticamente"
+}
+```
+
+O bloco `set_lead_status` **executa corretamente** (os logs confirmam a transicao "Atendimento -> Agendado"), porem a query de UPDATE na tabela `contacts` falha porque nao inclui `tenant_id` no payload. A tabela `contacts` possui um trigger que exige esse campo.
+
+A etiqueta e adicionada com sucesso porque usa outra logica, mas o status nao atualiza por causa desse erro.
 
 ## Solucao
 
-1. **Remover o `.slice(0, 15)`** nos dois popovers, permitindo que todas as etiquetas aparecam na lista com scroll
-2. **Aumentar a area de scroll** de `max-h-48` para `max-h-72` (de ~192px para ~288px) para exibir mais tags visiveis sem precisar rolar tanto
-3. O campo de busca ja existe, entao o usuario pode filtrar facilmente mesmo com centenas de tags
+Adicionar `tenant_id: execution.tenant_id` no payload de UPDATE da tabela `contacts` dentro do case `set_lead_status`.
 
-## Arquivos Alterados
+## Alteracao
 
-- `src/pages/Conversations.tsx` - remover `.slice(0, 15)` e ajustar `max-h` em 2 locais
+### `supabase/functions/execute-flow-node/index.ts`
+
+**Linha 728** - Incluir `tenant_id` no update de contacts:
+
+De:
+```javascript
+.update({ lead_status: newStatus })
+```
+
+Para:
+```javascript
+.update({ lead_status: newStatus, tenant_id: execution.tenant_id })
+```
+
+Essa mesma correcao ja foi aplicada em outros blocos (como `transfer_department` na linha 797 que ja inclui `tenant_id`), faltou apenas no `set_lead_status`.
 
 ## Complexidade
 
-**Muito baixa** - apenas remocao de 2 linhas e ajuste de 2 valores CSS.
-
+**Muito baixa** - adicionar 1 campo em 1 linha de codigo. Apos a correcao, sera necessario fazer deploy da edge function.
