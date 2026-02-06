@@ -608,8 +608,29 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
 
       if (error) throw error;
       
+      const conversations = (data || []) as unknown as Conversation[];
+      
+      // Fetch tag counts for this page's contacts (lightweight batch query)
+      const contactIds = conversations.map(c => c.contact_id).filter(Boolean);
+      if (contactIds.length > 0) {
+        const { data: tagCounts } = await supabase
+          .from('contact_tags')
+          .select('contact_id')
+          .in('contact_id', contactIds);
+        
+        if (tagCounts && tagCounts.length > 0) {
+          const tagCountMap: Record<string, number> = {};
+          tagCounts.forEach(tc => {
+            tagCountMap[tc.contact_id] = (tagCountMap[tc.contact_id] || 0) + 1;
+          });
+          conversations.forEach(c => {
+            (c as any).tag_count = tagCountMap[c.contact_id] || 0;
+          });
+        }
+      }
+      
       return {
-        conversations: (data || []) as unknown as Conversation[],
+        conversations,
         nextPage: data?.length === PAGE_SIZE ? pageParam + 1 : undefined,
         pageParam,
       };
