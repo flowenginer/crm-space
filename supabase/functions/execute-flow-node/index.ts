@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // VERSIONAMENTO: Alterações importantes devem atualizar esta versão
-const VERSION = '2026-02-03.1930';
+const VERSION = '2026-02-06.1400';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -716,10 +716,12 @@ async function executeAction(
       break;
 
     case 'set_lead_status':
+      console.log(`[execute-flow-node v${VERSION}] set_lead_status config recebido:`, JSON.stringify(config));
+
       if (config.status) {
         const newStatus = config.status as string;
         const oldStatus = execution.contact?.lead_status || null;
-        
+
         console.log(`[execute-flow-node v${VERSION}] set_lead_status: ${oldStatus} → ${newStatus}`);
         
         // 1. Atualizar o contato
@@ -763,6 +765,10 @@ async function executeAction(
         
         await logExecution(supabase, execution.id, node.id, 'info',
           `Status alterado: ${oldStatus || 'null'} → ${newStatus} (contato + conversa)`, execution.tenant_id);
+      } else {
+        console.error(`[execute-flow-node] set_lead_status: config.status não definido! Config completo:`, JSON.stringify(config));
+        await logExecution(supabase, execution.id, node.id, 'error',
+          `Erro: status não configurado no bloco. Config: ${JSON.stringify(config)}`, execution.tenant_id);
       }
       break;
 
