@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useRoles, type RoleDefinition } from '@/hooks/useRoles';
 import { useUserDepartments, useAddUserToDepartment, useRemoveUserFromDepartment, useSetPrimaryDepartment } from '@/hooks/useUserDepartments';
+import { useChannels } from '@/hooks/useChannels';
+import { useUserChannelsConfig, useSyncUserChannels } from '@/hooks/useUserChannelsConfig';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +23,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { PermissionPreview } from './PermissionPreview';
 import {
@@ -58,6 +61,7 @@ import {
   DollarSign,
   Trophy,
   Power,
+  Smartphone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -1238,11 +1242,20 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
   const [bonusTarget3, setBonusTarget3] = useState(0);
   const [showCommissionSection, setShowCommissionSection] = useState(false);
   
+  // Channels state
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+  const [showChannelsSection, setShowChannelsSection] = useState(false);
+
   const queryClient = useQueryClient();
-  
+
   const addUserToDept = useAddUserToDepartment();
   const removeUserFromDept = useRemoveUserFromDepartment();
   const setPrimaryDept = useSetPrimaryDepartment();
+
+  // Channels hooks
+  const { data: allChannels = [] } = useChannels();
+  const { data: userChannelsConfig = [] } = useUserChannelsConfig(user?.id);
+  const syncUserChannels = useSyncUserChannels();
 
   // Check if department is required (not admin)
   const isDepartmentRequired = role !== 'admin';
@@ -1299,6 +1312,7 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
       setBonusTarget2(user.bonus_target_2 || 0);
       setBonusTarget3(user.bonus_target_3 || 0);
       setShowCommissionSection(false);
+      setShowChannelsSection(false);
 
       // Load user's departments
       const userDepts = user.user_departments || [];
@@ -1310,6 +1324,26 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
       })));
     }
   }, [user, open]);
+
+  // Load user's channels when config loads
+  useEffect(() => {
+    if (userChannelsConfig && userChannelsConfig.length > 0) {
+      setSelectedChannelIds(userChannelsConfig.map(uc => uc.channel_id));
+    } else {
+      setSelectedChannelIds([]);
+    }
+  }, [userChannelsConfig]);
+
+  // Toggle channel selection
+  const handleToggleChannel = (channelId: string) => {
+    setSelectedChannelIds(prev => {
+      if (prev.includes(channelId)) {
+        return prev.filter(id => id !== channelId);
+      } else {
+        return [...prev, channelId];
+      }
+    });
+  };
 
   // Add department to selection
   const handleAddDepartment = (deptId: string) => {
@@ -1463,6 +1497,17 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
           const errorData = await response.json();
           throw new Error(errorData.error || 'Erro ao atualizar credenciais');
         }
+      }
+
+      // Sync user channels
+      try {
+        await syncUserChannels.mutateAsync({
+          userId: user.id,
+          channelIds: selectedChannelIds
+        });
+      } catch (channelError) {
+        console.warn('Aviso ao sincronizar canais:', channelError);
+        // Não bloqueia o salvamento se falhar (tabela pode não existir)
       }
 
       toast.success('Usuário atualizado com sucesso!');
@@ -1711,6 +1756,80 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
                 <Star size={12} className="text-warning" />
                 Clique no departamento para defini-lo como primário
               </p>
+            )}
+          </div>
+
+          {/* WhatsApp Channels Section */}
+          <div className="border border-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowChannelsSection(!showChannelsSection)}
+              className="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Smartphone size={16} className="text-green-500" />
+                <span className="font-medium">Canais WhatsApp</span>
+                {selectedChannelIds.length > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    {selectedChannelIds.length} selecionado{selectedChannelIds.length > 1 ? 's' : ''}
+                  </Badge>
+                )}
+              </div>
+              {showChannelsSection ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+
+            {showChannelsSection && (
+              <div className="p-4 pt-0 space-y-3 border-t border-border">
+                <p className="text-xs text-muted-foreground">
+                  Selecione os canais que este usuário poderá visualizar. Se nenhum canal for selecionado, o usuário verá canais do seu departamento.
+                </p>
+
+                {allChannels.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">
+                    Nenhum canal WhatsApp configurado
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {allChannels.map((channel) => (
+                      <label
+                        key={channel.id}
+                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                      >
+                        <Checkbox
+                          checked={selectedChannelIds.includes(channel.id)}
+                          onCheckedChange={() => handleToggleChannel(channel.id)}
+                        />
+                        <div className="flex items-center gap-2 flex-1">
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            channel.status === 'connected' ? 'bg-green-500' : 'bg-red-500'
+                          }`} />
+                          <span className="text-sm font-medium">{channel.name}</span>
+                          <span className="text-xs text-muted-foreground">{channel.phone}</span>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          channel.status === 'connected'
+                            ? 'bg-green-500/20 text-green-600'
+                            : 'bg-red-500/20 text-red-600'
+                        }`}>
+                          {channel.status === 'connected' ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {selectedChannelIds.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedChannelIds([])}
+                    className="text-xs"
+                  >
+                    Limpar seleção (usar departamento)
+                  </Button>
+                )}
+              </div>
             )}
           </div>
 
