@@ -1,64 +1,44 @@
 
-# Corrigir tenant_id no Payload de Update do set_lead_status
+# Corrigir Trigger de Gamificacao que Bloqueia Atualizacao de Status
 
-## Problema
+## Problema Real Identificado
 
-A correção anterior adicionou `tenant_id` apenas no **filtro** (`.eq('tenant_id', ...)`), mas o trigger do banco de dados precisa que o `tenant_id` esteja presente no **payload do UPDATE** (no objeto passado ao `.update()`). Sem isso, o PostgreSQL trigger que registra o histórico de status (`lead_status_history`) tenta acessar `NEW.tenant_id` e falha com o erro P0001.
+O erro **nao esta na edge function** (o codigo dela esta correto com `tenant_id`). O problema esta no trigger de banco `gamification_on_lead_status_change` que dispara **em cascata** quando o status do contato muda.
 
-Os logs confirmam:
+A cadeia do erro:
+
+1. Edge function faz UPDATE em `contacts` com `tenant_id` (correto)
+2. O AFTER UPDATE trigger `gamification_on_lead_status_change` dispara automaticamente
+3. Esse trigger faz INSERT em `gamification_points` e `gamification_profiles` **sem incluir `tenant_id`**
+4. As tabelas `gamification_points` e `gamification_profiles` possuem o trigger `set_tenant_id_from_user` (BEFORE INSERT)
+5. Como a operacao vem de service role (edge function), `auth.uid()` retorna NULL
+6. O trigger nao consegue determinar o tenant_id e lanca EXCEPTION
+7. A excecao faz ROLLBACK de **toda a transacao**, incluindo o UPDATE original do contacts
+
+Por isso a tag funciona (usa outra logica) mas o status falha - o trigger de gamificacao bloqueia tudo.
+
+## Solucao
+
+Alterar a funcao `gamification_on_lead_status_change` para incluir `NEW.tenant_id` nos INSERTs de `gamification_points` e `gamification_profiles`.
+
+## Alteracao
+
+### Migracao SQL
+
+Recriar a funcao `gamification_on_lead_status_change` adicionando `tenant_id` nos dois INSERTs:
+
+```sql
+-- INSERT em gamification_points (adicionar tenant_id)
+INSERT INTO gamification_points (user_id, points, action_type, reference_type, reference_id, description, tenant_id)
+VALUES (v_assigned_user, v_points, 'status_change', 'contact', NEW.id, 
+  'Mudanca para status: ' || NEW.lead_status, NEW.tenant_id);
+
+-- INSERT/UPSERT em gamification_profiles (adicionar tenant_id)  
+INSERT INTO gamification_profiles (user_id, total_points, total_points_alltime, tenant_id)
+VALUES (v_assigned_user, v_points, v_points, NEW.tenant_id)
+ON CONFLICT (user_id) DO UPDATE SET ...;
 ```
-ERROR: "tenant_id é obrigatório e não foi possível determinar automaticamente"
-```
-
-A tag é adicionada com sucesso porque usa outra lógica, mas o status falha por causa desse trigger.
-
-## Solução
-
-Incluir `tenant_id: execution.tenant_id` no objeto `.update()` em **3 locais** dentro do case `set_lead_status`:
-
-1. **Linha 730** - Update na tabela `contacts`
-2. **Linha 745** - Update na conversa atual (`conversations`)
-3. **Linha ~759** - Update em outras conversas abertas do contato
-
-Também atualizar a constante `VERSION` para confirmar que o novo deploy está ativo.
-
-## Alterações
-
-### `supabase/functions/execute-flow-node/index.ts`
-
-**Linha 4** - Atualizar versão:
-```
-const VERSION = '2026-02-06.1800';
-```
-
-**Linha 730** - Adicionar tenant_id no update de contacts:
-```javascript
-// De:
-.update({ lead_status: newStatus })
-// Para:
-.update({ lead_status: newStatus, tenant_id: execution.tenant_id })
-```
-
-**Linha 745** - Adicionar tenant_id no update da conversa atual:
-```javascript
-// De:
-.update({ lead_status: newStatus })
-// Para:
-.update({ lead_status: newStatus, tenant_id: execution.tenant_id })
-```
-
-**Linha ~759** - Adicionar tenant_id no update de outras conversas:
-```javascript
-// De:
-.update({ lead_status: newStatus })
-// Para:
-.update({ lead_status: newStatus, tenant_id: execution.tenant_id })
-```
-
-### Deploy
-
-Fazer deploy da edge function `execute-flow-node` após as alterações.
 
 ## Complexidade
 
-**Muito baixa** - adicionar 1 campo em 3 updates e atualizar a versão. Após o deploy, testar a automação novamente para confirmar que os logs mostram a nova versão e que o status atualiza corretamente.
+**Baixa** - alterar 1 funcao de trigger no banco para incluir `NEW.tenant_id` em 2 operacoes INSERT. Nenhuma alteracao em codigo da edge function necessaria.
