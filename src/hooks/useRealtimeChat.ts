@@ -383,8 +383,16 @@ export function useRealtimeConversations() {
             }
             
             invalidateImmediately();
+            queryClient.invalidateQueries({ 
+              queryKey: ['conversation-details', conversationId],
+              refetchType: 'active'
+            });
           } else {
             invalidateConversations();
+            queryClient.invalidateQueries({ 
+              queryKey: ['conversation-details', conversationId],
+              refetchType: 'active'
+            });
           }
         }
       )
