@@ -17,6 +17,10 @@ export function invalidateConversationContext(queryClient: QueryClient, conversa
   if (conversationId) {
     keysToInvalidate.push(`conversation_${conversationId}`);
     keysToInvalidate.push(`messages_${conversationId}`);
+    queryClient.invalidateQueries({ 
+      queryKey: ['conversation-details', conversationId],
+      refetchType: 'active'
+    });
   }
 
   keysToInvalidate.forEach(key => {
