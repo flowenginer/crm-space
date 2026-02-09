@@ -1,76 +1,30 @@
 
-# Atualizar Status do Lead em Tempo Real (Sem F5)
+# Tornar Canal API_Oficial Visivel no Filtro para Todos
 
-## Problema
+## Contexto
 
-Quando a automacao atualiza o `lead_status` via edge function, o frontend nao reflete a mudanca porque:
-
-1. O realtime listener escuta UPDATEs na tabela `conversations`, mas so invalida a query `conversations-paginated`
-2. O painel lateral (sidebar) da conversa usa uma query separada com key `conversation-details` que **nunca e invalidada** pelo realtime
-3. Nao existe nenhum listener realtime na tabela `contacts`, entao mudancas no `contacts.lead_status` tambem nao sao captadas
-4. O `lead_status` exibido na sidebar vem de `contact.lead_status` (via join), que so atualiza com F5
-
-## Solucao
-
-Adicionar invalidacao da query `conversation-details` no handler de UPDATE do realtime em `useRealtimeChat.ts`. Quando qualquer UPDATE na conversa chegar (incluindo mudanca de `lead_status`), invalidar tambem a query de detalhes.
+O canal "API_Oficial" recebe todos os novos leads e os direciona para "Sala de espera IA". Todos os usuarios precisam ver esse canal no filtro, porem cada usuario so visualiza as conversas dos seus proprios departamentos e atribuicoes. A visibilidade das conversas ja e controlada por logica separada (RLS + filtros de departamento) -- esta mudanca afeta **apenas o filtro de canais**.
 
 ## Alteracoes
 
-### 1. `src/hooks/useRealtimeChat.ts`
+### 1. Migracao SQL
+- Adicionar coluna `visible_to_all BOOLEAN DEFAULT false` na tabela `whatsapp_channels`
+- Marcar o canal API_Oficial com `visible_to_all = true`
 
-No handler de UPDATE de conversas (dentro do bloco `else` na linha 386-388), adicionar invalidacao de `conversation-details`:
+### 2. `src/hooks/useChannels.ts`
+- Adicionar `visible_to_all` na interface `WhatsAppChannel`
+- Adicionar `visible_to_all` no SELECT da query
 
-```typescript
-// Linha ~386 - bloco else (updates gerais que nao sao close nem transfer)
-} else {
-  invalidateConversations();
-  // Invalidar detalhes da conversa para refletir mudancas de lead_status, etc
-  queryClient.invalidateQueries({ 
-    queryKey: ['conversation-details', conversationId],
-    refetchType: 'active'
-  });
-}
-```
+### 3. `src/hooks/useUserChannels.ts`
+- No filtro por `userChannelIds`: incluir tambem canais com `visible_to_all === true`
+- No filtro por departamento (fallback): adicionar `channel.visible_to_all` como condicao alternativa
 
-Tambem adicionar no bloco de transferencia (linha ~385) apos `invalidateImmediately()`:
+## Resultado
 
-```typescript
-queryClient.invalidateQueries({ 
-  queryKey: ['conversation-details', conversationId],
-  refetchType: 'active'
-});
-```
-
-### 2. `src/lib/queryInvalidation.ts`
-
-Adicionar `conversation-details` na funcao `invalidateConversationContext`:
-
-```typescript
-export function invalidateConversationContext(queryClient, conversationId?) {
-  const keysToInvalidate = [
-    'conversations',
-    'conversation_counts',
-    'all_conversation_counts',
-    'pinned_conversations',
-  ];
-
-  if (conversationId) {
-    keysToInvalidate.push(`conversation_${conversationId}`);
-    keysToInvalidate.push(`messages_${conversationId}`);
-    // Adicionar invalidacao dos detalhes
-    queryClient.invalidateQueries({ 
-      queryKey: ['conversation-details', conversationId],
-      refetchType: 'active'
-    });
-  }
-  // ...resto igual
-}
-```
-
-## Resultado Esperado
-
-Quando a automacao atualizar o status do lead, o evento UPDATE na tabela `conversations` sera capturado pelo realtime, que agora tambem invalida `conversation-details`. A sidebar vai refazer a query automaticamente e exibir o novo status sem precisar de F5.
+- Todos os usuarios veem "API Oficial" no filtro de canais
+- Cada usuario continua vendo apenas as conversas do seu departamento e atribuicao (logica existente, sem alteracao)
+- O canal permanece vinculado ao departamento "Sala de espera IA" para roteamento de novos leads
 
 ## Complexidade
 
-**Muito baixa** - adicionar 2-3 linhas de invalidacao de cache em pontos ja existentes.
+Baixa -- 1 coluna, 1 UPDATE, ajuste em 2 filtros no frontend.
