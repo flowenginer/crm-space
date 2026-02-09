@@ -5,22 +5,25 @@ import { useUserStore } from '@/store/userStore';
 export interface CampaignROIData {
   campaignId: string;
   campaignName: string;
-  
+
   // Do Meta API
   spend: number;
   impressions: number;
   clicks: number;
-  
+
   // Do CRM
   leads: number;
   conversions: number;
   revenue: number;
-  
+
   // Calculados
   cpl: number;          // Custo por Lead (spend / leads)
   cac: number;          // Custo por Conversão (spend / conversions)
   roi: number;          // ROI % ((revenue - spend) / spend * 100)
   roas: number;         // ROAS (revenue / spend)
+
+  // Fonte dos leads
+  source: 'meta_ads' | 'redirect' | 'mixed';
 }
 
 export interface ROISummary {
@@ -50,6 +53,11 @@ function toUTCDate(date: Date, isEndOfDay: boolean = false): string {
   // Adiciona 3 horas para compensar UTC-3 de Brasília
   const utcDate = new Date(d.getTime() + (3 * 60 * 60 * 1000));
   return utcDate.toISOString();
+}
+
+// Função para normalizar nome de campanha para comparação
+function normalizeCampaignName(name: string): string {
+  return (name || '').toLowerCase().trim();
 }
 
 export function useMetaCampaignROI(dateRange?: DateRange) {
@@ -104,8 +112,10 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         .eq('tenant_id', tenantId);
 
       const campaignIdMap: Record<string, { name: string; internalId: string }> = {};
+      const campaignNameToIdMap: Record<string, string> = {}; // Para matching com utm_campaign
       campaigns?.forEach(c => {
         campaignIdMap[c.id] = { name: c.name, internalId: c.campaign_id };
+        campaignNameToIdMap[normalizeCampaignName(c.name)] = c.id;
       });
 
       // Buscar insights agregados por campanha - FILTRADO POR TENANT
@@ -147,7 +157,12 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         }
       });
 
-      // Buscar conversas de Meta Ads com dados de conversão (com paginação)
+      // Mapa para agregar dados por campanha
+      const crmDataMap: Record<string, { leads: number; conversions: number; revenue: number; source: 'meta_ads' | 'redirect' | 'mixed' }> = {};
+
+      // ========================================
+      // FONTE 1: Meta Ads (ctwa_ad)
+      // ========================================
       const PAGE_SIZE = 1000;
       let allConversations: any[] = [];
       let page = 0;
@@ -159,11 +174,13 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
           .select(`
             referral_data,
             contact:contacts!inner(
+              id,
               lead_status,
               negotiated_value
             )
           `)
           .eq('referral_source', 'meta_ads')
+          .eq('tenant_id', tenantId)
           .not('referral_data', 'is', null)
           .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
@@ -175,7 +192,7 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         }
 
         const { data: convData } = await convQuery;
-        
+
         if (convData && convData.length > 0) {
           allConversations = [...allConversations, ...convData];
           hasMore = convData.length === PAGE_SIZE;
@@ -185,23 +202,24 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         }
       }
 
-      const conversations = allConversations;
-
-      // Agrupar leads/conversões/receita por campanha
-      const crmDataMap: Record<string, { leads: number; conversions: number; revenue: number }> = {};
-
-      conversations?.forEach(conv => {
+      // Processar leads do Meta Ads
+      const contactsProcessed = new Set<string>();
+      allConversations.forEach(conv => {
         const refData = conv.referral_data as any;
         const contact = conv.contact as any;
         const sourceId = refData?.sourceId;
 
-        if (!sourceId) return;
+        if (!sourceId || !contact) return;
+
+        // Evitar duplicatas de contato
+        if (contactsProcessed.has(contact.id)) return;
+        contactsProcessed.add(contact.id);
 
         const campaignId = adToCampaignMap[sourceId];
         if (!campaignId) return;
 
         if (!crmDataMap[campaignId]) {
-          crmDataMap[campaignId] = { leads: 0, conversions: 0, revenue: 0 };
+          crmDataMap[campaignId] = { leads: 0, conversions: 0, revenue: 0, source: 'meta_ads' };
         }
 
         crmDataMap[campaignId].leads++;
@@ -213,12 +231,103 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         }
       });
 
+      // ========================================
+      // FONTE 2: Redirect (UTM)
+      // ========================================
+      let allRedirectLogs: any[] = [];
+      page = 0;
+      hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from('redirect_logs')
+          .select(`
+            id,
+            contact_id,
+            utm_campaign,
+            created_at,
+            contact:contacts!inner(
+              id,
+              lead_status,
+              negotiated_value
+            )
+          `)
+          .eq('tenant_id', tenantId)
+          .not('contact_id', 'is', null)
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+        if (dateRange?.from) {
+          query = query.gte('created_at', toUTCDate(dateRange.from, false));
+        }
+        if (dateRange?.to) {
+          query = query.lte('created_at', toUTCDate(dateRange.to, true));
+        }
+
+        const { data: logs } = await query;
+
+        if (logs && logs.length > 0) {
+          allRedirectLogs = [...allRedirectLogs, ...logs];
+          hasMore = logs.length === PAGE_SIZE;
+          page++;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      // Processar leads do Redirect
+      // Tentar mapear utm_campaign para campanhas do Meta Ads
+      allRedirectLogs.forEach((log: any) => {
+        const contact = log.contact;
+        if (!contact) return;
+
+        // Evitar duplicatas de contato
+        if (contactsProcessed.has(contact.id)) return;
+        contactsProcessed.add(contact.id);
+
+        const utmCampaign = (log.utm_campaign || '').trim();
+        if (!utmCampaign) return;
+
+        // Tentar encontrar campanha Meta correspondente pelo nome
+        const matchedCampaignId = campaignNameToIdMap[normalizeCampaignName(utmCampaign)];
+
+        // Se encontrou match, usar o ID da campanha Meta
+        // Senão, criar uma entrada separada para a campanha redirect
+        const campaignKey = matchedCampaignId || `redirect_${utmCampaign}`;
+
+        if (!crmDataMap[campaignKey]) {
+          crmDataMap[campaignKey] = {
+            leads: 0,
+            conversions: 0,
+            revenue: 0,
+            source: matchedCampaignId ? 'mixed' : 'redirect'
+          };
+
+          // Se é uma campanha redirect sem match, precisamos criar entrada no campaignIdMap
+          if (!matchedCampaignId) {
+            campaignIdMap[campaignKey] = { name: utmCampaign, internalId: campaignKey };
+          }
+        } else if (matchedCampaignId && crmDataMap[campaignKey].source === 'meta_ads') {
+          // Se já existia como meta_ads e agora tem redirect também, marcar como mixed
+          crmDataMap[campaignKey].source = 'mixed';
+        }
+
+        crmDataMap[campaignKey].leads++;
+
+        const status = contact?.lead_status || 'new';
+        if (conversionStatusNames.has(status)) {
+          crmDataMap[campaignKey].conversions++;
+          crmDataMap[campaignKey].revenue += (contact?.negotiated_value || 0);
+        }
+      });
+
+      // ========================================
       // Combinar dados
+      // ========================================
       const campaignROIData: CampaignROIData[] = [];
 
       Object.entries(campaignIdMap).forEach(([internalCampaignId, { name, internalId }]) => {
         const insightData = insightsMap[internalCampaignId] || { spend: 0, impressions: 0, clicks: 0 };
-        const crmData = crmDataMap[internalCampaignId] || { leads: 0, conversions: 0, revenue: 0 };
+        const crmData = crmDataMap[internalCampaignId] || { leads: 0, conversions: 0, revenue: 0, source: 'meta_ads' as const };
 
         // Só incluir campanhas que têm dados (spend ou leads)
         if (insightData.spend === 0 && crmData.leads === 0) return;
@@ -241,6 +350,7 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
           cac: conversions > 0 ? spend / conversions : 0,
           roi: spend > 0 ? ((revenue - spend) / spend) * 100 : 0,
           roas: spend > 0 ? revenue / spend : 0,
+          source: crmData.source,
         });
       });
 
@@ -263,6 +373,8 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         overallROI: totalSpend > 0 ? ((totalRevenue - totalSpend) / totalSpend) * 100 : 0,
         overallROAS: totalSpend > 0 ? totalRevenue / totalSpend : 0,
       };
+
+      console.log(`[useMetaCampaignROI] Loaded ${campaignROIData.length} campaigns`);
 
       return { campaigns: campaignROIData, summary };
     },
