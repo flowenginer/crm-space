@@ -156,44 +156,36 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
 
       // Mapa para agregar dados por segmento
       const crmDataMap: Record<string, { leads: number; conversions: number; revenue: number }> = {};
-      const contactsProcessed = new Set<string>();
+      const processedContacts = new Set<string>();
 
       // ========================================
-      // FONTE 1: Meta Ads (ctwa_ad)
+      // FONTE 1: Meta Ads - USANDO contacts.origin (igual ao CRM Dashboard)
       // ========================================
       const PAGE_SIZE = 1000;
-      let allConversations: any[] = [];
+      let allContacts: any[] = [];
       let page = 0;
       let hasMore = true;
 
       while (hasMore) {
-        let convQuery = supabase
-          .from('conversations')
-          .select(`
-            referral_data,
-            contact:contacts!inner(
-              id,
-              lead_status,
-              negotiated_value
-            )
-          `)
-          .eq('referral_source', 'meta_ads')
+        let query = supabase
+          .from('contacts')
+          .select('id, lead_status, negotiated_value, referral_data, created_at')
           .eq('tenant_id', tenantId)
-          .not('referral_data', 'is', null)
+          .eq('origin', 'meta_ads')
           .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
         if (dateRange?.from) {
-          convQuery = convQuery.gte('created_at', toUTCDate(dateRange.from, false));
+          query = query.gte('created_at', toUTCDate(dateRange.from, false));
         }
         if (dateRange?.to) {
-          convQuery = convQuery.lte('created_at', toUTCDate(dateRange.to, true));
+          query = query.lte('created_at', toUTCDate(dateRange.to, true));
         }
 
-        const { data: convData } = await convQuery;
+        const { data: contacts } = await query;
 
-        if (convData && convData.length > 0) {
-          allConversations = [...allConversations, ...convData];
-          hasMore = convData.length === PAGE_SIZE;
+        if (contacts && contacts.length > 0) {
+          allContacts = [...allContacts, ...contacts];
+          hasMore = contacts.length === PAGE_SIZE;
           page++;
         } else {
           hasMore = false;
@@ -201,18 +193,16 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
       }
 
       // Processar leads do Meta Ads
-      allConversations.forEach(conv => {
-        const refData = conv.referral_data as any;
-        const contact = conv.contact as any;
-        const sourceId = refData?.sourceId;
+      allContacts.forEach((contact: any) => {
+        if (processedContacts.has(contact.id)) return;
+        processedContacts.add(contact.id);
 
-        if (!sourceId || !contact) return;
+        const refData = contact.referral_data as any;
+        // Suportar ambos os nomes de campo: source_id (snake_case) e sourceId (camelCase)
+        const sourceId = refData?.source_id || refData?.sourceId;
 
-        // Evitar duplicatas de contato
-        if (contactsProcessed.has(contact.id)) return;
-        contactsProcessed.add(contact.id);
-
-        const segment = adToSegmentMap[sourceId] || 'Sem Segmento';
+        // Encontrar segmento pelo sourceId
+        const segment = sourceId ? (adToSegmentMap[sourceId] || 'Sem Segmento') : 'Sem Segmento';
 
         if (!crmDataMap[segment]) {
           crmDataMap[segment] = { leads: 0, conversions: 0, revenue: 0 };
@@ -220,10 +210,10 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
 
         crmDataMap[segment].leads++;
 
-        const status = contact?.lead_status || 'new';
+        const status = contact.lead_status || 'new';
         if (conversionStatusNames.has(status)) {
           crmDataMap[segment].conversions++;
-          crmDataMap[segment].revenue += (contact?.negotiated_value || 0);
+          crmDataMap[segment].revenue += (contact.negotiated_value || 0);
         }
       });
 
@@ -245,7 +235,8 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
             contact:contacts!inner(
               id,
               lead_status,
-              negotiated_value
+              negotiated_value,
+              origin
             )
           `)
           .eq('tenant_id', tenantId)
@@ -270,14 +261,15 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
         }
       }
 
-      // Processar leads do Redirect
+      // Processar leads do Redirect (apenas os que NÃO são meta_ads)
       allRedirectLogs.forEach((log: any) => {
         const contact = log.contact;
         if (!contact) return;
 
-        // Evitar duplicatas de contato
-        if (contactsProcessed.has(contact.id)) return;
-        contactsProcessed.add(contact.id);
+        if (processedContacts.has(contact.id)) return;
+        if (contact.origin === 'meta_ads') return;
+
+        processedContacts.add(contact.id);
 
         // Usar utm_medium como segmento
         const segment = normalizeUtmMedium(log.utm_medium);
@@ -288,10 +280,10 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
 
         crmDataMap[segment].leads++;
 
-        const status = contact?.lead_status || 'new';
+        const status = contact.lead_status || 'new';
         if (conversionStatusNames.has(status)) {
           crmDataMap[segment].conversions++;
-          crmDataMap[segment].revenue += (contact?.negotiated_value || 0);
+          crmDataMap[segment].revenue += (contact.negotiated_value || 0);
         }
       });
 
@@ -330,9 +322,11 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
         });
       });
 
-      segmentROIData.sort((a, b) => b.spend - a.spend);
+      // Ordenar por leads (maior primeiro)
+      segmentROIData.sort((a, b) => b.leads - a.leads);
 
-      console.log(`[useMetaSegmentROI] Loaded ${segmentROIData.length} segments`);
+      const totalLeads = segmentROIData.reduce((sum, s) => sum + s.leads, 0);
+      console.log(`[useMetaSegmentROI] Loaded ${segmentROIData.length} segments with ${totalLeads} leads`);
 
       return segmentROIData;
     },
