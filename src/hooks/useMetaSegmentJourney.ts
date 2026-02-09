@@ -40,15 +40,25 @@ function toUTCDate(date: Date, isEndOfDay: boolean = false): string {
 // Extrai o nome do segmento a partir do nome da campanha
 function extractSegmentFromCampaignName(campaignName: string, segments: { id: string; name: string }[]): { id: string; name: string } | null {
   const upperCampaignName = campaignName.toUpperCase();
-  
+
   for (const segment of segments) {
     const upperSegmentName = segment.name.toUpperCase();
     if (upperCampaignName.includes(upperSegmentName)) {
       return segment;
     }
   }
-  
+
   return null;
+}
+
+// Normalizar utm_medium para nome de segmento
+function normalizeUtmMedium(utmMedium: string | null): string {
+  if (!utmMedium) return '';
+  try {
+    return decodeURIComponent(utmMedium).trim();
+  } catch {
+    return utmMedium.trim();
+  }
 }
 
 export function useMetaSegmentJourney(dateRange?: DateRange) {
@@ -80,7 +90,7 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
           .select('name')
           .eq('tenant_id', tenantId)
           .in('id', conversionStatusIds);
-        
+
         conversionStatuses?.forEach(s => {
           if (s.name) conversionStatusNames.add(s.name);
         });
@@ -108,13 +118,9 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
         .select('id, name')
         .eq('tenant_id', tenantId);
 
-      if (!campaigns || campaigns.length === 0) {
-        return [];
-      }
-
       // Mapear campanhas para segmentos baseado no nome
       const campaignToSegment = new Map<string, { id: string; name: string }>();
-      campaigns.forEach(campaign => {
+      campaigns?.forEach(campaign => {
         const segment = extractSegmentFromCampaignName(campaign.name, segments);
         if (segment) {
           campaignToSegment.set(campaign.id, segment);
@@ -134,52 +140,6 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
         }
       });
 
-      // Buscar conversas de Meta Ads (com paginação)
-      const PAGE_SIZE = 1000;
-      let allConversations: any[] = [];
-      let page = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        let query = supabase
-          .from('conversations')
-          .select(`
-            id,
-            referral_data,
-            contact:contacts!inner(
-              id,
-              lead_status,
-              segment_id
-            )
-          `)
-          .eq('referral_source', 'meta_ads')
-          .not('referral_data', 'is', null)
-          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-
-        if (dateRange?.from) {
-          query = query.gte('created_at', toUTCDate(dateRange.from, false));
-        }
-        if (dateRange?.to) {
-          query = query.lte('created_at', toUTCDate(dateRange.to, true));
-        }
-
-        const { data: convData } = await query;
-        
-        if (convData && convData.length > 0) {
-          allConversations = [...allConversations, ...convData];
-          hasMore = convData.length === PAGE_SIZE;
-          page++;
-        } else {
-          hasMore = false;
-        }
-      }
-
-      const conversations = allConversations;
-
-      if (!conversations || conversations.length === 0) {
-        return [];
-      }
-
       // Criar mapa de segment_id -> nome
       const segmentIdToName = new Map<string, string>();
       segments.forEach(s => segmentIdToName.set(s.id, s.name));
@@ -198,30 +158,18 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
 
       const processedContacts = new Set<string>();
 
-      conversations.forEach((conv: any) => {
-        const refData = conv.referral_data as any;
-        const sourceId = refData?.sourceId;
-        const contact = conv.contact;
-
-        if (!sourceId || !contact) return;
-
+      // Função auxiliar para processar um lead
+      const processLead = (contact: any, campaignSegmentName: string, campaignSegmentId: string | null) => {
         // Evitar contar o mesmo contato múltiplas vezes
         if (processedContacts.has(contact.id)) return;
         processedContacts.add(contact.id);
 
-        const campaignId = adToCampaignMap[sourceId];
-        if (!campaignId) return;
-
-        const campaignSegment = campaignToSegment.get(campaignId);
-        if (!campaignSegment) return;
-
-        const campaignSegmentName = campaignSegment.name;
         const assignedSegmentId = contact.segment_id;
         const assignedSegmentName = assignedSegmentId ? (segmentIdToName.get(assignedSegmentId) || 'Desconhecido') : 'Sem Segmento';
 
         if (!journeyData.has(campaignSegmentName)) {
           journeyData.set(campaignSegmentName, {
-            campaignSegmentId: campaignSegment.id,
+            campaignSegmentId: campaignSegmentId,
             totalLeads: 0,
             breakdown: new Map()
           });
@@ -249,9 +197,131 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
         if (conversionStatusNames.has(status)) {
           breakdownData.pedidoFechadoCount++;
         }
+      };
+
+      // ========================================
+      // FONTE 1: Meta Ads (ctwa_ad)
+      // ========================================
+      const PAGE_SIZE = 1000;
+      let allConversations: any[] = [];
+      let page = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from('conversations')
+          .select(`
+            id,
+            referral_data,
+            contact:contacts!inner(
+              id,
+              lead_status,
+              segment_id
+            )
+          `)
+          .eq('referral_source', 'meta_ads')
+          .eq('tenant_id', tenantId)
+          .not('referral_data', 'is', null)
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+        if (dateRange?.from) {
+          query = query.gte('created_at', toUTCDate(dateRange.from, false));
+        }
+        if (dateRange?.to) {
+          query = query.lte('created_at', toUTCDate(dateRange.to, true));
+        }
+
+        const { data: convData } = await query;
+
+        if (convData && convData.length > 0) {
+          allConversations = [...allConversations, ...convData];
+          hasMore = convData.length === PAGE_SIZE;
+          page++;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      // Processar leads do Meta Ads
+      allConversations.forEach((conv: any) => {
+        const refData = conv.referral_data as any;
+        const sourceId = refData?.sourceId;
+        const contact = conv.contact;
+
+        if (!sourceId || !contact) return;
+
+        const campaignId = adToCampaignMap[sourceId];
+        if (!campaignId) return;
+
+        const campaignSegment = campaignToSegment.get(campaignId);
+        if (!campaignSegment) return;
+
+        processLead(contact, campaignSegment.name, campaignSegment.id);
       });
 
+      // ========================================
+      // FONTE 2: Redirect (UTM) - usar utm_medium como segmento da campanha
+      // ========================================
+      let allRedirectLogs: any[] = [];
+      page = 0;
+      hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from('redirect_logs')
+          .select(`
+            id,
+            contact_id,
+            utm_medium,
+            created_at,
+            contact:contacts!inner(
+              id,
+              lead_status,
+              segment_id
+            )
+          `)
+          .eq('tenant_id', tenantId)
+          .not('contact_id', 'is', null)
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+        if (dateRange?.from) {
+          query = query.gte('created_at', toUTCDate(dateRange.from, false));
+        }
+        if (dateRange?.to) {
+          query = query.lte('created_at', toUTCDate(dateRange.to, true));
+        }
+
+        const { data: logs } = await query;
+
+        if (logs && logs.length > 0) {
+          allRedirectLogs = [...allRedirectLogs, ...logs];
+          hasMore = logs.length === PAGE_SIZE;
+          page++;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      // Processar leads do Redirect
+      allRedirectLogs.forEach((log: any) => {
+        const contact = log.contact;
+        if (!contact) return;
+
+        // Usar utm_medium como segmento da campanha
+        const utmMedium = normalizeUtmMedium(log.utm_medium);
+        if (!utmMedium) return;
+
+        // Tentar encontrar segmento correspondente
+        const matchedSegment = segments.find(s =>
+          s.name.toLowerCase() === utmMedium.toLowerCase()
+        );
+
+        processLead(contact, utmMedium, matchedSegment?.id || null);
+      });
+
+      // ========================================
       // Converter para array final
+      // ========================================
       const result: SegmentJourneyData[] = [];
 
       journeyData.forEach((data, campaignSegmentName) => {
@@ -293,6 +363,8 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
 
       // Ordenar por total de leads
       result.sort((a, b) => b.totalLeads - a.totalLeads);
+
+      console.log(`[useMetaSegmentJourney] Loaded ${result.length} campaign segments`);
 
       return result;
     },
