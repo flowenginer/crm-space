@@ -25,6 +25,7 @@ export interface TrackedLead {
   creative_name: string | null;
   source_type: 'ctwa' | 'redirect';
   creative_matched: boolean;
+  segment_name: string | null;
 }
 
 export interface LeadTrackingSummary {
@@ -131,7 +132,8 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
           id, referral_source, referral_data, created_at, lead_status,
           contact:contacts!contact_id(
             id, full_name, phone, email, lead_status, origin, origin_campaign,
-            assigned_to, profiles:assigned_to(full_name)
+            assigned_to, profiles:assigned_to(full_name),
+            segment:segments!segment_id(name)
           )
         `)
         .eq('tenant_id', tenantId)
@@ -203,6 +205,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         if (norm?.detectedBy) continue;
 
         const assignedProfile = contact.profiles as any;
+        const segmentData = contact.segment as any;
         const referralSource = conv.referral_source;
         const leadStatus = (conv as any).lead_status || contact.lead_status;
 
@@ -234,6 +237,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
             creative_name: matched?.name || norm?.adName || norm?.headline || null,
             source_type: 'ctwa',
             creative_matched: !!matched,
+            segment_name: segmentData?.name || null,
           });
         } else if (isRedirect) {
           // --- Redirect Lead ---
@@ -266,6 +270,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
             creative_name: creativeName,
             source_type: 'redirect',
             creative_matched: !!(creativeName || matched),
+            segment_name: segmentData?.name || null,
           });
         }
       }
