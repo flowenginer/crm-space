@@ -12,7 +12,7 @@ import {
   Users, Target, MessageCircle, Calendar as CalendarIcon,
   ChevronUp, ChevronDown, LinkIcon, Megaphone,
   CheckCircle2, AlertCircle, BarChart3, List,
-  Search
+  Search, SlidersHorizontal, TrendingUp, X
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { format, subDays, startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
@@ -128,6 +128,13 @@ export default function WhatsAppLeadTracking() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  // Data Cross filters
+  const [dcStatus, setDcStatus] = useState('all');
+  const [dcCreative, setDcCreative] = useState('all');
+  const [dcAdset, setDcAdset] = useState('all');
+  const [dcCampaign, setDcCampaign] = useState('all');
+  const [dcSegment, setDcSegment] = useState('all');
 
   const presetRanges = getPresetRanges();
 
@@ -259,6 +266,102 @@ export default function WhatsAppLeadTracking() {
 
     return { barData, statuses: sortedStatuses };
   }, [leads]);
+
+  // Data Cross: filter options
+  const dcFilterOptions = useMemo(() => {
+    const statuses = new Set<string>();
+    const creatives = new Set<string>();
+    const adsets = new Set<string>();
+    const campaigns = new Set<string>();
+    const segments = new Set<string>();
+
+    leads.forEach(l => {
+      if (l.lead_status) statuses.add(l.lead_status);
+      if (l.creative_name) creatives.add(l.creative_name);
+      if (l.adset_name) adsets.add(l.adset_name);
+      if (l.campaign_name) campaigns.add(l.campaign_name);
+      if (l.segment_name) segments.add(l.segment_name);
+    });
+
+    const sortStatuses = (arr: string[]) => arr.sort((a, b) => {
+      if (a === 'new') return -1;
+      if (b === 'new') return 1;
+      const numA = parseInt(a.match(/^(\d+)/)?.[1] || '999');
+      const numB = parseInt(b.match(/^(\d+)/)?.[1] || '999');
+      if (numA !== numB) return numA - numB;
+      return a.localeCompare(b);
+    });
+
+    return {
+      statuses: sortStatuses(Array.from(statuses)),
+      creatives: Array.from(creatives).sort(),
+      adsets: Array.from(adsets).sort(),
+      campaigns: Array.from(campaigns).sort(),
+      segments: Array.from(segments).sort(),
+    };
+  }, [leads]);
+
+  // Data Cross: filtered leads
+  const dcFilteredLeads = useMemo(() => {
+    return leads.filter(l => {
+      if (dcStatus !== 'all' && (l.lead_status || '') !== dcStatus) return false;
+      if (dcCreative !== 'all' && (l.creative_name || '') !== dcCreative) return false;
+      if (dcAdset !== 'all' && (l.adset_name || '') !== dcAdset) return false;
+      if (dcCampaign !== 'all' && (l.campaign_name || '') !== dcCampaign) return false;
+      if (dcSegment !== 'all' && (l.segment_name || '') !== dcSegment) return false;
+      return true;
+    });
+  }, [leads, dcStatus, dcCreative, dcAdset, dcCampaign, dcSegment]);
+
+  // Data Cross: cross-reference table (creative × status)
+  const dcCrossData = useMemo(() => {
+    const allStatuses = new Set<string>();
+    const creativeMap = new Map<string, Record<string, number>>();
+
+    dcFilteredLeads.forEach(l => {
+      const creative = l.creative_name || '(Sem criativo)';
+      const status = l.lead_status || '(Sem status)';
+      allStatuses.add(status);
+
+      if (!creativeMap.has(creative)) creativeMap.set(creative, {});
+      const counts = creativeMap.get(creative)!;
+      counts[status] = (counts[status] || 0) + 1;
+    });
+
+    const sortedStatuses = Array.from(allStatuses).sort((a, b) => {
+      if (a === 'new' || a === '(Sem status)') return -1;
+      if (b === 'new' || b === '(Sem status)') return 1;
+      const numA = parseInt(a.match(/^(\d+)/)?.[1] || '999');
+      const numB = parseInt(b.match(/^(\d+)/)?.[1] || '999');
+      if (numA !== numB) return numA - numB;
+      return a.localeCompare(b);
+    });
+
+    const rows = Array.from(creativeMap.entries()).map(([creative, counts]) => {
+      const total = Object.values(counts).reduce((a, b) => a + b, 0);
+      const newCount = counts['new'] || 0;
+      const convRate = total > 0 ? ((total - newCount) / total) * 100 : 0;
+      return { creative, total, convRate, counts };
+    }).sort((a, b) => b.total - a.total);
+
+    // Summary
+    const totalFiltered = dcFilteredLeads.length;
+    const totalNew = dcFilteredLeads.filter(l => (l.lead_status || '') === 'new').length;
+    const overallConvRate = totalFiltered > 0 ? ((totalFiltered - totalNew) / totalFiltered) * 100 : 0;
+    const uniqueSegments = new Set(dcFilteredLeads.map(l => l.segment_name).filter(Boolean)).size;
+
+    return { rows, statuses: sortedStatuses, totalFiltered, overallConvRate, totalNew, uniqueSegments };
+  }, [dcFilteredLeads]);
+
+  const dcHasFilters = dcStatus !== 'all' || dcCreative !== 'all' || dcAdset !== 'all' || dcCampaign !== 'all' || dcSegment !== 'all';
+
+  const dcClearFilters = () => {
+    setDcStatus('all');
+    setDcCreative('all');
+    setDcAdset('all');
+    setDcCampaign('all');
+    setDcSegment('all');
+  };
 
   // Sortable header
   const SortableHeader = ({ children, sortKey, className }: {
@@ -446,7 +549,7 @@ export default function WhatsAppLeadTracking() {
 
       {/* Tabs: Charts / Creative Breakdown / Leads List */}
       <Tabs defaultValue="creatives" className="w-full">
-        <TabsList className="grid w-full max-w-lg grid-cols-3">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="creatives" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             Criativos
@@ -458,6 +561,10 @@ export default function WhatsAppLeadTracking() {
           <TabsTrigger value="leads" className="flex items-center gap-2">
             <List className="h-4 w-4" />
             Leads
+          </TabsTrigger>
+          <TabsTrigger value="datacross" className="flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4" />
+            Data Cross
           </TabsTrigger>
         </TabsList>
 
@@ -863,6 +970,261 @@ export default function WhatsAppLeadTracking() {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   Nenhum lead encontrado no periodo selecionado.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Data Cross */}
+        <TabsContent value="datacross" className="mt-6 space-y-4">
+          {/* Filters */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-5 w-5" />
+                  Filtros Cruzados
+                </span>
+                {dcHasFilters && (
+                  <Button variant="ghost" size="sm" onClick={dcClearFilters} className="text-muted-foreground">
+                    <X className="h-4 w-4 mr-1" />
+                    Limpar filtros
+                  </Button>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Status do Lead</label>
+                  <Select value={dcStatus} onValueChange={setDcStatus}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {dcFilterOptions.statuses.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Criativo</label>
+                  <Select value={dcCreative} onValueChange={setDcCreative}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {dcFilterOptions.creatives.map(c => (
+                        <SelectItem key={c} value={c}>
+                          {c.length > 35 ? c.substring(0, 35) + '...' : c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Conjunto de Anuncio</label>
+                  <Select value={dcAdset} onValueChange={setDcAdset}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {dcFilterOptions.adsets.map(a => (
+                        <SelectItem key={a} value={a}>
+                          {a.length > 35 ? a.substring(0, 35) + '...' : a}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Campanha</label>
+                  <Select value={dcCampaign} onValueChange={setDcCampaign}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {dcFilterOptions.campaigns.map(c => (
+                        <SelectItem key={c} value={c}>
+                          {c.length > 35 ? c.substring(0, 35) + '...' : c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Segmento</label>
+                  <Select value={dcSegment} onValueChange={setDcSegment}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {dcFilterOptions.segments.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Summary metrics */}
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Filtrado</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatNumber(dcCrossData.totalFiltered)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  de {formatNumber(leads.length)} leads
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Taxa de Avanco</CardTitle>
+                <TrendingUp className="h-4 w-4 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{dcCrossData.overallConvRate.toFixed(1)}%</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Leads que avancaram de &quot;new&quot;
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Ainda em &quot;New&quot;</CardTitle>
+                <AlertCircle className="h-4 w-4 text-amber-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatNumber(dcCrossData.totalNew)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Aguardando primeiro contato
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Segmentos</CardTitle>
+                <Target className="h-4 w-4 text-purple-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatNumber(dcCrossData.uniqueSegments)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Segmentos nos leads filtrados
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Cross-reference table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Criativo x Status do Lead</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : dcCrossData.rows.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="sticky left-0 bg-background z-10 min-w-[200px]">Criativo</TableHead>
+                        <TableHead className="text-center font-semibold">Total</TableHead>
+                        {dcCrossData.statuses.map(status => (
+                          <TableHead key={status} className="text-center min-w-[80px]">
+                            <span className="text-xs">{status}</span>
+                          </TableHead>
+                        ))}
+                        <TableHead className="text-center font-semibold min-w-[100px]">
+                          <span className="flex items-center justify-center gap-1">
+                            <TrendingUp className="h-3 w-3" />
+                            Avanco
+                          </span>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dcCrossData.rows.map((row, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="sticky left-0 bg-background z-10 font-medium max-w-[250px]">
+                            <span className="truncate block" title={row.creative}>
+                              {row.creative}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center font-bold">
+                            {row.total}
+                          </TableCell>
+                          {dcCrossData.statuses.map(status => {
+                            const count = row.counts[status] || 0;
+                            return (
+                              <TableCell key={status} className="text-center">
+                                {count > 0 ? (
+                                  <span className="inline-flex items-center justify-center min-w-[28px] h-7 rounded-md bg-muted px-2 text-sm font-medium">
+                                    {count}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground/40">-</span>
+                                )}
+                              </TableCell>
+                            );
+                          })}
+                          <TableCell className="text-center">
+                            <Badge
+                              variant={row.convRate >= 50 ? 'default' : row.convRate >= 25 ? 'secondary' : 'outline'}
+                              className={cn(
+                                'text-xs',
+                                row.convRate >= 50 && 'bg-green-600 hover:bg-green-700',
+                                row.convRate >= 25 && row.convRate < 50 && 'bg-amber-600 hover:bg-amber-700 text-white',
+                              )}
+                            >
+                              {row.convRate.toFixed(0)}%
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {/* Totals row */}
+                      <TableRow className="bg-muted/50 font-semibold">
+                        <TableCell className="sticky left-0 bg-muted/50 z-10">TOTAL</TableCell>
+                        <TableCell className="text-center font-bold">
+                          {dcCrossData.totalFiltered}
+                        </TableCell>
+                        {dcCrossData.statuses.map(status => {
+                          const total = dcCrossData.rows.reduce((sum, r) => sum + (r.counts[status] || 0), 0);
+                          return (
+                            <TableCell key={status} className="text-center font-bold">
+                              {total > 0 ? total : '-'}
+                            </TableCell>
+                          );
+                        })}
+                        <TableCell className="text-center">
+                          <Badge variant="default" className="bg-blue-600 text-xs">
+                            {dcCrossData.overallConvRate.toFixed(0)}%
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhum lead encontrado com os filtros selecionados.
                 </div>
               )}
             </CardContent>
