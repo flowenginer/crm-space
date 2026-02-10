@@ -11,6 +11,7 @@ import {
   Download,
   Loader2,
   ArrowLeft,
+  MessageCircleOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -181,7 +182,10 @@ export default function CampaignReport() {
                  !statusLower.includes('layout') &&
                  !statusLower.includes('fechado') &&
                  !statusLower.includes('ganho') &&
-                 !statusLower.includes('convertido');
+                 !statusLower.includes('convertido') &&
+                 !statusLower.includes('pedido');
+        case 'naoRespondido':
+          return lead.wasResponded === false;
         case 'catalogo':
           return statusLower.includes('catálogo') || statusLower.includes('catalogo');
         case 'layout':
@@ -189,7 +193,8 @@ export default function CampaignReport() {
         case 'fechado':
           return statusLower.includes('fechado') ||
                  statusLower.includes('ganho') ||
-                 statusLower.includes('convertido');
+                 statusLower.includes('convertido') ||
+                 statusLower.includes('pedido');
         default:
           return true;
       }
@@ -274,7 +279,7 @@ export default function CampaignReport() {
     XLSX.writeFile(wb, fileName);
   };
 
-  const summary = reportData?.summary || { total: 0, novo: 0, catalogo: 0, layout: 0, fechado: 0, revenue: 0 };
+  const summary = reportData?.summary || { total: 0, novo: 0, catalogo: 0, layout: 0, fechado: 0, naoRespondido: 0, revenue: 0 };
   const isLoading = loadingReport || loadingCrossData;
 
   return (
@@ -324,7 +329,7 @@ export default function CampaignReport() {
       />
 
       {/* Summary Cards - Funil por Status */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <StatCard
           title="Total de Leads"
           value={summary.total.toLocaleString('pt-BR')}
@@ -341,6 +346,15 @@ export default function CampaignReport() {
           gradient="from-slate-500 to-slate-600"
           isLoading={isLoading}
           onClick={() => openLeadsModal('Leads Novos', 'novo')}
+        />
+        <StatCard
+          title="Sem Resposta"
+          value={summary.naoRespondido.toLocaleString('pt-BR')}
+          subtitle={summary.total > 0 ? `${((summary.naoRespondido / summary.total) * 100).toFixed(1)}%` : '0%'}
+          icon={MessageCircleOff}
+          gradient="from-red-500 to-rose-600"
+          isLoading={isLoading}
+          onClick={() => openLeadsModal('Leads Sem Resposta', 'naoRespondido')}
         />
         <StatCard
           title="Catálogo"

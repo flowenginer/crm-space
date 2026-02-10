@@ -23,7 +23,7 @@ interface CrossDataTableProps {
   viewMode?: 'anuncio' | 'campanha' | 'segmento';
 }
 
-type SortColumn = 'name' | 'leads' | 'catalogo' | 'layout' | 'pedidoFechado' | 'revenue';
+type SortColumn = 'name' | 'leads' | 'novo' | 'catalogo' | 'layout' | 'pedidoFechado' | 'naoRespondido' | 'revenue';
 type SortDirection = 'asc' | 'desc';
 
 export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossDataTableProps) {
@@ -50,9 +50,11 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
       switch (sortColumn) {
         case 'name': aVal = a.adName || ''; bVal = b.adName || ''; break;
         case 'leads': aVal = a.totalLeads; bVal = b.totalLeads; break;
+        case 'novo': aVal = a.novoCount; bVal = b.novoCount; break;
         case 'catalogo': aVal = a.catalogoCount; bVal = b.catalogoCount; break;
         case 'layout': aVal = a.layoutCount; bVal = b.layoutCount; break;
         case 'pedidoFechado': aVal = a.pedidoFechadoCount; bVal = b.pedidoFechadoCount; break;
+        case 'naoRespondido': aVal = a.naoRespondidoCount; bVal = b.naoRespondidoCount; break;
         case 'revenue': aVal = a.revenue; bVal = b.revenue; break;
         default: return 0;
       }
@@ -110,8 +112,8 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
         <Table className="table-fixed w-full">
           <TableHeader>
             <TableRow className="bg-card border-b border-border">
-              <TableHead 
-                className="w-[250px] cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              <TableHead
+                className="w-[200px] cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('name')}
               >
                 <div className="flex items-center">
@@ -119,8 +121,8 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                   <SortIcon column="name" />
                 </div>
               </TableHead>
-              <TableHead 
-                className="w-[80px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              <TableHead
+                className="w-[70px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('leads')}
               >
                 <div className="flex items-center justify-center">
@@ -128,8 +130,17 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                   <SortIcon column="leads" />
                 </div>
               </TableHead>
-              <TableHead 
-                className="w-[90px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              <TableHead
+                className="w-[70px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                onClick={() => handleSort('novo')}
+              >
+                <div className="flex items-center justify-center">
+                  Novo
+                  <SortIcon column="novo" />
+                </div>
+              </TableHead>
+              <TableHead
+                className="w-[80px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('catalogo')}
               >
                 <div className="flex items-center justify-center">
@@ -137,8 +148,8 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                   <SortIcon column="catalogo" />
                 </div>
               </TableHead>
-              <TableHead 
-                className="w-[80px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              <TableHead
+                className="w-[70px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('layout')}
               >
                 <div className="flex items-center justify-center">
@@ -146,21 +157,30 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                   <SortIcon column="layout" />
                 </div>
               </TableHead>
-              <TableHead 
-                className="w-[120px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              <TableHead
+                className="w-[80px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('pedidoFechado')}
               >
                 <div className="flex items-center justify-center">
-                  Pedido Fechado
+                  Fechado
                   <SortIcon column="pedidoFechado" />
                 </div>
               </TableHead>
-              <TableHead 
-                className="w-[140px] text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              <TableHead
+                className="w-[90px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                onClick={() => handleSort('naoRespondido')}
+              >
+                <div className="flex items-center justify-center text-red-500">
+                  S/ Resposta
+                  <SortIcon column="naoRespondido" />
+                </div>
+              </TableHead>
+              <TableHead
+                className="w-[120px] text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('revenue')}
               >
                 <div className="flex items-center justify-end">
-                  Valor Negociado
+                  Valor
                   <SortIcon column="revenue" />
                 </div>
               </TableHead>
@@ -173,21 +193,25 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
           <Table className="table-fixed w-full">
             <TableBody>
               {sortedData.map((row) => (
-                <TableRow 
-                  key={row.sourceId} 
+                <TableRow
+                  key={row.sourceId}
                   className={`hover:bg-muted/30 ${viewMode === 'anuncio' ? 'cursor-pointer' : ''}`}
                   onClick={() => viewMode === 'anuncio' && setSelectedAd(row)}
                 >
-                  <TableCell className={`w-[250px] font-medium ${viewMode === 'anuncio' ? 'text-primary hover:underline' : ''}`}>
+                  <TableCell className={`w-[200px] font-medium truncate ${viewMode === 'anuncio' ? 'text-primary hover:underline' : ''}`} title={row.adName}>
                     {row.adName}
                   </TableCell>
-                  <TableCell className="w-[80px] text-center font-semibold">{row.totalLeads}</TableCell>
-                  <TableCell className="w-[90px] text-center">{row.catalogoCount}</TableCell>
-                  <TableCell className="w-[80px] text-center">{row.layoutCount}</TableCell>
-                  <TableCell className="w-[120px] text-center">
+                  <TableCell className="w-[70px] text-center font-semibold">{row.totalLeads}</TableCell>
+                  <TableCell className="w-[70px] text-center text-slate-500">{row.novoCount}</TableCell>
+                  <TableCell className="w-[80px] text-center text-amber-600">{row.catalogoCount}</TableCell>
+                  <TableCell className="w-[70px] text-center text-purple-600">{row.layoutCount}</TableCell>
+                  <TableCell className="w-[80px] text-center">
                     <span className="text-green-600 font-semibold">{row.pedidoFechadoCount}</span>
                   </TableCell>
-                  <TableCell className="w-[140px] text-right font-semibold text-green-600">
+                  <TableCell className="w-[90px] text-center">
+                    <span className="text-red-500 font-medium">{row.naoRespondidoCount}</span>
+                  </TableCell>
+                  <TableCell className="w-[120px] text-right font-semibold text-green-600">
                     {formatCurrency(row.revenue)}
                   </TableCell>
                 </TableRow>
@@ -276,7 +300,7 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                   </div>
                 )}
 
-                <div className="border-t pt-4 grid grid-cols-2 gap-4">
+                <div className="border-t pt-4 grid grid-cols-3 gap-4">
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">Total Leads</label>
                     <p className="text-2xl font-bold">{selectedAd.totalLeads}</p>
@@ -286,12 +310,20 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                     <p className="text-2xl font-bold text-green-600">{selectedAd.pedidoFechadoCount}</p>
                   </div>
                   <div>
+                    <label className="text-sm font-medium text-muted-foreground">Sem Resposta</label>
+                    <p className="text-2xl font-bold text-red-500">{selectedAd.naoRespondidoCount}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Novos</label>
+                    <p className="text-lg font-semibold text-slate-500">{selectedAd.novoCount}</p>
+                  </div>
+                  <div>
                     <label className="text-sm font-medium text-muted-foreground">Em Catálogo</label>
-                    <p className="text-lg font-semibold">{selectedAd.catalogoCount}</p>
+                    <p className="text-lg font-semibold text-amber-600">{selectedAd.catalogoCount}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">Em Layout</label>
-                    <p className="text-lg font-semibold">{selectedAd.layoutCount}</p>
+                    <p className="text-lg font-semibold text-purple-600">{selectedAd.layoutCount}</p>
                   </div>
                 </div>
 

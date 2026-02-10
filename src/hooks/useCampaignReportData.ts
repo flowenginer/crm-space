@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useUserStore } from '@/stores/useUserStore';
+import { useUserStore } from '@/store/userStore';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { CampaignFilterState } from '@/components/campaigns/CampaignFilterBar';
@@ -20,12 +20,24 @@ function toUTCDate(date: Date, endOfDay = false): string {
   return d.toISOString();
 }
 
+// Verificar se utm_source indica que é do Meta Ads
+function isMetaSource(utmSource: string | null | undefined): boolean {
+  if (!utmSource) return false;
+  const source = utmSource.toLowerCase();
+  return source.includes('facebook') ||
+         source.includes('instagram') ||
+         source.includes('meta') ||
+         source === 'fb' ||
+         source === 'ig';
+}
+
 export interface StatusSummary {
   total: number;
   novo: number;
   catalogo: number;
   layout: number;
   fechado: number;
+  naoRespondido: number; // Leads que não receberam resposta
   revenue: number;
 }
 
@@ -127,16 +139,17 @@ export function useCampaignReportData(filters: CampaignFilterState) {
         campaignIdToName.set(c.campaign_id, c.name);
       });
 
-      // 5. Buscar contatos com origin = 'meta_ads'
+      // 5. Buscar contatos de TODAS as fontes Meta (origin = 'meta_ads' OU redirect do Meta)
       const PAGE_SIZE = 1000;
       let allContacts: any[] = [];
       let page = 0;
       let hasMore = true;
 
+      // 5a. Buscar leads diretos do Meta Ads
       while (hasMore) {
         let query = supabase
           .from('contacts')
-          .select('id, full_name, phone, lead_status, segment_id, negotiated_value, referral_data, created_at')
+          .select('id, full_name, phone, lead_status, segment_id, negotiated_value, referral_data, origin, created_at')
           .eq('tenant_id', tenantId)
           .eq('origin', 'meta_ads')
           .gte('created_at', dateFrom)
@@ -154,6 +167,68 @@ export function useCampaignReportData(filters: CampaignFilterState) {
         }
       }
 
+      // 5b. Buscar leads de Redirect que vieram do Meta (utm_source = facebook/instagram/meta)
+      page = 0;
+      hasMore = true;
+      const processedIds = new Set(allContacts.map(c => c.id));
+
+      while (hasMore) {
+        let query = supabase
+          .from('contacts')
+          .select('id, full_name, phone, lead_status, segment_id, negotiated_value, referral_data, origin, created_at')
+          .eq('tenant_id', tenantId)
+          .eq('origin', 'redirect')
+          .gte('created_at', dateFrom)
+          .lte('created_at', dateTo)
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+        const { data: contacts } = await query;
+
+        if (contacts && contacts.length > 0) {
+          // Filtrar apenas os que vieram do Meta (via utm_source)
+          contacts.forEach((contact: any) => {
+            if (processedIds.has(contact.id)) return;
+
+            const refData = contact.referral_data as any;
+            const utmSource = refData?.utm_source;
+
+            if (isMetaSource(utmSource)) {
+              allContacts.push(contact);
+              processedIds.add(contact.id);
+            }
+          });
+          hasMore = contacts.length === PAGE_SIZE;
+          page++;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      // 5c. Buscar informações de conversa para identificar leads não respondidos
+      const contactIds = allContacts.map(c => c.id);
+      const conversationMap = new Map<string, { hasResponse: boolean }>();
+
+      // Buscar em batches de 500 para evitar problemas com queries muito grandes
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < contactIds.length; i += BATCH_SIZE) {
+        const batch = contactIds.slice(i, i + BATCH_SIZE);
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('contact_id, first_response_at')
+          .eq('tenant_id', tenantId)
+          .in('contact_id', batch);
+
+        conversations?.forEach((conv: any) => {
+          const existing = conversationMap.get(conv.contact_id);
+          // Se já tem resposta em alguma conversa, marca como respondido
+          if (!existing || (conv.first_response_at && !existing.hasResponse)) {
+            conversationMap.set(conv.contact_id, {
+              hasResponse: !!conv.first_response_at
+            });
+          }
+        });
+      }
+
       // 6. Processar dados
       const summary: StatusSummary = {
         total: 0,
@@ -161,6 +236,7 @@ export function useCampaignReportData(filters: CampaignFilterState) {
         catalogo: 0,
         layout: 0,
         fechado: 0,
+        naoRespondido: 0,
         revenue: 0,
       };
 
@@ -231,14 +307,27 @@ export function useCampaignReportData(filters: CampaignFilterState) {
         summary.total++;
         summary.revenue += contact.negotiated_value || 0;
 
+        // Verificar se foi respondido
+        const convInfo = conversationMap.get(contact.id);
+        const wasResponded = convInfo?.hasResponse ?? false;
+        if (!wasResponded) {
+          summary.naoRespondido++;
+        }
+
         // Classificar por status
         const statusName = statusInfo?.name?.toLowerCase() || status.toLowerCase();
-        if (statusName.includes('catálogo') || statusName.includes('catalogo')) {
+        const isConversion = status === conversionStatusId ||
+                           statusName.includes('fechado') ||
+                           statusName.includes('ganho') ||
+                           statusName.includes('convertido') ||
+                           statusName.includes('pedido');
+
+        if (isConversion) {
+          summary.fechado++;
+        } else if (statusName.includes('catálogo') || statusName.includes('catalogo')) {
           summary.catalogo++;
         } else if (statusName.includes('layout')) {
           summary.layout++;
-        } else if (status === conversionStatusId || statusName.includes('fechado') || statusName.includes('ganho') || statusName.includes('convertido')) {
-          summary.fechado++;
         } else {
           summary.novo++;
         }
@@ -253,12 +342,12 @@ export function useCampaignReportData(filters: CampaignFilterState) {
           const dayData = timelineMap.get(dayKey)!;
           dayData.leads++;
 
-          if (statusName.includes('catálogo') || statusName.includes('catalogo')) {
+          if (isConversion) {
+            dayData.fechado++;
+          } else if (statusName.includes('catálogo') || statusName.includes('catalogo')) {
             dayData.catalogo++;
           } else if (statusName.includes('layout')) {
             dayData.layout++;
-          } else if (status === conversionStatusId || statusName.includes('fechado') || statusName.includes('ganho') || statusName.includes('convertido')) {
-            dayData.fechado++;
           }
         }
 
@@ -272,6 +361,7 @@ export function useCampaignReportData(filters: CampaignFilterState) {
           segment: segments?.find(s => s.id === contact.segment_id)?.name,
           negotiatedValue: contact.negotiated_value || 0,
           createdAt: contact.created_at,
+          wasResponded: wasResponded,
         });
       });
 
