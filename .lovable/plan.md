@@ -1,30 +1,27 @@
 
-# Tornar Canal API_Oficial Visivel no Filtro para Todos
+# Substituir "Relatório de Campanhas" por "WhatsApp Lead Tracking"
 
-## Contexto
+## O que muda
 
-O canal "API_Oficial" recebe todos os novos leads e os direciona para "Sala de espera IA". Todos os usuarios precisam ver esse canal no filtro, porem cada usuario so visualiza as conversas dos seus proprios departamentos e atribuicoes. A visibilidade das conversas ja e controlada por logica separada (RLS + filtros de departamento) -- esta mudanca afeta **apenas o filtro de canais**.
+As rotas `/relatorios/campanhas` e `/relatorio-campanhas` atualmente renderizam `CampaignReport`. Elas passarao a renderizar `WhatsAppLeadTracking`. A rota dedicada `/whatsapp-lead-tracking` sera removida (redundante).
 
 ## Alteracoes
 
-### 1. Migracao SQL
-- Adicionar coluna `visible_to_all BOOLEAN DEFAULT false` na tabela `whatsapp_channels`
-- Marcar o canal API_Oficial com `visible_to_all = true`
+### 1. `src/App.tsx`
 
-### 2. `src/hooks/useChannels.ts`
-- Adicionar `visible_to_all` na interface `WhatsAppChannel`
-- Adicionar `visible_to_all` no SELECT da query
+- Remover import de `CampaignReport`
+- Remover a rota `/whatsapp-lead-tracking` (linha ~275)
+- Nas rotas `/relatorios/campanhas` e `/relatorio-campanhas`, trocar `<CampaignReport />` por `<WhatsAppLeadTracking />`
+- Ajustar a permission se necessario (de `marketing.view_campaigns` para `marketing.view` que e a usada pelo WhatsAppLeadTracking)
 
-### 3. `src/hooks/useUserChannels.ts`
-- No filtro por `userChannelIds`: incluir tambem canais com `visible_to_all === true`
-- No filtro por departamento (fallback): adicionar `channel.visible_to_all` como condicao alternativa
+### 2. Arquivos que podem ser removidos (opcional)
 
-## Resultado
+Os seguintes arquivos ficam orfaos (nao usados por nenhuma rota):
+- `src/pages/CampaignReport.tsx`
+- `src/hooks/useCampaignReportData.ts`
 
-- Todos os usuarios veem "API Oficial" no filtro de canais
-- Cada usuario continua vendo apenas as conversas do seu departamento e atribuicao (logica existente, sem alteracao)
-- O canal permanece vinculado ao departamento "Sala de espera IA" para roteamento de novos leads
+Recomendacao: manter por enquanto caso queira reutilizar dados futuramente.
 
 ## Complexidade
 
-Baixa -- 1 coluna, 1 UPDATE, ajuste em 2 filtros no frontend.
+Muito baixa - apenas alteracoes no arquivo de rotas.
