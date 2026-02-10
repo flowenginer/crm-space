@@ -128,7 +128,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       const conversationsQuery = supabase
         .from('conversations')
         .select(`
-          id, referral_source, referral_data, created_at,
+          id, referral_source, referral_data, created_at, lead_status,
           contact:contacts!contact_id(
             id, full_name, phone, email, lead_status, origin, origin_campaign,
             assigned_to, profiles:assigned_to(full_name)
@@ -204,6 +204,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
 
         const assignedProfile = contact.profiles as any;
         const referralSource = conv.referral_source;
+        const leadStatus = (conv as any).lead_status || contact.lead_status;
 
         const isCTWA = referralSource === 'meta_ads' || referralSource === 'ctwa_ad';
         const isRedirect = referralSource === 'redirect' || referralSource === 'linktree';
@@ -222,7 +223,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
             email: contact.email,
             origin: contact.origin || referralSource || 'meta_ads',
             origin_campaign: contact.origin_campaign,
-            lead_status: contact.lead_status,
+            lead_status: leadStatus,
             created_at: conv.created_at,
             assigned_to: contact.assigned_to,
             assigned_to_name: assignedProfile?.full_name || null,
@@ -254,7 +255,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
             email: contact.email,
             origin: contact.origin || referralSource || 'redirect',
             origin_campaign: contact.origin_campaign,
-            lead_status: contact.lead_status,
+            lead_status: leadStatus,
             created_at: conv.created_at,
             assigned_to: contact.assigned_to,
             assigned_to_name: assignedProfile?.full_name || null,
