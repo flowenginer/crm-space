@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useTenantContext } from '@/contexts/TenantContext';
+import { useUserStore } from '@/stores/useUserStore';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { CampaignFilterState } from '@/components/campaigns/CampaignFilterBar';
@@ -62,8 +62,7 @@ export interface CampaignReportData {
 }
 
 export function useCampaignReportData(filters: CampaignFilterState) {
-  const { currentTenant } = useTenantContext();
-  const tenantId = currentTenant?.id;
+  const { tenantId } = useUserStore();
 
   return useQuery({
     queryKey: ['campaign-report-data', tenantId, filters],
