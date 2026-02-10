@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useUserStore } from '@/stores/useUserStore';
+import { useUserStore } from '@/store/userStore';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { CampaignFilterState } from '@/components/campaigns/CampaignFilterBar';
@@ -76,24 +76,24 @@ export function useCampaignReportData(filters: CampaignFilterState) {
       const dateFrom = toUTCDate(filters.dateRange.from, false);
       const dateTo = toUTCDate(filters.dateRange.to, true);
 
-      // 1. Buscar status de conversão
-      const { data: companySettings } = await supabase
-        .from('company_settings')
-        .select('conversion_status_id')
-        .eq('tenant_id', tenantId)
-        .single();
-
+      // 1. Buscar lead statuses e configuração de conversão
       const { data: leadStatuses } = await supabase
         .from('lead_statuses')
         .select('id, name, color')
         .eq('tenant_id', tenantId)
         .order('order_index');
 
+      const { data: companySettings } = await supabase
+        .from('company_settings')
+        .select('conversion_status_ids')
+        .eq('tenant_id', tenantId)
+        .single();
+
       const statusMap = new Map<string, { name: string; color: string }>();
       leadStatuses?.forEach(s => statusMap.set(s.id, { name: s.name, color: s.color }));
 
-      // Status de conversão (fechado)
-      const conversionStatusId = companySettings?.conversion_status_id;
+      // Status de conversão (fechado) - usa o primeiro ID do array
+      const conversionStatusId = companySettings?.conversion_status_ids?.[0] ?? null;
 
       // 2. Buscar segmentos
       const { data: segments } = await supabase
