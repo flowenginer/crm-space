@@ -1,53 +1,26 @@
 import { useState, useMemo } from 'react';
-import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   Facebook,
-  TrendingUp,
   Users,
-  Target,
-  Calendar as CalendarIcon,
-  ChevronDown,
+  FileText,
+  Palette,
+  CheckCircle,
+  DollarSign,
   Download,
   Loader2,
   ArrowLeft,
-  DollarSign,
-  FileSpreadsheet,
-  GitBranch,
 } from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { DateRange } from 'react-day-picker';
 import { useNavigate } from 'react-router-dom';
-import { useMetaLeadsCrossData, CrossDataRow } from '@/hooks/useMetaLeadsCrossData';
-import { useMetaCampaignROI } from '@/hooks/useMetaCampaignROI';
-import { useMetaSegmentROI } from '@/hooks/useMetaSegmentROI';
-import { useMetaSegmentJourney } from '@/hooks/useMetaSegmentJourney';
+import { CampaignFilterBar, CampaignFilterState } from '@/components/campaigns/CampaignFilterBar';
+import { CampaignTimelineChart } from '@/components/campaigns/CampaignTimelineChart';
+import { LeadsListModal, LeadInfo } from '@/components/campaigns/LeadsListModal';
 import { CrossDataTable } from '@/components/campaigns/CrossDataTable';
-import { ROITable } from '@/components/campaigns/ROITable';
-import { SegmentJourneyChart } from '@/components/campaigns/SegmentJourneyChart';
+import { useCampaignReportData } from '@/hooks/useCampaignReportData';
+import { useMetaLeadsCrossData, CrossDataRow } from '@/hooks/useMetaLeadsCrossData';
 import * as XLSX from 'xlsx';
-
-const datePresets = [
-  { label: 'Hoje', getValue: () => ({ from: new Date(), to: new Date() }) },
-  { label: 'Últimos 7 dias', getValue: () => ({ from: subDays(new Date(), 6), to: new Date() }) },
-  { label: 'Últimos 30 dias', getValue: () => ({ from: subDays(new Date(), 29), to: new Date() }) },
-  { label: 'Este mês', getValue: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
-  { label: 'Mês passado', getValue: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) }) },
-];
 
 interface StatCardProps {
   title: string;
@@ -56,11 +29,15 @@ interface StatCardProps {
   icon: React.ElementType;
   gradient: string;
   isLoading?: boolean;
+  onClick?: () => void;
 }
 
-function StatCard({ title, value, subtitle, icon: Icon, gradient, isLoading }: StatCardProps) {
+function StatCard({ title, value, subtitle, icon: Icon, gradient, isLoading, onClick }: StatCardProps) {
   return (
-    <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated hover:shadow-elevated-lg transition-all duration-300 group">
+    <div
+      className={`bg-card rounded-2xl border border-border/50 p-6 shadow-elevated hover:shadow-elevated-lg transition-all duration-300 group ${onClick ? 'cursor-pointer' : ''}`}
+      onClick={onClick}
+    >
       <div className="flex items-start justify-between">
         <div className="space-y-3">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
@@ -87,16 +64,15 @@ function StatCard({ title, value, subtitle, icon: Icon, gradient, isLoading }: S
   );
 }
 
-
 // Função para agrupar CrossData por campanha
 function groupByCampaign(rows: CrossDataRow[]): CrossDataRow[] {
   const grouped = new Map<string, CrossDataRow>();
-  
+
   rows.forEach(row => {
     const key = row.campaignName || 'Sem Campanha';
     if (!grouped.has(key)) {
-      grouped.set(key, { 
-        ...row, 
+      grouped.set(key, {
+        ...row,
         adName: key,
         sourceId: key,
       });
@@ -109,19 +85,19 @@ function groupByCampaign(rows: CrossDataRow[]): CrossDataRow[] {
       existing.revenue += row.revenue;
     }
   });
-  
+
   return Array.from(grouped.values()).sort((a, b) => b.totalLeads - a.totalLeads);
 }
 
-// Função para agrupar CrossData por segmento (usando segmentName já calculado no hook)
+// Função para agrupar CrossData por segmento
 function groupBySegment(rows: CrossDataRow[]): CrossDataRow[] {
   const grouped = new Map<string, CrossDataRow>();
-  
+
   rows.forEach(row => {
     const segment = row.segmentName || 'Sem Segmento';
     if (!grouped.has(segment)) {
-      grouped.set(segment, { 
-        ...row, 
+      grouped.set(segment, {
+        ...row,
         adName: segment,
         sourceId: segment,
       });
@@ -134,34 +110,46 @@ function groupBySegment(rows: CrossDataRow[]): CrossDataRow[] {
       existing.revenue += row.revenue;
     }
   });
-  
+
   return Array.from(grouped.values()).sort((a, b) => b.totalLeads - a.totalLeads);
 }
 
 export default function CampaignReport() {
   const navigate = useNavigate();
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 29),
-    to: new Date(),
+
+  // Estado dos filtros
+  const [filters, setFilters] = useState<CampaignFilterState>({
+    dateRange: { from: subDays(new Date(), 29), to: new Date() },
+    campaign: null,
+    creative: null,
+    segment: null,
+    status: null,
   });
-  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
-  
-  // Estados para controlar visualização
+
+  // Estado para visualização da tabela
   const [crossDataView, setCrossDataView] = useState<'anuncio' | 'campanha' | 'segmento'>('anuncio');
-  const [roiView, setRoiView] = useState<'campanha' | 'segmento'>('campanha');
 
-  const activeDateRange = dateRange?.from && dateRange?.to 
-    ? { from: dateRange.from, to: dateRange.to }
+  // Estado do modal de leads
+  const [leadsModal, setLeadsModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle?: string;
+    filterStatus?: string;
+  }>({
+    isOpen: false,
+    title: '',
+  });
+
+  // Buscar dados
+  const { data: reportData, isLoading: loadingReport } = useCampaignReportData(filters);
+
+  // Buscar dados de cruzamento (mantém compatibilidade com tabela existente)
+  const activeDateRange = filters.dateRange?.from && filters.dateRange?.to
+    ? { from: filters.dateRange.from, to: filters.dateRange.to }
     : undefined;
-
   const { data: crossData, isLoading: loadingCrossData } = useMetaLeadsCrossData(activeDateRange);
-  const { data: roiData, isLoading: loadingROI } = useMetaCampaignROI(activeDateRange);
-  const { data: segmentROIData, isLoading: loadingSegmentROI } = useMetaSegmentROI(activeDateRange);
-  const { data: journeyData, isLoading: loadingJourney } = useMetaSegmentJourney(activeDateRange);
 
-  const summary = crossData?.summary;
-
-  // Dados processados baseado na view selecionada
+  // Dados processados para a tabela
   const crossDataDisplay = useMemo(() => {
     if (!crossData?.rows) return [];
     if (crossDataView === 'campanha') return groupByCampaign(crossData.rows);
@@ -169,24 +157,7 @@ export default function CampaignReport() {
     return crossData.rows;
   }, [crossData?.rows, crossDataView]);
 
-  const roiDataDisplay = useMemo(() => {
-    if (roiView === 'segmento') {
-      return segmentROIData || [];
-    }
-    return roiData?.campaigns || [];
-  }, [roiView, roiData?.campaigns, segmentROIData]);
-
-  const formatDateRange = (range: DateRange | undefined) => {
-    if (!range?.from) return 'Selecionar período';
-    if (!range.to) return format(range.from, 'dd/MM/yyyy', { locale: ptBR });
-    return `${format(range.from, 'dd/MM/yyyy', { locale: ptBR })} - ${format(range.to, 'dd/MM/yyyy', { locale: ptBR })}`;
-  };
-
-  const handlePresetClick = (preset: typeof datePresets[0]) => {
-    setDateRange(preset.getValue());
-    setIsDatePickerOpen(false);
-  };
-
+  // Formatar moeda
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -196,45 +167,115 @@ export default function CampaignReport() {
     }).format(value);
   };
 
+  // Filtrar leads para o modal baseado no status selecionado
+  const modalLeads = useMemo(() => {
+    if (!reportData?.leads) return [];
+    if (!leadsModal.filterStatus) return reportData.leads;
+
+    return reportData.leads.filter(lead => {
+      const statusLower = lead.status.toLowerCase();
+      switch (leadsModal.filterStatus) {
+        case 'novo':
+          return !statusLower.includes('catálogo') &&
+                 !statusLower.includes('catalogo') &&
+                 !statusLower.includes('layout') &&
+                 !statusLower.includes('fechado') &&
+                 !statusLower.includes('ganho') &&
+                 !statusLower.includes('convertido');
+        case 'catalogo':
+          return statusLower.includes('catálogo') || statusLower.includes('catalogo');
+        case 'layout':
+          return statusLower.includes('layout');
+        case 'fechado':
+          return statusLower.includes('fechado') ||
+                 statusLower.includes('ganho') ||
+                 statusLower.includes('convertido');
+        default:
+          return true;
+      }
+    });
+  }, [reportData?.leads, leadsModal.filterStatus]);
+
+  // Abrir modal de leads
+  const openLeadsModal = (title: string, filterStatus?: string) => {
+    setLeadsModal({
+      isOpen: true,
+      title,
+      subtitle: `${filters.dateRange?.from ? format(filters.dateRange.from, 'dd/MM/yyyy', { locale: ptBR }) : ''} - ${filters.dateRange?.to ? format(filters.dateRange.to, 'dd/MM/yyyy', { locale: ptBR }) : ''}`,
+      filterStatus,
+    });
+  };
+
+  // Navegar para página do lead
+  const handleLeadClick = (leadId: string) => {
+    window.open(`/crm?contact=${leadId}`, '_blank');
+  };
+
+  // Exportar Excel
   const handleExportExcel = () => {
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: Cruzamento (por anúncio ou campanha)
+    // Sheet 1: Resumo por status
+    if (reportData?.summary) {
+      const summarySheet = [
+        { 'Métrica': 'Total de Leads', 'Valor': reportData.summary.total },
+        { 'Métrica': 'Novos', 'Valor': reportData.summary.novo },
+        { 'Métrica': 'Catálogo', 'Valor': reportData.summary.catalogo },
+        { 'Métrica': 'Layout', 'Valor': reportData.summary.layout },
+        { 'Métrica': 'Pedido Fechado', 'Valor': reportData.summary.fechado },
+        { 'Métrica': 'Receita Total', 'Valor': reportData.summary.revenue },
+      ];
+      const ws1 = XLSX.utils.json_to_sheet(summarySheet);
+      XLSX.utils.book_append_sheet(wb, ws1, 'Resumo');
+    }
+
+    // Sheet 2: Timeline
+    if (reportData?.timeline) {
+      const ws2 = XLSX.utils.json_to_sheet(reportData.timeline.map(t => ({
+        'Data': t.date,
+        'Total Leads': t.leads,
+        'Catálogo': t.catalogo,
+        'Layout': t.layout,
+        'Fechado': t.fechado,
+      })));
+      XLSX.utils.book_append_sheet(wb, ws2, 'Timeline');
+    }
+
+    // Sheet 3: Cruzamento
     if (crossDataDisplay.length > 0) {
-      const label = crossDataView === 'campanha' ? 'Campanha' : 'Anúncio';
+      const label = crossDataView === 'campanha' ? 'Campanha' : crossDataView === 'segmento' ? 'Segmento' : 'Anúncio';
       const adSheet = crossDataDisplay.map(row => ({
         [label]: row.adName,
         'Leads': row.totalLeads,
         'Catálogo': row.catalogoCount,
         'Layout': row.layoutCount,
         'Pedido Fechado': row.pedidoFechadoCount,
-        'Valor Negociado': row.revenue
+        'Valor Negociado': row.revenue,
       }));
-      const ws1 = XLSX.utils.json_to_sheet(adSheet);
-      XLSX.utils.book_append_sheet(wb, ws1, `Por ${label}`);
+      const ws3 = XLSX.utils.json_to_sheet(adSheet);
+      XLSX.utils.book_append_sheet(wb, ws3, `Por ${label}`);
     }
 
-    // Sheet 2: ROI (por campanha ou segmento)
-    if (roiDataDisplay.length > 0) {
-      const label = roiView === 'segmento' ? 'Segmento' : 'Campanha';
-      const roiSheet = roiDataDisplay.map((row: any) => ({
-        [label]: row.campaignName || row.segmentName,
-        'Gastos': row.spend,
-        'Leads': row.leads,
-        'CPL': row.cpl,
-        'Conversões': row.conversions,
-        'CAC': row.cac,
-        'Receita': row.revenue,
-        'ROI (%)': row.roi,
-        'ROAS': row.roas
+    // Sheet 4: Lista de Leads
+    if (reportData?.leads && reportData.leads.length > 0) {
+      const leadsSheet = reportData.leads.map(lead => ({
+        'Nome': lead.fullName,
+        'Telefone': lead.phone,
+        'Status': lead.status,
+        'Segmento': lead.segment || '-',
+        'Valor Negociado': lead.negotiatedValue,
+        'Data': format(new Date(lead.createdAt), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
       }));
-      const ws2 = XLSX.utils.json_to_sheet(roiSheet);
-      XLSX.utils.book_append_sheet(wb, ws2, `ROI por ${label}`);
+      const ws4 = XLSX.utils.json_to_sheet(leadsSheet);
+      XLSX.utils.book_append_sheet(wb, ws4, 'Leads');
     }
 
     const fileName = `relatorio-campanhas-${format(new Date(), 'yyyy-MM-dd-HHmm')}.xlsx`;
     XLSX.writeFile(wb, fileName);
   };
+
+  const summary = reportData?.summary || { total: 0, novo: 0, catalogo: 0, layout: 0, fechado: 0, revenue: 0 };
+  const isLoading = loadingReport || loadingCrossData;
 
   return (
     <div className="space-y-6">
@@ -257,162 +298,133 @@ export default function CampaignReport() {
               <h1 className="text-3xl font-bold text-foreground">Relatório de Campanhas</h1>
             </div>
             <p className="text-muted-foreground">
-              Cruzamento de dados Meta Ads por Anúncio, Campanha e Segmento
+              Análise de performance de leads por campanha, criativo e status
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Date Range Picker */}
-          <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "justify-start text-left font-normal px-4 py-2.5 h-auto rounded-xl border-border",
-                  !dateRange && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon size={18} className="mr-2 text-muted-foreground" />
-                <span className="text-sm">{formatDateRange(dateRange)}</span>
-                <ChevronDown size={16} className="ml-2 text-muted-foreground" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <div className="flex">
-                <div className="border-r border-border p-3 space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground mb-2 px-2">Atalhos</p>
-                  {datePresets.map((preset) => (
-                    <button
-                      key={preset.label}
-                      onClick={() => handlePresetClick(preset)}
-                      className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-muted transition-colors"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="p-3">
-                  <Calendar
-                    mode="range"
-                    selected={dateRange}
-                    onSelect={setDateRange}
-                    numberOfMonths={2}
-                    locale={ptBR}
-                    className="pointer-events-auto"
-                  />
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {/* Export Button */}
-          <Button
-            onClick={handleExportExcel}
-            className="btn-gradient text-white rounded-xl font-medium"
-          >
-            <Download size={18} className="mr-2" />
-            Exportar Excel
-          </Button>
-        </div>
+        <Button
+          onClick={handleExportExcel}
+          className="btn-gradient text-white rounded-xl font-medium"
+        >
+          <Download size={18} className="mr-2" />
+          Exportar Excel
+        </Button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Filter Bar */}
+      <CampaignFilterBar
+        filters={filters}
+        onFiltersChange={setFilters}
+        campaigns={reportData?.campaigns || []}
+        creatives={reportData?.creatives || []}
+        segments={reportData?.segments || []}
+        statuses={reportData?.statuses || []}
+        isLoading={isLoading}
+      />
+
+      {/* Summary Cards - Funil por Status */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard
           title="Total de Leads"
-          value={summary?.totalLeads.toLocaleString('pt-BR') || '0'}
+          value={summary.total.toLocaleString('pt-BR')}
           icon={Users}
           gradient="from-blue-500 to-blue-600"
-          isLoading={loadingCrossData}
+          isLoading={isLoading}
+          onClick={() => openLeadsModal('Todos os Leads')}
         />
         <StatCard
-          title="Conversões"
-          value={summary?.pedidoFechadoCount.toLocaleString('pt-BR') || '0'}
-          subtitle={summary?.totalLeads ? `${((summary.pedidoFechadoCount / summary.totalLeads) * 100).toFixed(1)}% taxa` : '0%'}
-          icon={Target}
-          gradient="from-green-500 to-emerald-500"
-          isLoading={loadingCrossData}
+          title="Novos"
+          value={summary.novo.toLocaleString('pt-BR')}
+          subtitle={summary.total > 0 ? `${((summary.novo / summary.total) * 100).toFixed(1)}%` : '0%'}
+          icon={Users}
+          gradient="from-slate-500 to-slate-600"
+          isLoading={isLoading}
+          onClick={() => openLeadsModal('Leads Novos', 'novo')}
         />
         <StatCard
-          title="Receita Total"
-          value={formatCurrency(summary?.totalRevenue || 0)}
-          subtitle="Pedidos fechados"
-          icon={DollarSign}
-          gradient="from-emerald-500 to-teal-500"
-          isLoading={loadingCrossData}
+          title="Catálogo"
+          value={summary.catalogo.toLocaleString('pt-BR')}
+          subtitle={summary.total > 0 ? `${((summary.catalogo / summary.total) * 100).toFixed(1)}%` : '0%'}
+          icon={FileText}
+          gradient="from-amber-500 to-orange-500"
+          isLoading={isLoading}
+          onClick={() => openLeadsModal('Leads em Catálogo', 'catalogo')}
         />
         <StatCard
-          title="Taxa de Conversão"
-          value={summary?.totalLeads 
-            ? `${((summary.pedidoFechadoCount / summary.totalLeads) * 100).toFixed(1)}%`
-            : '0%'
-          }
-          icon={TrendingUp}
-          gradient="from-purple-500 to-pink-500"
-          isLoading={loadingCrossData}
+          title="Layout"
+          value={summary.layout.toLocaleString('pt-BR')}
+          subtitle={summary.total > 0 ? `${((summary.layout / summary.total) * 100).toFixed(1)}%` : '0%'}
+          icon={Palette}
+          gradient="from-violet-500 to-purple-500"
+          isLoading={isLoading}
+          onClick={() => openLeadsModal('Leads em Layout', 'layout')}
+        />
+        <StatCard
+          title="Pedido Fechado"
+          value={summary.fechado.toLocaleString('pt-BR')}
+          subtitle={formatCurrency(summary.revenue)}
+          icon={CheckCircle}
+          gradient="from-emerald-500 to-green-500"
+          isLoading={isLoading}
+          onClick={() => openLeadsModal('Pedidos Fechados', 'fechado')}
         />
       </div>
 
-      {/* Cruzamento por Anúncio/Campanha */}
+      {/* Timeline Chart */}
+      <CampaignTimelineChart
+        data={reportData?.timeline || []}
+        isLoading={isLoading}
+      />
+
+      {/* Cross Data Table */}
       <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-        <div className="flex items-center gap-2 mb-6">
-          <FileSpreadsheet className="h-5 w-5 text-primary" />
-          <span className="text-lg font-semibold text-foreground">Cruzamento por</span>
-          <Select value={crossDataView} onValueChange={(v: 'anuncio' | 'campanha' | 'segmento') => setCrossDataView(v)}>
-            <SelectTrigger className="w-[140px] h-9 border-primary/30 bg-primary/5">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="anuncio">Anúncio</SelectItem>
-              <SelectItem value="campanha">Campanha</SelectItem>
-              <SelectItem value="segmento">Segmento</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            <span className="text-lg font-semibold text-foreground">Cruzamento de Dados</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Agrupar por:</span>
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              <button
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${crossDataView === 'anuncio' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+                onClick={() => setCrossDataView('anuncio')}
+              >
+                Anúncio
+              </button>
+              <button
+                className={`px-3 py-1.5 text-sm font-medium transition-colors border-x border-border ${crossDataView === 'campanha' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+                onClick={() => setCrossDataView('campanha')}
+              >
+                Campanha
+              </button>
+              <button
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${crossDataView === 'segmento' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+                onClick={() => setCrossDataView('segmento')}
+              >
+                Segmento
+              </button>
+            </div>
+          </div>
         </div>
-        <CrossDataTable 
+        <CrossDataTable
           data={crossDataDisplay}
           isLoading={loadingCrossData}
           viewMode={crossDataView}
         />
       </div>
 
-      {/* ROI por Campanha/Segmento */}
-      <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-        <div className="flex items-center gap-2 mb-6">
-          <DollarSign className="h-5 w-5 text-primary" />
-          <span className="text-lg font-semibold text-foreground">ROI por</span>
-          <Select value={roiView} onValueChange={(v: 'campanha' | 'segmento') => setRoiView(v)}>
-            <SelectTrigger className="w-[140px] h-9 border-primary/30 bg-primary/5">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="campanha">Campanha</SelectItem>
-              <SelectItem value="segmento">Segmento</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <ROITable 
-          data={roiDataDisplay}
-          isLoading={roiView === 'segmento' ? loadingSegmentROI : loadingROI}
-          viewMode={roiView}
-        />
-      </div>
-
-      {/* Jornada por Segmento */}
-      <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-        <div className="flex items-center gap-2 mb-6">
-          <GitBranch className="h-5 w-5 text-primary" />
-          <h3 className="text-lg font-semibold text-foreground">Jornada por Segmento</h3>
-          <span className="text-sm text-muted-foreground ml-2">
-            (Campanha → Segmento Marcado → Status)
-          </span>
-        </div>
-        <SegmentJourneyChart 
-          data={journeyData || []}
-          isLoading={loadingJourney}
-        />
-      </div>
+      {/* Leads List Modal */}
+      <LeadsListModal
+        isOpen={leadsModal.isOpen}
+        onClose={() => setLeadsModal({ ...leadsModal, isOpen: false })}
+        title={leadsModal.title}
+        subtitle={leadsModal.subtitle}
+        leads={modalLeads}
+        isLoading={isLoading}
+        onLeadClick={handleLeadClick}
+      />
     </div>
   );
 }
