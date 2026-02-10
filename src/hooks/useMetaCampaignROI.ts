@@ -201,8 +201,8 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         processedContacts.add(contact.id);
 
         const refData = contact.referral_data as any;
-        // Suportar ambos os nomes de campo: source_id (snake_case) e sourceId (camelCase)
-        const sourceId = refData?.source_id || refData?.sourceId;
+        // Suportar: source_id (snake_case), sourceId (camelCase), ou utm_term (redirect)
+        const sourceId = refData?.source_id || refData?.sourceId || refData?.utm_term;
 
         // Encontrar campanha pelo sourceId
         let campaignId: string | null = null;
@@ -218,7 +218,11 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
 
           // Se é campanha desconhecida, criar entrada no map
           if (!campaignId) {
-            campaignIdMap[campaignKey] = { name: 'Campanha Não Identificada', internalId: campaignKey };
+            // Usar utm_campaign como nome se disponível (redirect UTM)
+            const campaignName = refData?.utm_campaign && refData.utm_campaign !== 'meta_ads'
+              ? refData.utm_campaign
+              : 'Campanha Não Identificada';
+            campaignIdMap[campaignKey] = { name: campaignName, internalId: campaignKey };
           }
         }
 
