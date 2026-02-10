@@ -8,6 +8,7 @@ import { useCurrentTenantId } from '@/hooks/useTenant';
 
 export interface TrackedLead {
   id: string;
+  conversation_id: string;
   full_name: string;
   phone: string;
   email: string | null;
@@ -50,27 +51,58 @@ export interface WhatsAppLeadTrackingFilters {
 }
 
 // =====================================================
-// Classification helpers
+// Normalize referral_data fields (snake_case + camelCase)
 // =====================================================
 
-/** Detect if referral_data comes from a CTWA (Click-to-WhatsApp) ad */
-function isCTWAReferral(ref: Record<string, any> | null): boolean {
-  if (!ref) return false;
-  return !!(
-    ref.ctwaClid ||
-    ref.sourceType === 'ad' ||
-    ref.showAdAttribution === true ||
-    ref.conversionSource === 'FB_Ads' ||
-    ref.ctwaPayload ||
-    // If it has sourceId but NO utm fields → it's CTWA
-    (ref.sourceId && !ref.utm_source && !ref.utm_campaign)
-  );
+interface NormalizedReferral {
+  sourceId: string | null;
+  sourceType: string | null;
+  sourceUrl: string | null;
+  ctwaClid: string | null;
+  headline: string | null;
+  adName: string | null;
+  body: string | null;
+  imageUrl: string | null;
+  videoUrl: string | null;
+  thumbnailUrl: string | null;
+  mediaType: string | null;
+  showAdAttribution: boolean | null;
+  conversionSource: string | null;
+  sourceApp: string | null;
+  // UTM fields (redirect)
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+  utmTerm: string | null;
+  // Pattern detection
+  detectedBy: string | null;
 }
 
-/** Detect if referral_data comes from a redirect landing page (UTM-based) */
-function isRedirectReferral(ref: Record<string, any> | null): boolean {
-  if (!ref) return false;
-  return !!(ref.utm_source || ref.utm_campaign || ref.utm_medium);
+function normalizeReferralFields(ref: Record<string, any> | null): NormalizedReferral | null {
+  if (!ref) return null;
+  return {
+    sourceId: ref.sourceId || ref.source_id || null,
+    sourceType: ref.sourceType || ref.source_type || null,
+    sourceUrl: ref.sourceUrl || ref.source_url || null,
+    ctwaClid: ref.ctwaClid || ref.ctwa_clid || null,
+    headline: ref.headline || null,
+    adName: ref.adName || null,
+    body: ref.body || ref.greetingMessageBody || null,
+    imageUrl: ref.imageUrl || ref.image_url || null,
+    videoUrl: ref.videoUrl || ref.video_url || null,
+    thumbnailUrl: ref.thumbnailUrl || ref.thumbnail_url || null,
+    mediaType: ref.mediaType || ref.media_type || null,
+    showAdAttribution: ref.showAdAttribution ?? ref.show_ad_attribution ?? null,
+    conversionSource: ref.conversionSource || ref.conversion_source || null,
+    sourceApp: ref.sourceApp || ref.source_app || null,
+    utmSource: ref.utm_source || null,
+    utmMedium: ref.utm_medium || null,
+    utmCampaign: ref.utm_campaign || null,
+    utmContent: ref.utm_content || null,
+    utmTerm: ref.utm_term || null,
+    detectedBy: ref.detected_by || null,
+  };
 }
 
 // =====================================================
@@ -89,15 +121,21 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
     }> => {
       if (!tenantId) return { leads: [], summary: emptySummary(), creativeBreakdown: [] };
 
-      // All origins that can come from campaign traffic
-      const campaignOrigins = ['meta_ads', 'ctwa_ad', 'redirect', 'linktree', 'site', 'google_ads', 'referral'];
+      // Source of truth: conversations table (both webhooks always write here)
+      const referralSources = ['meta_ads', 'ctwa_ad', 'redirect', 'linktree'];
 
-      // 1. Single query: all contacts from campaign origins in the date range
-      const contactsQuery = supabase
-        .from('contacts')
-        .select('id, full_name, phone, email, origin, origin_campaign, lead_status, created_at, assigned_to, referral_data, profiles:assigned_to(full_name)')
+      // 1. Query conversations with contact data joined
+      const conversationsQuery = supabase
+        .from('conversations')
+        .select(`
+          id, referral_source, referral_data, created_at,
+          contact:contacts!contact_id(
+            id, full_name, phone, email, lead_status, origin, origin_campaign,
+            assigned_to, profiles:assigned_to(full_name)
+          )
+        `)
         .eq('tenant_id', tenantId)
-        .in('origin', campaignOrigins)
+        .in('referral_source', referralSources)
         .gte('created_at', filters.dateFrom)
         .lte('created_at', filters.dateTo + 'T23:59:59')
         .order('created_at', { ascending: false });
@@ -113,15 +151,15 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         .eq('tenant_id', tenantId);
 
       // Execute in parallel
-      const [contactsResult, metaAdsResult] = await Promise.all([
-        contactsQuery,
+      const [conversationsResult, metaAdsResult] = await Promise.all([
+        conversationsQuery,
         metaAdsQuery,
       ]);
 
-      if (contactsResult.error) throw contactsResult.error;
+      if (conversationsResult.error) throw conversationsResult.error;
       if (metaAdsResult.error) throw metaAdsResult.error;
 
-      const allContacts = contactsResult.data || [];
+      const allConversations = conversationsResult.data || [];
       const metaAds = metaAdsResult.data || [];
 
       // Build lookup maps for meta_ads
@@ -129,7 +167,6 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       const adByCreativeId = new Map<string, typeof metaAds[0]>();
       const adByName = new Map<string, typeof metaAds[0]>();
 
-      // If filtering by account, only use ads from that account
       const adsToIndex = filters.metaAccountId
         ? metaAds.filter(ad => (ad.campaign as any)?.meta_account_id === filters.metaAccountId)
         : metaAds;
@@ -140,114 +177,95 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         if (ad.name) adByName.set(ad.name.toLowerCase(), ad);
       });
 
-      // Classify and process each contact
+      // Deduplicate: keep only most recent conversation per contact
+      const latestByContact = new Map<string, typeof allConversations[0]>();
+      for (const conv of allConversations) {
+        const contactId = (conv.contact as any)?.id;
+        if (!contactId) continue;
+        const existing = latestByContact.get(contactId);
+        if (!existing || new Date(conv.created_at) > new Date(existing.created_at)) {
+          latestByContact.set(contactId, conv);
+        }
+      }
+
+      // Process each unique lead
       const ctwaLeads: TrackedLead[] = [];
       const redirectLeads: TrackedLead[] = [];
 
-      for (const contact of allContacts) {
-        const refData = contact.referral_data as Record<string, any> | null;
+      for (const conv of latestByContact.values()) {
+        const contact = conv.contact as any;
+        if (!contact) continue;
+
+        const rawRef = conv.referral_data as Record<string, any> | null;
+        const norm = normalizeReferralFields(rawRef);
+
+        // Skip pattern-detected leads (not real ad referrals)
+        if (norm?.detectedBy) continue;
+
         const assignedProfile = contact.profiles as any;
+        const referralSource = conv.referral_source;
 
-        const isCTWA = isCTWAReferral(refData) ||
-          // Fallback: origin is meta_ads/ctwa_ad and no UTM fields → treat as CTWA
-          (['meta_ads', 'ctwa_ad'].includes(contact.origin || '') && !isRedirectReferral(refData));
-
-        const isRedirect = isRedirectReferral(refData);
+        const isCTWA = referralSource === 'meta_ads' || referralSource === 'ctwa_ad';
+        const isRedirect = referralSource === 'redirect' || referralSource === 'linktree';
 
         if (isCTWA) {
-          // --- CTWA Lead: cross-reference with meta_ads ---
-          const matched = matchCreative(refData, adByAdId, adByCreativeId, adByName);
-
+          // --- CTWA Lead ---
+          const matched = matchCreativeCTWA(norm, adByAdId, adByCreativeId, adByName);
           const adsetData = matched?.adset as any;
           const campaignData = matched?.campaign as any;
 
           ctwaLeads.push({
             id: contact.id,
+            conversation_id: conv.id,
             full_name: contact.full_name,
             phone: contact.phone,
             email: contact.email,
-            origin: contact.origin || 'meta_ads',
+            origin: contact.origin || referralSource || 'meta_ads',
             origin_campaign: contact.origin_campaign,
             lead_status: contact.lead_status,
-            created_at: contact.created_at,
+            created_at: conv.created_at,
             assigned_to: contact.assigned_to,
             assigned_to_name: assignedProfile?.full_name || null,
-            referral_data: refData,
-            ad_name: matched?.name || refData?.adName || null,
+            referral_data: rawRef,
+            ad_name: matched?.name || norm?.adName || null,
             adset_name: adsetData?.name || null,
-            campaign_name: campaignData?.name || refData?.campaignName || null,
-            creative_name: matched?.name || refData?.adName || refData?.headline || null,
+            campaign_name: campaignData?.name || norm?.adName || null,
+            creative_name: matched?.name || norm?.adName || norm?.headline || null,
             source_type: 'ctwa',
             creative_matched: !!matched,
           });
         } else if (isRedirect) {
-          // --- Redirect Lead: use UTM data ---
-          const creativeName = refData?.utm_content || refData?.utm_campaign || null;
-          const campaignName = refData?.utm_campaign || null;
+          // --- Redirect Lead ---
+          // utm_term has the ad_id, utm_content has creative name, utm_medium has adset name
+          const matched = matchCreativeRedirect(norm, adByAdId);
+          const adsetData = matched?.adset as any;
+          const campaignData = matched?.campaign as any;
+
+          // Redirect already carries creative and adset names in UTMs
+          const creativeName = norm?.utmContent || matched?.name || null;
+          const adsetName = norm?.utmMedium || adsetData?.name || null;
+          const campaignName = campaignData?.name || norm?.utmCampaign || null;
 
           redirectLeads.push({
             id: contact.id,
+            conversation_id: conv.id,
             full_name: contact.full_name,
             phone: contact.phone,
             email: contact.email,
-            origin: contact.origin || 'redirect',
+            origin: contact.origin || referralSource || 'redirect',
             origin_campaign: contact.origin_campaign,
             lead_status: contact.lead_status,
-            created_at: contact.created_at,
+            created_at: conv.created_at,
             assigned_to: contact.assigned_to,
             assigned_to_name: assignedProfile?.full_name || null,
-            referral_data: refData,
-            ad_name: null,
-            adset_name: null,
+            referral_data: rawRef,
+            ad_name: matched?.name || null,
+            adset_name: adsetName,
             campaign_name: campaignName,
             creative_name: creativeName,
             source_type: 'redirect',
-            creative_matched: !!creativeName,
+            creative_matched: !!(creativeName || matched),
           });
-        } else {
-          // Ambiguous: origin suggests campaign but no clear referral data
-          // Default to CTWA if origin is meta_ads/ctwa_ad, otherwise redirect
-          if (['meta_ads', 'ctwa_ad'].includes(contact.origin || '')) {
-            ctwaLeads.push({
-              id: contact.id,
-              full_name: contact.full_name,
-              phone: contact.phone,
-              email: contact.email,
-              origin: contact.origin || 'meta_ads',
-              origin_campaign: contact.origin_campaign,
-              lead_status: contact.lead_status,
-              created_at: contact.created_at,
-              assigned_to: contact.assigned_to,
-              assigned_to_name: assignedProfile?.full_name || null,
-              referral_data: refData,
-              ad_name: null,
-              adset_name: null,
-              campaign_name: refData?.campaignName || contact.origin_campaign || null,
-              creative_name: refData?.adName || refData?.headline || null,
-              source_type: 'ctwa',
-              creative_matched: false,
-            });
-          } else {
-            redirectLeads.push({
-              id: contact.id,
-              full_name: contact.full_name,
-              phone: contact.phone,
-              email: contact.email,
-              origin: contact.origin || 'redirect',
-              origin_campaign: contact.origin_campaign,
-              lead_status: contact.lead_status,
-              created_at: contact.created_at,
-              assigned_to: contact.assigned_to,
-              assigned_to_name: assignedProfile?.full_name || null,
-              referral_data: refData,
-              ad_name: null,
-              adset_name: null,
-              campaign_name: contact.origin_campaign || null,
-              creative_name: null,
-              source_type: 'redirect',
-              creative_matched: false,
-            });
-          }
         }
       }
 
@@ -265,12 +283,13 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       leads.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       // Build summary (always based on totals, not filtered)
+      const allLeads = [...ctwaLeads, ...redirectLeads];
       const summary: LeadTrackingSummary = {
-        totalLeads: ctwaLeads.length + redirectLeads.length,
+        totalLeads: allLeads.length,
         ctwaLeads: ctwaLeads.length,
         redirectLeads: redirectLeads.length,
-        matchedCreatives: [...ctwaLeads, ...redirectLeads].filter(l => l.creative_matched).length,
-        unmatchedCreatives: [...ctwaLeads, ...redirectLeads].filter(l => !l.creative_matched).length,
+        matchedCreatives: allLeads.filter(l => l.creative_matched).length,
+        unmatchedCreatives: allLeads.filter(l => !l.creative_matched).length,
       };
 
       // Build creative breakdown from filtered leads
@@ -307,51 +326,65 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
 }
 
 // =====================================================
-// Creative matching
+// Creative matching - CTWA
 // =====================================================
 
-function matchCreative(
-  refData: Record<string, any> | null,
+function matchCreativeCTWA(
+  norm: NormalizedReferral | null,
   adByAdId: Map<string, any>,
   adByCreativeId: Map<string, any>,
   adByName: Map<string, any>,
 ): any | undefined {
-  if (!refData) return undefined;
+  if (!norm) return undefined;
 
-  // Strategy 1: Match sourceId against ad_id
-  if (refData.sourceId) {
-    const match = adByAdId.get(String(refData.sourceId));
+  // Strategy 1: sourceId (ad_id from referral) → meta_ads.ad_id
+  if (norm.sourceId) {
+    const id = String(norm.sourceId);
+    const match = adByAdId.get(id);
     if (match) return match;
 
-    // Also try sourceId against creative_id
-    const creativeMatch = adByCreativeId.get(String(refData.sourceId));
+    // Also try against creative_id
+    const creativeMatch = adByCreativeId.get(id);
     if (creativeMatch) return creativeMatch;
   }
 
-  // Strategy 2: Match by adName (exact, case-insensitive)
-  if (refData.adName) {
-    const match = adByName.get(refData.adName.toLowerCase());
+  // Strategy 2: adName → meta_ads.name (case-insensitive)
+  if (norm.adName) {
+    const match = adByName.get(norm.adName.toLowerCase());
     if (match) return match;
   }
 
-  // Strategy 3: Match by headline against ad name
-  if (refData.headline) {
-    const match = adByName.get(refData.headline.toLowerCase());
+  // Strategy 3: headline → meta_ads.name
+  if (norm.headline) {
+    const match = adByName.get(norm.headline.toLowerCase());
     if (match) return match;
   }
 
-  // Strategy 4: Extract ad_id from sourceUrl
-  if (refData.sourceUrl) {
-    const urlAdId = extractAdIdFromUrl(refData.sourceUrl);
+  // Strategy 4: Extract numeric ID from sourceUrl path
+  if (norm.sourceUrl) {
+    const urlAdId = extractAdIdFromUrl(norm.sourceUrl);
     if (urlAdId) {
       const match = adByAdId.get(urlAdId);
       if (match) return match;
     }
   }
 
-  // Strategy 5: Match ctwaClid against creative_id (some providers use this)
-  if (refData.ctwaClid) {
-    const match = adByCreativeId.get(String(refData.ctwaClid));
+  return undefined;
+}
+
+// =====================================================
+// Creative matching - Redirect
+// =====================================================
+
+function matchCreativeRedirect(
+  norm: NormalizedReferral | null,
+  adByAdId: Map<string, any>,
+): any | undefined {
+  if (!norm) return undefined;
+
+  // utm_term contains the ad_id for redirect leads from Meta Ads
+  if (norm.utmTerm) {
+    const match = adByAdId.get(String(norm.utmTerm));
     if (match) return match;
   }
 
@@ -375,16 +408,14 @@ function emptySummary(): LeadTrackingSummary {
 function extractAdIdFromUrl(url: string): string | null {
   try {
     const urlObj = new URL(url);
-    // Common Facebook ad URL patterns
     const id = urlObj.searchParams.get('id') ||
       urlObj.searchParams.get('fbid') ||
       urlObj.searchParams.get('ad_id');
     if (id) return id;
 
-    // Try to extract numeric ID from path segments
+    // Try to extract numeric ID from path segments (Meta ad IDs are 15+ digits)
     const pathSegments = urlObj.pathname.split('/').filter(Boolean);
     for (const segment of pathSegments) {
-      // Meta ad IDs are long numeric strings (15+ digits)
       if (/^\d{10,}$/.test(segment)) {
         return segment;
       }
