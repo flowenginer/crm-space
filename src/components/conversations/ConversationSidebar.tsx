@@ -209,6 +209,36 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
     staleTime: 60000, // 1 minuto de cache
   });
 
+  // Extract ad source ID from referral data for meta_ads enrichment
+  const referralAdSourceId = useMemo(() => {
+    const rd = conversation?.referral_data || contactReferralData;
+    if (!rd || typeof rd !== 'object') return null;
+    const r = rd as Record<string, any>;
+    // Cloud API uses snake_case, Evolution uses camelCase, Redirect uses utm_term
+    return r.sourceId || r.source_id || r.utm_term || null;
+  }, [conversation?.referral_data, contactReferralData]);
+
+  // Enrich referral with creative/campaign/adset names from meta_ads
+  const { data: matchedMetaAd } = useQuery({
+    queryKey: ['matched-meta-ad', referralAdSourceId],
+    queryFn: async () => {
+      if (!referralAdSourceId) return null;
+      const { data, error } = await supabase
+        .from('meta_ads')
+        .select(`
+          id, ad_id, name, creative_id,
+          adset:meta_adsets(id, adset_id, name),
+          campaign:meta_campaigns(id, campaign_id, name)
+        `)
+        .eq('ad_id', String(referralAdSourceId))
+        .maybeSingle();
+      if (error || !data) return null;
+      return data;
+    },
+    enabled: !!referralAdSourceId,
+    staleTime: 300000,
+  });
+
   // Fetch all tags (with visibility filter) - campos específicos
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
@@ -1976,80 +2006,139 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
         </div>
 
         {/* Meta Ads / Referral Data */}
-        {(contact.origin === 'meta_ads' || contact.referral_data || conversation.referral_data || contactReferralData) && (() => {
-          // Usa dados do contato, da conversa atual, ou de qualquer outra conversa do contato (fallback)
-          const referralData = contact.referral_data || conversation.referral_data || contactReferralData;
+        {(contact.origin === 'meta_ads' || contact.referral_data || conversation.referral_data || contactReferralData || conversation.referral_source) && (() => {
+          // Usa dados da conversa (fonte da verdade), contato, ou fallback
+          const referralData = conversation.referral_data || contact.referral_data || contactReferralData;
           if (!referralData || typeof referralData !== 'object') return null;
-          
+
           const rd = referralData as Record<string, any>;
-          const hasData = rd.adName || rd.headline || rd.sourceUrl || rd.body || rd.campaignName;
+
+          // Normalize fields: handle both snake_case (Cloud API) and camelCase (Evolution API)
+          const adName = rd.adName || null;
+          const headline = rd.headline || null;
+          const body = rd.body || rd.greetingMessageBody || null;
+          const sourceUrl = rd.sourceUrl || rd.source_url || null;
+          const videoUrl = rd.videoUrl || rd.video_url || null;
+          const thumbnailUrl = rd.thumbnailUrl || rd.thumbnail_url || null;
+          const imageUrl = rd.imageUrl || rd.image_url || null;
+          const sourceId = rd.sourceId || rd.source_id || null;
+          const utmContent = rd.utm_content || null;
+          const utmMedium = rd.utm_medium || null;
+          const isRedirect = !!(rd.utm_source || rd.utm_campaign);
+
+          // Enriched data from meta_ads cross-reference
+          const adsetData = matchedMetaAd?.adset as any;
+          const campaignData = matchedMetaAd?.campaign as any;
+          const creativeName = matchedMetaAd?.name || adName || utmContent || null;
+          const adsetName = adsetData?.name || utmMedium || null;
+          const campaignName = campaignData?.name || rd.campaignName || rd.utm_campaign || null;
+
+          const hasData = creativeName || headline || sourceUrl || body || campaignName || sourceId || videoUrl;
           if (!hasData) return null;
-          
+
+          // Best URL for creative link
+          const creativeUrl = sourceUrl && typeof sourceUrl === 'string' && sourceUrl.startsWith('http') ? sourceUrl : null;
+          const creativeVideoUrl = videoUrl && typeof videoUrl === 'string' && videoUrl.startsWith('http') ? videoUrl : null;
+
           return (
             <div className="p-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-b border-border">
               <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <span>📣</span> Origem do Anúncio
               </label>
-              
+
               <div className="space-y-2">
+                {/* Creative Name (enriched from meta_ads) */}
+                {creativeName && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase">Criativo</span>
+                    <span className="text-xs text-foreground font-medium">{creativeName}</span>
+                  </div>
+                )}
+
+                {/* Adset Name (enriched from meta_ads) */}
+                {adsetName && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase">Conjunto de Anúncio</span>
+                    <span className="text-xs text-foreground font-medium">{adsetName}</span>
+                  </div>
+                )}
+
                 {/* Campaign Name */}
-                {rd.campaignName && (
+                {campaignName && (
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[10px] text-muted-foreground uppercase">Campanha</span>
-                    <span className="text-xs text-foreground font-medium">{rd.campaignName}</span>
+                    <span className="text-xs text-foreground font-medium">{campaignName}</span>
                   </div>
                 )}
-                
-                {/* Ad Name */}
-                {rd.adName && (
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-muted-foreground uppercase">Anúncio</span>
-                    <span className="text-xs text-foreground font-medium">{rd.adName}</span>
-                  </div>
-                )}
-                
+
                 {/* Headline */}
-                {rd.headline && (
+                {headline && headline !== creativeName && (
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[10px] text-muted-foreground uppercase">Título</span>
-                    <span className="text-xs text-foreground">{rd.headline}</span>
+                    <span className="text-xs text-foreground">{headline}</span>
                   </div>
                 )}
-                
+
                 {/* Body */}
-                {rd.body && (
+                {body && (
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[10px] text-muted-foreground uppercase">Texto</span>
-                    <span className="text-xs text-muted-foreground line-clamp-3">{rd.body}</span>
+                    <span className="text-xs text-muted-foreground line-clamp-3">{body}</span>
                   </div>
                 )}
-                
-                {/* Source URL - Link to Ad */}
-                {rd.sourceUrl && typeof rd.sourceUrl === 'string' && rd.sourceUrl.startsWith('http') && (
-                  <a 
-                    href={rd.sourceUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 hover:underline mt-1"
-                  >
-                    <span>🔗</span> Ver anúncio original →
-                  </a>
+
+                {/* Source Type Badge */}
+                {(conversation.referral_source || isRedirect) && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase">Tipo</span>
+                    <span className="text-xs">
+                      {isRedirect ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 text-[10px] font-medium">Redirect</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 text-[10px] font-medium">CTWA Ad</span>
+                      )}
+                    </span>
+                  </div>
                 )}
-                
+
+                {/* Links */}
+                <div className="flex flex-col gap-1 mt-1">
+                  {creativeUrl && (
+                    <a
+                      href={creativeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 hover:underline"
+                    >
+                      <span>🔗</span> Ver anúncio original →
+                    </a>
+                  )}
+                  {creativeVideoUrl && creativeVideoUrl !== creativeUrl && (
+                    <a
+                      href={creativeVideoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 hover:underline"
+                    >
+                      <span>🎬</span> Ver vídeo do criativo →
+                    </a>
+                  )}
+                </div>
+
                 {/* Thumbnail (if valid URL) - with fallback to imageUrl */}
                 {(() => {
-                  const validThumbnail = 
-                    (typeof rd.thumbnailUrl === 'string' && rd.thumbnailUrl.startsWith('http')) 
-                      ? rd.thumbnailUrl 
-                      : (typeof rd.imageUrl === 'string' && rd.imageUrl.startsWith('http'))
-                        ? rd.imageUrl 
+                  const validThumbnail =
+                    (typeof thumbnailUrl === 'string' && thumbnailUrl.startsWith('http'))
+                      ? thumbnailUrl
+                      : (typeof imageUrl === 'string' && imageUrl.startsWith('http'))
+                        ? imageUrl
                         : null;
-                  
+
                   return validThumbnail ? (
                     <div className="mt-2">
-                      <img 
-                        src={validThumbnail} 
-                        alt="Ad thumbnail" 
+                      <img
+                        src={validThumbnail}
+                        alt="Ad thumbnail"
                         className="w-full h-auto rounded-lg border border-border max-h-32 object-cover"
                         onError={(e) => (e.currentTarget.style.display = 'none')}
                       />
