@@ -17,7 +17,7 @@ export interface CrossDataRow {
   layoutCount: number;    // 04 - Layout
   pedidoFechadoCount: number; // 07 - Pedido Fechado
   revenue: number;
-  // Novo: indicar a fonte do lead
+  // Indicar a fonte do lead
   source: 'meta_ads' | 'redirect';
 }
 
@@ -109,32 +109,23 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
 
       // Mapa para agregar dados por criativo (combinando ambas as fontes)
       const adData = new Map<string, CrossDataRow>();
-      const contactsByAd = new Map<string, Set<string>>();
+      const processedContacts = new Set<string>();
 
       // ========================================
-      // FONTE 1: Meta Ads (ctwa_ad) - via referral_data.sourceId
+      // FONTE 1: Meta Ads - USANDO contacts.origin (igual ao CRM Dashboard)
       // ========================================
+      // Isso garante que contamos TODOS os leads do Meta Ads, mesmo os que não têm sourceId
       const PAGE_SIZE = 1000;
-      let allConversations: any[] = [];
+      let allContacts: any[] = [];
       let page = 0;
       let hasMore = true;
 
       while (hasMore) {
         let query = supabase
-          .from('conversations')
-          .select(`
-            id,
-            referral_data,
-            created_at,
-            contact:contacts!inner(
-              id,
-              lead_status,
-              negotiated_value
-            )
-          `)
-          .eq('referral_source', 'meta_ads')
+          .from('contacts')
+          .select('id, lead_status, negotiated_value, referral_data, created_at')
           .eq('tenant_id', tenantId)
-          .not('referral_data', 'is', null)
+          .eq('origin', 'meta_ads')
           .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
         if (dateRange?.from) {
@@ -144,48 +135,57 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
           query = query.lte('created_at', toUTCDate(dateRange.to, true));
         }
 
-        const { data: conversations } = await query;
+        const { data: contacts } = await query;
 
-        if (conversations && conversations.length > 0) {
-          allConversations = [...allConversations, ...conversations];
-          hasMore = conversations.length === PAGE_SIZE;
+        if (contacts && contacts.length > 0) {
+          allContacts = [...allContacts, ...contacts];
+          hasMore = contacts.length === PAGE_SIZE;
           page++;
         } else {
           hasMore = false;
         }
       }
 
-      // Processar leads do Meta Ads (ctwa_ad)
-      allConversations.forEach((conv: any) => {
-        const refData = conv.referral_data as any;
-        const sourceId = refData?.sourceId;
+      // Processar leads do Meta Ads
+      allContacts.forEach((contact: any) => {
+        // Evitar duplicatas
+        if (processedContacts.has(contact.id)) return;
+        processedContacts.add(contact.id);
 
-        // Skip leads without sourceId - they don't have direct ad tracking
-        if (!sourceId || sourceId === '') return;
+        const refData = contact.referral_data as any;
+        // Suportar ambos os nomes de campo: source_id (snake_case) e sourceId (camelCase)
+        const sourceId = refData?.source_id || refData?.sourceId;
 
-        const contact = conv.contact;
-        if (!contact) return;
+        // Determinar a chave do criativo
+        // Se tem sourceId válido, usar ele; senão, agrupar como "Não Identificado"
+        let creativeKey: string;
+        let adName: string;
+        let campaignName: string = '';
+        let segmentName: string = 'Sem Segmento';
 
-        // Criar chave única para o criativo
-        const creativeKey = `meta_${sourceId}`;
-
-        if (!contactsByAd.has(creativeKey)) {
-          contactsByAd.set(creativeKey, new Set());
+        if (sourceId && sourceId !== '') {
+          creativeKey = `meta_${sourceId}`;
+          const adInfo = adInfoMap.get(sourceId);
+          if (adInfo) {
+            adName = adInfo.adName;
+            campaignName = adInfo.campaignName;
+            segmentName = adInfo.segmentName;
+          } else {
+            // Tem sourceId mas não encontrou na planilha Meta
+            adName = refData?.headline || `Anúncio ${sourceId.substring(0, 8)}...`;
+          }
+        } else {
+          // Não tem sourceId - agrupar como não identificado
+          creativeKey = 'meta_unknown';
+          adName = 'Anúncio Não Identificado';
         }
-
-        // Only count unique contacts per ad
-        if (contactsByAd.get(creativeKey)!.has(contact.id)) {
-          return;
-        }
-        contactsByAd.get(creativeKey)!.add(contact.id);
 
         if (!adData.has(creativeKey)) {
-          const adInfo = adInfoMap.get(sourceId);
           adData.set(creativeKey, {
-            sourceId,
-            adName: adInfo?.adName || `Anúncio ${sourceId.substring(0, 8)}...`,
-            campaignName: adInfo?.campaignName || '',
-            segmentName: adInfo?.segmentName || 'Sem Segmento',
+            sourceId: sourceId || 'unknown',
+            adName,
+            campaignName,
+            segmentName,
             sourceUrl: refData?.sourceUrl || '',
             headline: refData?.headline || '',
             thumbnailUrl: refData?.thumbnailUrl || refData?.imageUrl || '',
@@ -237,7 +237,8 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
             contact:contacts!inner(
               id,
               lead_status,
-              negotiated_value
+              negotiated_value,
+              origin
             )
           `)
           .eq('tenant_id', tenantId)
@@ -262,10 +263,19 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         }
       }
 
-      // Processar leads do Redirect (UTM)
+      // Processar leads do Redirect
+      // Apenas incluir leads que NÃO são do Meta Ads (para evitar duplicatas)
       allRedirectLogs.forEach((log: any) => {
         const contact = log.contact;
         if (!contact) return;
+
+        // Se o contato já foi processado como Meta Ads, pular
+        if (processedContacts.has(contact.id)) return;
+
+        // Se o contato tem origin = meta_ads, já foi contado acima
+        if (contact.origin === 'meta_ads') return;
+
+        processedContacts.add(contact.id);
 
         // Usar utm_content como nome do criativo
         const utmContent = normalizeUtmContent(log.utm_content);
@@ -277,16 +287,6 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
 
         // Criar chave única para o criativo (redirect)
         const creativeKey = `redirect_${creativeName}`;
-
-        if (!contactsByAd.has(creativeKey)) {
-          contactsByAd.set(creativeKey, new Set());
-        }
-
-        // Only count unique contacts per creative
-        if (contactsByAd.get(creativeKey)!.has(contact.id)) {
-          return;
-        }
-        contactsByAd.get(creativeKey)!.add(contact.id);
 
         if (!adData.has(creativeKey)) {
           // Para redirect, utm_medium é o segmento/público
@@ -343,7 +343,9 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         totalRevenue: rows.reduce((sum, r) => sum + r.revenue, 0)
       };
 
-      console.log(`[useMetaLeadsCrossData] Loaded ${rows.length} creatives: ${rows.filter(r => r.source === 'meta_ads').length} from Meta Ads, ${rows.filter(r => r.source === 'redirect').length} from Redirect`);
+      const metaAdsCount = rows.filter(r => r.source === 'meta_ads').reduce((sum, r) => sum + r.totalLeads, 0);
+      const redirectCount = rows.filter(r => r.source === 'redirect').reduce((sum, r) => sum + r.totalLeads, 0);
+      console.log(`[useMetaLeadsCrossData] Total: ${summary.totalLeads} leads (Meta Ads: ${metaAdsCount}, Redirect: ${redirectCount})`);
 
       return { rows, summary };
     },

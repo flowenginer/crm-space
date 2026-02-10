@@ -200,28 +200,19 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
       };
 
       // ========================================
-      // FONTE 1: Meta Ads (ctwa_ad)
+      // FONTE 1: Meta Ads - USANDO contacts.origin (igual ao CRM Dashboard)
       // ========================================
       const PAGE_SIZE = 1000;
-      let allConversations: any[] = [];
+      let allContacts: any[] = [];
       let page = 0;
       let hasMore = true;
 
       while (hasMore) {
         let query = supabase
-          .from('conversations')
-          .select(`
-            id,
-            referral_data,
-            contact:contacts!inner(
-              id,
-              lead_status,
-              segment_id
-            )
-          `)
-          .eq('referral_source', 'meta_ads')
+          .from('contacts')
+          .select('id, lead_status, segment_id, referral_data, created_at')
           .eq('tenant_id', tenantId)
-          .not('referral_data', 'is', null)
+          .eq('origin', 'meta_ads')
           .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
         if (dateRange?.from) {
@@ -231,11 +222,11 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
           query = query.lte('created_at', toUTCDate(dateRange.to, true));
         }
 
-        const { data: convData } = await query;
+        const { data: contacts } = await query;
 
-        if (convData && convData.length > 0) {
-          allConversations = [...allConversations, ...convData];
-          hasMore = convData.length === PAGE_SIZE;
+        if (contacts && contacts.length > 0) {
+          allContacts = [...allContacts, ...contacts];
+          hasMore = contacts.length === PAGE_SIZE;
           page++;
         } else {
           hasMore = false;
@@ -243,20 +234,32 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
       }
 
       // Processar leads do Meta Ads
-      allConversations.forEach((conv: any) => {
-        const refData = conv.referral_data as any;
-        const sourceId = refData?.sourceId;
-        const contact = conv.contact;
+      allContacts.forEach((contact: any) => {
+        const refData = contact.referral_data as any;
+        // Suportar ambos os nomes de campo: source_id (snake_case) e sourceId (camelCase)
+        const sourceId = refData?.source_id || refData?.sourceId;
 
-        if (!sourceId || !contact) return;
+        // Tentar encontrar o segmento da campanha pelo sourceId
+        let campaignSegmentName: string | null = null;
+        let campaignSegmentId: string | null = null;
 
-        const campaignId = adToCampaignMap[sourceId];
-        if (!campaignId) return;
+        if (sourceId) {
+          const campaignId = adToCampaignMap[sourceId];
+          if (campaignId) {
+            const campaignSegment = campaignToSegment.get(campaignId);
+            if (campaignSegment) {
+              campaignSegmentName = campaignSegment.name;
+              campaignSegmentId = campaignSegment.id;
+            }
+          }
+        }
 
-        const campaignSegment = campaignToSegment.get(campaignId);
-        if (!campaignSegment) return;
+        // Se não encontrou segmento, agrupar como "Sem Segmento"
+        if (!campaignSegmentName) {
+          campaignSegmentName = 'Sem Segmento';
+        }
 
-        processLead(contact, campaignSegment.name, campaignSegment.id);
+        processLead(contact, campaignSegmentName, campaignSegmentId);
       });
 
       // ========================================
@@ -277,7 +280,8 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
             contact:contacts!inner(
               id,
               lead_status,
-              segment_id
+              segment_id,
+              origin
             )
           `)
           .eq('tenant_id', tenantId)
@@ -302,10 +306,15 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
         }
       }
 
-      // Processar leads do Redirect
+      // Processar leads do Redirect (apenas os que NÃO são meta_ads)
       allRedirectLogs.forEach((log: any) => {
         const contact = log.contact;
         if (!contact) return;
+
+        // Se o contato já foi processado como Meta Ads, pular
+        if (processedContacts.has(contact.id)) return;
+        // Se o contato tem origin = meta_ads, já foi contado acima
+        if (contact.origin === 'meta_ads') return;
 
         // Usar utm_medium como segmento da campanha
         const utmMedium = normalizeUtmMedium(log.utm_medium);
