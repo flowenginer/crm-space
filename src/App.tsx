@@ -75,6 +75,7 @@ import RedirectLanding from "@/pages/RedirectLanding";
 import CallManagement from "@/pages/CallManagement";
 import WhatsAppCallback from "@/pages/WhatsAppCallback";
 import BulkLeadUpdate from "@/pages/BulkLeadUpdate";
+import WhatsAppLeadTracking from "@/pages/WhatsAppLeadTracking";
 import ReprocessTriggersPage from "@/pages/admin/ReprocessTriggersPage";
 // Support pages
 import SupportPage from "@/pages/SupportPage";
@@ -269,6 +270,11 @@ const App = () => (
               <Route path="/meta-ads" element={
                 <ProtectedRoute permission="marketing.view">
                   <MetaAdsManager />
+                </ProtectedRoute>
+              } />
+              <Route path="/whatsapp-lead-tracking" element={
+                <ProtectedRoute permission="marketing.view">
+                  <WhatsAppLeadTracking />
                 </ProtectedRoute>
               } />
               <Route path="/automations" element={
