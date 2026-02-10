@@ -45,6 +45,13 @@ const getPresetRanges = () => {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
 
+// Pipeline status colors (gradient from cold to warm)
+const STATUS_PALETTE = [
+  '#94a3b8', '#3b82f6', '#8b5cf6', '#a855f7', '#f59e0b',
+  '#f97316', '#10b981', '#14b8a6', '#22c55e', '#06b6d4',
+  '#ec4899', '#ef4444',
+];
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat('pt-BR').format(value);
 }
@@ -205,6 +212,53 @@ export default function WhatsAppLeadTracking() {
     }
     return result;
   }, [summary]);
+
+  // Status breakdown by creative (stacked bar chart data)
+  const statusByCreativeData = useMemo(() => {
+    // Collect all unique statuses
+    const allStatuses = new Set<string>();
+    leads.forEach(l => {
+      allStatuses.add(l.lead_status || '(Sem status)');
+    });
+
+    // Sort statuses: numeric prefix first, then alphabetically
+    const sortedStatuses = Array.from(allStatuses).sort((a, b) => {
+      const numA = parseInt(a.match(/^(\d+)/)?.[1] || '999');
+      const numB = parseInt(b.match(/^(\d+)/)?.[1] || '999');
+      if (a === 'new' || a === '(Sem status)') return -1;
+      if (b === 'new' || b === '(Sem status)') return 1;
+      if (numA !== numB) return numA - numB;
+      return a.localeCompare(b);
+    });
+
+    // Group leads by creative, count per status
+    const creativeMap = new Map<string, Record<string, number>>();
+    leads.forEach(l => {
+      const creative = l.creative_name || '(Sem criativo)';
+      const status = l.lead_status || '(Sem status)';
+      if (!creativeMap.has(creative)) creativeMap.set(creative, {});
+      const counts = creativeMap.get(creative)!;
+      counts[status] = (counts[status] || 0) + 1;
+    });
+
+    // Top 10 creatives by total leads
+    const creativeTotals = Array.from(creativeMap.entries())
+      .map(([name, counts]) => ({
+        name,
+        total: Object.values(counts).reduce((a, b) => a + b, 0),
+        counts
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+
+    const barData = creativeTotals.map(({ name, counts }) => ({
+      creative: name.length > 25 ? name.substring(0, 25) + '...' : name,
+      fullName: name,
+      ...counts,
+    }));
+
+    return { barData, statuses: sortedStatuses };
+  }, [leads]);
 
   // Sortable header
   const SortableHeader = ({ children, sortKey, className }: {
@@ -564,6 +618,58 @@ export default function WhatsAppLeadTracking() {
           <DashboardGrid
             storageKey="whatsapp-lead-tracking-charts"
             cards={[
+              {
+                id: 'status-by-creative',
+                fullWidth: true,
+                component: (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Jornada do Lead por Criativo</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {isLoading ? (
+                        <Skeleton className="h-[400px] w-full" />
+                      ) : statusByCreativeData.barData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={Math.max(300, statusByCreativeData.barData.length * 45)}>
+                          <BarChart
+                            data={statusByCreativeData.barData}
+                            layout="vertical"
+                            margin={{ left: 20, right: 20 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                            <XAxis type="number" className="text-xs" />
+                            <YAxis
+                              dataKey="creative"
+                              type="category"
+                              className="text-xs"
+                              width={200}
+                              tick={{ fontSize: 11 }}
+                            />
+                            <Tooltip
+                              formatter={(value: number, name: string) => [`${value} leads`, name]}
+                              labelFormatter={(_label: string, payload: any[]) => payload?.[0]?.payload?.fullName || _label}
+                            />
+                            <Legend />
+                            {statusByCreativeData.statuses.map((status, idx) => (
+                              <Bar
+                                key={status}
+                                dataKey={status}
+                                stackId="status"
+                                fill={STATUS_PALETTE[idx % STATUS_PALETTE.length]}
+                                name={status}
+                              />
+                            ))}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                          Nenhum dado disponivel
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ),
+              },
               {
                 id: 'match-status',
                 component: (
