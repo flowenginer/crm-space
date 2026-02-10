@@ -198,11 +198,16 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
         processedContacts.add(contact.id);
 
         const refData = contact.referral_data as any;
-        // Suportar ambos os nomes de campo: source_id (snake_case) e sourceId (camelCase)
-        const sourceId = refData?.source_id || refData?.sourceId;
+        // Suportar: source_id (snake_case), sourceId (camelCase), ou utm_term (redirect)
+        const sourceId = refData?.source_id || refData?.sourceId || refData?.utm_term;
 
-        // Encontrar segmento pelo sourceId
-        const segment = sourceId ? (adToSegmentMap[sourceId] || 'Sem Segmento') : 'Sem Segmento';
+        // Encontrar segmento pelo sourceId, ou usar utm_medium como fallback
+        let segment = 'Sem Segmento';
+        if (sourceId) {
+          segment = adToSegmentMap[sourceId] || refData?.utm_medium || 'Sem Segmento';
+        } else if (refData?.utm_medium) {
+          segment = refData.utm_medium;
+        }
 
         if (!crmDataMap[segment]) {
           crmDataMap[segment] = { leads: 0, conversions: 0, revenue: 0 };

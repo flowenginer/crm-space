@@ -236,8 +236,8 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
       // Processar leads do Meta Ads
       allContacts.forEach((contact: any) => {
         const refData = contact.referral_data as any;
-        // Suportar ambos os nomes de campo: source_id (snake_case) e sourceId (camelCase)
-        const sourceId = refData?.source_id || refData?.sourceId;
+        // Suportar: source_id (snake_case), sourceId (camelCase), ou utm_term (redirect)
+        const sourceId = refData?.source_id || refData?.sourceId || refData?.utm_term;
 
         // Tentar encontrar o segmento da campanha pelo sourceId
         let campaignSegmentName: string | null = null;
@@ -254,9 +254,18 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
           }
         }
 
-        // Se não encontrou segmento, agrupar como "Sem Segmento"
+        // Se não encontrou segmento pela campanha, usar utm_medium como fallback
         if (!campaignSegmentName) {
-          campaignSegmentName = 'Sem Segmento';
+          if (refData?.utm_medium) {
+            campaignSegmentName = refData.utm_medium;
+            // Tentar encontrar segmento correspondente pelo nome
+            const matchedSegment = segments.find(s =>
+              s.name.toLowerCase() === refData.utm_medium.toLowerCase()
+            );
+            campaignSegmentId = matchedSegment?.id || null;
+          } else {
+            campaignSegmentName = 'Sem Segmento';
+          }
         }
 
         processLead(contact, campaignSegmentName, campaignSegmentId);

@@ -153,8 +153,8 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         processedContacts.add(contact.id);
 
         const refData = contact.referral_data as any;
-        // Suportar ambos os nomes de campo: source_id (snake_case) e sourceId (camelCase)
-        const sourceId = refData?.source_id || refData?.sourceId;
+        // Suportar: source_id (snake_case), sourceId (camelCase), ou utm_term (redirect)
+        const sourceId = refData?.source_id || refData?.sourceId || refData?.utm_term;
 
         // Determinar a chave do criativo
         // Se tem sourceId válido, usar ele; senão, agrupar como "Não Identificado"
@@ -172,7 +172,12 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
             segmentName = adInfo.segmentName;
           } else {
             // Tem sourceId mas não encontrou na planilha Meta
-            adName = refData?.headline || `Anúncio ${sourceId.substring(0, 8)}...`;
+            // Usar utm_content como nome do anúncio se disponível (redirect UTM)
+            adName = refData?.utm_content || refData?.headline || `Anúncio ${sourceId.substring(0, 8)}...`;
+            // Usar utm_medium como segmento se disponível (redirect UTM)
+            if (refData?.utm_medium) {
+              segmentName = refData.utm_medium;
+            }
           }
         } else {
           // Não tem sourceId - agrupar como não identificado
