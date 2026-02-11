@@ -235,6 +235,23 @@ export function useApproveContactRequest() {
 
       if (fetchError) throw fetchError;
 
+      // Resolver conversation_id: se null, buscar conversa ativa do contato
+      let conversationId = request.conversation_id;
+      if (!conversationId) {
+        const { data: activeConversation } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_id', request.contact_id)
+          .in('status', ['open', 'pending'])
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (activeConversation) {
+          conversationId = activeConversation.id;
+        }
+      }
+
       // Atualizar status da requisição
       const { error: updateError } = await supabase
         .from('contact_requests')
@@ -248,7 +265,7 @@ export function useApproveContactRequest() {
 
       if (updateError) throw updateError;
 
-      // Se tipo = owner, transferir contato
+      // Se tipo = owner, transferir contato E conversa
       if (request.request_type === 'owner') {
         const { error: contactError } = await supabase
           .from('contacts')
@@ -257,32 +274,33 @@ export function useApproveContactRequest() {
 
         if (contactError) throw contactError;
 
-        // Transferir conversa também, se houver
-        if (request.conversation_id) {
+        if (conversationId) {
           const { error: convError } = await supabase
             .from('conversations')
             .update({ 
               assigned_to: request.requester_id,
+              status: 'open',
               transferred_at: new Date().toISOString(),
               transferred_from: request.current_owner_id,
               transfer_note: `Requisição aprovada: ${responseNote || 'Sem observação'}`
             })
-            .eq('id', request.conversation_id);
+            .eq('id', conversationId);
 
           if (convError) throw convError;
         }
       } else {
-        // Se tipo = attendant, apenas atribuir a conversa
-        if (request.conversation_id) {
+        // Se tipo = attendant, atribuir conversa ao requester
+        if (conversationId) {
           const { error: convError } = await supabase
             .from('conversations')
             .update({ 
               assigned_to: request.requester_id,
+              status: 'open',
               transferred_at: new Date().toISOString(),
               transferred_from: request.current_owner_id,
               transfer_note: `Atendimento temporário: ${responseNote || 'Sem observação'}`
             })
-            .eq('id', request.conversation_id);
+            .eq('id', conversationId);
 
           if (convError) throw convError;
         }
