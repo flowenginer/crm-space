@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -40,18 +41,39 @@ export function ContactRequestModal({
 }: ContactRequestModalProps) {
   const [requestType, setRequestType] = useState<'owner' | 'attendant'>('attendant');
   const [reason, setReason] = useState('');
+  const [resolvedConversationId, setResolvedConversationId] = useState<string | null>(conversationId || null);
 
   const createRequest = useCreateContactRequest();
   const { data: existingRequest, isLoading: checkingExisting } = useExistingRequest(
     open ? contact.id : undefined
   );
 
+  // Auto-find active conversation if none provided
+  useEffect(() => {
+    if (!open || conversationId) {
+      setResolvedConversationId(conversationId || null);
+      return;
+    }
+    const findConversation = async () => {
+      const { data } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_id', contact.id)
+        .in('status', ['open', 'pending'])
+        .order('last_message_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setResolvedConversationId(data?.id || null);
+    };
+    findConversation();
+  }, [open, conversationId, contact.id]);
+
   const handleSubmit = async () => {
     if (!reason.trim()) return;
 
     await createRequest.mutateAsync({
       contact_id: contact.id,
-      conversation_id: conversationId,
+      conversation_id: resolvedConversationId,
       current_owner_id: currentOwner.id,
       request_type: requestType,
       reason: reason.trim(),
