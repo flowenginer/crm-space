@@ -480,6 +480,56 @@ export default function WhatsAppLeadTracking() {
     return { rows, statuses: sortedStatuses, totalFiltered, overallConvRate, totalNew, uniqueSegments };
   }, [dcFilteredLeads]);
 
+  // Data Cross sort state
+  const [dcSortConfig, setDcSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  const sortedDcRows = useMemo(() => {
+    const rows = dcCrossData.rows;
+    if (!dcSortConfig) return rows;
+    return [...rows].sort((a, b) => {
+      const { key, direction } = dcSortConfig;
+      let valA: number | string, valB: number | string;
+      if (key === 'creative') {
+        valA = a.creative.toLowerCase();
+        valB = b.creative.toLowerCase();
+      } else if (key === 'total') {
+        valA = a.total; valB = b.total;
+      } else if (key === 'convRate') {
+        valA = a.convRate; valB = b.convRate;
+      } else {
+        valA = a.counts[key] || 0; valB = b.counts[key] || 0;
+      }
+      if (valA < valB) return direction === 'asc' ? -1 : 1;
+      if (valA > valB) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [dcCrossData.rows, dcSortConfig]);
+
+  const DcSortableHeader = ({ children, sortKey, className }: {
+    children: React.ReactNode;
+    sortKey: string;
+    className?: string;
+  }) => {
+    const isActive = dcSortConfig?.key === sortKey;
+    const direction = isActive ? dcSortConfig.direction : null;
+    const handleSort = () => {
+      if (!isActive) setDcSortConfig({ key: sortKey, direction: 'desc' });
+      else if (direction === 'desc') setDcSortConfig({ key: sortKey, direction: 'asc' });
+      else setDcSortConfig(null);
+    };
+    return (
+      <TableHead className={cn("cursor-pointer hover:bg-muted/50 select-none", className)} onClick={handleSort}>
+        <div className="flex items-center gap-1">
+          {children}
+          <div className="flex flex-col">
+            <ChevronUp className={cn("h-3 w-3 -mb-1", isActive && direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+            <ChevronDown className={cn("h-3 w-3", isActive && direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+          </div>
+        </div>
+      </TableHead>
+    );
+  };
+
   const dcHasFilters = dcStatus !== 'all' || dcCreative !== 'all' || dcAdset !== 'all' || dcCampaign !== 'all' || dcSegment !== 'all';
 
   const dcClearFilters = () => {
@@ -1347,23 +1397,23 @@ export default function WhatsAppLeadTracking() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="sticky left-0 bg-background z-10 min-w-[200px]">Criativo</TableHead>
-                        <TableHead className="text-center font-semibold">Total</TableHead>
+                        <DcSortableHeader sortKey="creative" className="sticky left-0 bg-background z-10 min-w-[200px]">Criativo</DcSortableHeader>
+                        <DcSortableHeader sortKey="total" className="text-center font-semibold">Total</DcSortableHeader>
                         {dcCrossData.statuses.map(status => (
-                          <TableHead key={status} className="text-center min-w-[80px]">
+                          <DcSortableHeader key={status} sortKey={status} className="text-center min-w-[80px]">
                             <span className="text-xs">{status}</span>
-                          </TableHead>
+                          </DcSortableHeader>
                         ))}
-                        <TableHead className="text-center font-semibold min-w-[100px]">
+                        <DcSortableHeader sortKey="convRate" className="text-center font-semibold min-w-[100px]">
                           <span className="flex items-center justify-center gap-1">
                             <TrendingUp className="h-3 w-3" />
                             Avanco
                           </span>
-                        </TableHead>
+                        </DcSortableHeader>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {dcCrossData.rows.map((row, idx) => (
+                      {sortedDcRows.map((row, idx) => (
                         <TableRow key={idx}>
                           <TableCell className="sticky left-0 bg-background z-10 font-medium max-w-[250px]">
                             <span className="truncate block" title={row.creative}>
