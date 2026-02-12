@@ -1,34 +1,31 @@
 
-# Criar pagina de Criativos por Conversao
+# Adicionar ordenacao clicavel na tabela "Criativo x Status do Lead"
 
 ## O que sera feito
-Adicionar uma nova aba **"Conversoes"** no WhatsApp Lead Tracking (ao lado de Criativos, Graficos, Leads e Data Cross) dedicada exclusivamente a mostrar **todos** os criativos que geraram conversoes, com dados completos de faturamento.
+Tornar os cabecalhos da tabela "Criativo x Status do Lead" (aba Data Cross) clicaveis para ordenar os dados de maior para menor e de menor para maior. Ao clicar no nome da coluna, alterna entre ordem decrescente, crescente e sem ordenacao.
 
-## Resultado esperado
-Uma nova aba com:
-- **KPI Cards** no topo: Total de Conversoes, Faturamento Total, Ticket Medio, Criativos com Conversao
-- **Tabela completa** com todos os criativos que geraram conversao, incluindo: Nome do Criativo, Conjunto de Anuncio, Campanha, Quantidade de Conversoes, Faturamento Total, Ticket Medio
-- **Ranking visual** com icones de trofeu para os 3 primeiros
-- Ordenacao por qualquer coluna (conversoes ou faturamento)
-- Busca por nome de criativo
+## Como funciona
+- Clicar uma vez: ordena do maior para o menor
+- Clicar novamente: ordena do menor para o maior
+- Clicar pela terceira vez: volta a ordenacao padrao (por Total decrescente)
+- Setas visuais indicam a direcao ativa (mesmo padrao ja usado em outras tabelas do sistema)
 
 ## Detalhes tecnicos
 
 ### Arquivo: `src/pages/WhatsAppLeadTracking.tsx`
 
-**1. Expandir as tabs** (linha 639): Adicionar `grid-cols-5` e nova tab "Conversoes" com icone `ShoppingBag`.
+**1. Novo state de ordenacao** para a tabela Data Cross (separado do `sortConfig` existente que e usado na aba Leads):
 
-**2. Criar novo `useMemo`** para calcular todos os criativos com conversao (similar ao `top5ConversionCreatives` existente na linha 318, mas sem o `.slice(0, 5)` e com dados adicionais de adset/campanha):
-
-```text
-allConversionCreatives = leads com has_conversion agrupados por creative_name
-  -> para cada: count, total, adset_name, campaign_name, ticket medio
-  -> ordenados por count DESC
+```
+dcSortConfig: { key: string; direction: 'asc' | 'desc' } | null
 ```
 
-**3. Adicionar novo `TabsContent value="conversions"`** com:
-- 4 KPI cards (total conversoes, faturamento, ticket medio, criativos unicos)
-- Tabela completa com todas as colunas e ordenacao
-- Campo de busca para filtrar criativos
+**2. Novo componente `DcSortableHeader`** (ou reutilizar o `SortableHeader` existente com o state correto) que usa `dcSortConfig` em vez de `sortConfig`.
 
-Nenhuma alteracao no hook `useWhatsAppLeadTracking.ts` -- todos os dados necessarios (`has_conversion`, `conversion_total`, `creative_name`, `adset_name`, `campaign_name`) ja existem no `TrackedLead`.
+**3. Aplicar ordenacao nas rows do `dcCrossData`**: Apos construir o array de rows (linha 467-472), aplicar a ordenacao baseada em `dcSortConfig`:
+- key `'creative'`: ordena pelo nome do criativo (alfabetico)
+- key `'total'`: ordena pelo total de leads
+- key de qualquer status (ex: `'new'`, `'01 - Nao respondeu'`): ordena pela contagem daquele status
+- key `'convRate'`: ordena pela taxa de avanco
+
+**4. Substituir os `TableHead` fixos** (linhas 1350-1362) por `DcSortableHeader` clicaveis em todas as colunas: Criativo, Total, cada status dinamico e Avanco.
