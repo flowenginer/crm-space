@@ -1,37 +1,42 @@
 
 
-# Corrigir Linktree no grafico e adicionar Manual
+# Buscar rastreamento de criativo em TODAS as conversas do lead
 
-## Problema
-Os contatos Linktree (769) nao estao aparecendo como fatia separada no grafico. Isso acontece porque esses contatos tem `origin = 'linktree'` no contato, mas nao tem `referral_source = 'linktree'` na conversa. Eles estao sendo capturados pela query de "WhatsApp organico" e contados como WhatsApp.
+## Problema identificado
+A logica atual de deduplicacao (linha 187-196 do hook) mantem apenas a **conversa mais recente** por contato. Quando o lead tem duas conversas — uma antiga com dados de rastreamento (referral_source, referral_data, criativo) e uma nova na API Oficial sem esses dados — o rastreamento se perde completamente.
 
-Alem disso, existem 1106 contatos com `origin = 'manual'` que tambem precisam aparecer no grafico.
+Isso afeta diretamente o "Top 5 Criativos por Conversao" porque o lead pode ter conversao registrada (via custom_fields.conversoes no contato), mas sem criativo associado (porque veio da conversa errada).
 
 ## Solucao
 
-### 1. Hook `useWhatsAppLeadTracking.ts`
+### Alterar a logica de deduplicacao em `useWhatsAppLeadTracking.ts`
 
-**Separar Linktree do WhatsApp organico**: Na secao que processa leads organicos (linha ~308-345), ao inves de agrupar todos como `whatsapp`, verificar `contact.origin`:
-- Se `origin = 'linktree'` -> adicionar a `linktreeLeads` com `source_type: 'linktree'`
-- Se `origin = 'whatsapp'` -> manter como `whatsappLeads`
+Em vez de manter apenas a conversa mais recente, a nova logica vai:
 
-**Adicionar Manual**: Expandir a query organica para incluir `origin = 'manual'`. Criar nova categoria `manualLeads` com `source_type: 'manual'`.
+1. **Agrupar todas as conversas por contato** (em vez de manter so a mais recente)
+2. **Priorizar a conversa que tem referral_data/referral_source** para extrair dados de rastreamento (criativo, campanha, adset)
+3. **Usar a conversa mais recente** para dados operacionais (status, atendente, departamento)
+4. **Combinar ambas** no TrackedLead final
 
-**Atualizar tipos**:
-- `TrackedLead.source_type`: adicionar `'manual'`
-- `CreativeBreakdown.source_type`: adicionar `'manual'`
-- `LeadTrackingSummary`: adicionar `manualLeads`
-- `emptySummary()`: incluir `manualLeads: 0`
+### Logica proposta
 
-### 2. Pagina `WhatsAppLeadTracking.tsx`
+```text
+Para cada contato com multiplas conversas:
+  - conversaRastreada = a que tem referral_source != null (dados de criativo)
+  - conversaRecente = a mais recente (dados operacionais)
+  - Lead final = dados de criativo da conversaRastreada + status/atendente da conversaRecente
+```
 
-**Grafico de pizza**: Adicionar fatia "Manual" com cor distinta (rosa `#ec4899`).
+### Arquivo: `src/hooks/useWhatsAppLeadTracking.ts`
 
-**Stat Cards**: Adicionar card "Leads Manual".
+**Substituir o bloco de deduplicacao (linhas 187-196)** por uma logica que agrupa todas as conversas por contactId em um Map de arrays, e depois no processamento (linha 203+), para cada contato:
+- Encontrar a conversa com `referral_source` preenchido (para dados de rastreamento)
+- Encontrar a conversa mais recente (para lead_status, assigned_to)
+- Usar os dados combinados para construir o TrackedLead
 
-**SourceBadge**: Adicionar badge para tipo `'manual'`.
-
-**Summary default**: Incluir `manualLeads: 0`.
+**Impacto**: Nenhum outro arquivo precisa mudar. A interface TrackedLead ja tem todos os campos necessarios. O grafico de Top 5 e o bar chart vao automaticamente mostrar os criativos corretos porque o `creative_name` vai ser preenchido a partir da conversa que realmente tem o rastreamento.
 
 ## Resultado esperado
-O grafico tera ate 5 fatias: CTWA Ads, Redirect, Linktree, WhatsApp e Manual, cada uma com sua cor e contagem corretas.
+- Leads com conversao que antes apareciam sem criativo agora vao ter o criativo correto associado
+- O "Top 5 Criativos por Conversao" vai refletir dados mais precisos
+- Nenhuma mudanca visual — apenas dados mais completos e corretos
