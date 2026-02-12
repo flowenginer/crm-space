@@ -1093,6 +1093,61 @@ function renderNodeConfig(
       );
     }
       
+    case 'set_variable':
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Campo do contato</Label>
+            <Select 
+              value={(config?.variable as string) || ''}
+              onValueChange={(v) => updateConfig('variable', v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o campo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="full_name">Nome completo</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="origin">Origem</SelectItem>
+                <SelectItem value="lead_status">Status do Lead</SelectItem>
+                <SelectItem value="notes">Observações</SelectItem>
+                <SelectItem value="city">Cidade</SelectItem>
+                <SelectItem value="state">Estado</SelectItem>
+                <SelectItem value="neighborhood">Bairro</SelectItem>
+                <SelectItem value="street">Rua</SelectItem>
+                <SelectItem value="number">Número</SelectItem>
+                <SelectItem value="complement">Complemento</SelectItem>
+                <SelectItem value="zip_code">CEP</SelectItem>
+                <SelectItem value="country">País</SelectItem>
+                <SelectItem value="cpf_cnpj">CPF/CNPJ</SelectItem>
+                <SelectItem value="person_type">Tipo de Pessoa</SelectItem>
+                <SelectItem value="contact_type">Tipo de Contato</SelectItem>
+                <SelectItem value="negotiated_value">Valor Negociado</SelectItem>
+                <SelectItem value="origin_campaign">Campanha de Origem</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Valor</Label>
+            <Input
+              value={(config?.value as string) || ''}
+              onChange={(e) => updateConfig('value', e.target.value)}
+              placeholder="Ex: WhatsApp, {{nome}}, etc."
+            />
+          </div>
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p className="font-medium">Variáveis disponíveis:</p>
+            <p>{'{{nome}}'} - Nome completo</p>
+            <p>{'{{primeiro_nome}}'} - Primeiro nome</p>
+            <p>{'{{telefone}}'} - Telefone</p>
+            <p>{'{{email}}'} - Email</p>
+            <p>{'{{data}}'} - Data atual (DD/MM/YYYY)</p>
+            <p>{'{{hora}}'} - Hora atual (HH:MM)</p>
+            <p>{'{{dia_semana}}'} - Dia da semana</p>
+          </div>
+        </div>
+      );
+
     default:
       return (
         <p className="text-muted-foreground text-sm">
