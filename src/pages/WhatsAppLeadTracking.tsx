@@ -337,21 +337,31 @@ export default function WhatsAppLeadTracking() {
 
   // All criativos por conversão (for dedicated tab)
   const allConversionCreatives = useMemo(() => {
-    const creativeMap = new Map<string, { count: number; total: number; adset_name: string; campaign_name: string }>();
+    const sourceTypeLabels: Record<string, string> = {
+      linktree: 'Linktree',
+      whatsapp: 'WhatsApp Orgânico',
+      manual: 'Manual',
+      redirect: 'Redirect',
+      ctwa: 'CTWA (sem criativo)',
+    };
+    const creativeMap = new Map<string, { count: number; total: number; adset_name: string; campaign_name: string; is_organic: boolean }>();
     leads.forEach(l => {
-      if (!l.has_conversion || !l.creative_name) return;
-      const existing = creativeMap.get(l.creative_name);
+      if (!l.has_conversion) return;
+      const key = l.creative_name || sourceTypeLabels[l.source_type] || l.source_type || 'Desconhecido';
+      const isOrganic = !l.creative_name;
+      const existing = creativeMap.get(key);
       if (existing) {
         existing.count += 1;
         existing.total += l.conversion_total;
         if (!existing.adset_name && l.adset_name) existing.adset_name = l.adset_name;
         if (!existing.campaign_name && l.campaign_name) existing.campaign_name = l.campaign_name;
       } else {
-        creativeMap.set(l.creative_name, {
+        creativeMap.set(key, {
           count: 1,
           total: l.conversion_total,
-          adset_name: l.adset_name || '',
-          campaign_name: l.campaign_name || '',
+          adset_name: isOrganic ? '' : (l.adset_name || ''),
+          campaign_name: isOrganic ? '' : (l.campaign_name || ''),
+          is_organic: isOrganic,
         });
       }
     });
@@ -386,12 +396,15 @@ export default function WhatsAppLeadTracking() {
   }, [leads, convSearchQuery, convSortConfig]);
 
   const convTotals = useMemo(() => {
-    const allWithConv = leads.filter(l => l.has_conversion && l.creative_name);
+    const allWithConv = leads.filter(l => l.has_conversion);
     const totalConversions = allWithConv.length;
     const totalRevenue = allWithConv.reduce((sum, l) => sum + l.conversion_total, 0);
-    const uniqueCreatives = new Set(allWithConv.map(l => l.creative_name)).size;
+    const sourceTypeLabels: Record<string, string> = {
+      linktree: 'Linktree', whatsapp: 'WhatsApp Orgânico', manual: 'Manual', redirect: 'Redirect', ctwa: 'CTWA (sem criativo)',
+    };
+    const uniqueSources = new Set(allWithConv.map(l => l.creative_name || sourceTypeLabels[l.source_type] || l.source_type || 'Desconhecido')).size;
     const avgTicket = totalConversions > 0 ? totalRevenue / totalConversions : 0;
-    return { totalConversions, totalRevenue, uniqueCreatives, avgTicket };
+    return { totalConversions, totalRevenue, uniqueSources, avgTicket };
   }, [leads]);
 
   // Data Cross: filter options
@@ -1508,8 +1521,8 @@ export default function WhatsAppLeadTracking() {
               description="Valor médio por conversão"
             />
             <StatCard
-              title="Criativos com Conversão"
-              value={formatNumber(convTotals.uniqueCreatives)}
+              title="Fontes com Conversão"
+              value={formatNumber(convTotals.uniqueSources)}
               icon={Megaphone}
               color="text-purple-500"
               description="Criativos únicos que converteram"
@@ -1647,7 +1660,14 @@ export default function WhatsAppLeadTracking() {
                               {rankIcon || <span className="text-muted-foreground">{index + 1}</span>}
                             </TableCell>
                             <TableCell className="font-medium max-w-[250px] truncate" title={creative.name}>
-                              {creative.name}
+                              <div className="flex items-center gap-2">
+                                {creative.name}
+                                {creative.is_organic && (
+                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+                                    Orgânico
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className="text-muted-foreground max-w-[180px] truncate" title={creative.adset_name}>
                               {creative.adset_name || '—'}
@@ -1674,7 +1694,7 @@ export default function WhatsAppLeadTracking() {
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  Nenhum criativo com conversão encontrado no período selecionado.
+                  Nenhuma fonte com conversão encontrada no período selecionado.
                 </div>
               )}
             </CardContent>
