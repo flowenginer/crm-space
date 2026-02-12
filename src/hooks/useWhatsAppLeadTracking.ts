@@ -23,7 +23,7 @@ export interface TrackedLead {
   adset_name: string | null;
   campaign_name: string | null;
   creative_name: string | null;
-  source_type: 'ctwa' | 'redirect' | 'linktree' | 'whatsapp';
+  source_type: 'ctwa' | 'redirect' | 'linktree' | 'whatsapp' | 'manual';
   creative_matched: boolean;
   segment_name: string | null;
   has_conversion: boolean;
@@ -36,6 +36,7 @@ export interface LeadTrackingSummary {
   redirectLeads: number;
   linktreeLeads: number;
   whatsappLeads: number;
+  manualLeads: number;
   matchedCreatives: number;
   unmatchedCreatives: number;
 }
@@ -45,7 +46,7 @@ export interface CreativeBreakdown {
   adset_name: string | null;
   campaign_name: string | null;
   lead_count: number;
-  source_type: 'ctwa' | 'redirect' | 'linktree' | 'whatsapp' | 'mixed';
+  source_type: 'ctwa' | 'redirect' | 'linktree' | 'whatsapp' | 'manual' | 'mixed';
 }
 
 export interface WhatsAppLeadTrackingFilters {
@@ -295,10 +296,11 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       const whatsappResult = await whatsappQuery;
       if (whatsappResult.error) throw whatsappResult.error;
 
-      // Filter to only contacts with origin = 'whatsapp' and deduplicate
+      // Separate organic leads by contact.origin
       const whatsappLeads: TrackedLead[] = [];
-      const seenWhatsappContacts = new Set<string>();
-      // Also exclude contacts already tracked via referral sources
+      const manualLeads: TrackedLead[] = [];
+      const seenOrganicContacts = new Set<string>();
+      // Exclude contacts already tracked via referral sources
       const trackedContactIds = new Set([
         ...ctwaLeads.map(l => l.id),
         ...redirectLeads.map(l => l.id),
@@ -308,16 +310,21 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       for (const conv of (whatsappResult.data || [])) {
         const contact = conv.contact as any;
         if (!contact) continue;
-        if (contact.origin !== 'whatsapp' && contact.origin !== 'linktree') continue;
-        if (seenWhatsappContacts.has(contact.id)) continue;
+        const validOrigins = ['whatsapp', 'linktree', 'manual'];
+        if (!validOrigins.includes(contact.origin)) continue;
+        if (seenOrganicContacts.has(contact.id)) continue;
         if (trackedContactIds.has(contact.id)) continue;
-        seenWhatsappContacts.add(contact.id);
+        seenOrganicContacts.add(contact.id);
 
         const assignedProfile = contact.profiles as any;
         const segmentData = contact.segment as any;
         const leadStatus = (conv as any).lead_status || contact.lead_status;
 
-        whatsappLeads.push({
+        const sourceType: 'linktree' | 'whatsapp' | 'manual' =
+          contact.origin === 'linktree' ? 'linktree' :
+          contact.origin === 'manual' ? 'manual' : 'whatsapp';
+
+        const lead: TrackedLead = {
           id: contact.id,
           conversation_id: conv.id,
           full_name: contact.full_name,
@@ -334,14 +341,22 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
           adset_name: null,
           campaign_name: null,
           creative_name: null,
-          source_type: 'whatsapp',
+          source_type: sourceType,
           creative_matched: false,
           segment_name: segmentData?.name || null,
           has_conversion: Array.isArray((contact.custom_fields as any)?.conversoes) && (contact.custom_fields as any).conversoes.length > 0,
           conversion_total: Array.isArray((contact.custom_fields as any)?.conversoes)
             ? (contact.custom_fields as any).conversoes.reduce((sum: number, c: any) => sum + (parseFloat(c.total) || 0), 0)
             : 0,
-        });
+        };
+
+        if (sourceType === 'linktree') {
+          linktreeLeads.push(lead);
+        } else if (sourceType === 'manual') {
+          manualLeads.push(lead);
+        } else {
+          whatsappLeads.push(lead);
+        }
       }
 
       // Apply source type filter
@@ -351,20 +366,21 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       } else if (filters.sourceType === 'redirect') {
         leads = redirectLeads;
       } else {
-        leads = [...ctwaLeads, ...redirectLeads, ...linktreeLeads, ...whatsappLeads];
+        leads = [...ctwaLeads, ...redirectLeads, ...linktreeLeads, ...whatsappLeads, ...manualLeads];
       }
 
       // Sort by created_at desc
       leads.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       // Build summary (always based on totals, not filtered)
-      const allLeads = [...ctwaLeads, ...redirectLeads, ...linktreeLeads, ...whatsappLeads];
+      const allLeads = [...ctwaLeads, ...redirectLeads, ...linktreeLeads, ...whatsappLeads, ...manualLeads];
       const summary: LeadTrackingSummary = {
         totalLeads: allLeads.length,
         ctwaLeads: ctwaLeads.length,
         redirectLeads: redirectLeads.length,
         linktreeLeads: linktreeLeads.length,
         whatsappLeads: whatsappLeads.length,
+        manualLeads: manualLeads.length,
         matchedCreatives: allLeads.filter(l => l.creative_matched).length,
         unmatchedCreatives: allLeads.filter(l => !l.creative_matched).length,
       };
@@ -479,6 +495,7 @@ function emptySummary(): LeadTrackingSummary {
     redirectLeads: 0,
     linktreeLeads: 0,
     whatsappLeads: 0,
+    manualLeads: 0,
     matchedCreatives: 0,
     unmatchedCreatives: 0,
   };
