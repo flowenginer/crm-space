@@ -26,7 +26,8 @@ import { useContactConversationHistory, type ContactConversation } from '@/hooks
 import { useERPEnabled } from '@/hooks/useERPEnabled';
 import { fetchAddressByCEP } from '@/utils/cep';
 import { ConversationHistoryModal } from './ConversationHistoryModal';
-import { Loader2, Search, FileText, Package, DollarSign, CalendarIcon, MessageSquare, Bot, Eye, Target } from 'lucide-react';
+import { Loader2, Search, FileText, Package, DollarSign, CalendarIcon, MessageSquare, Bot, Eye, Target, ShoppingBag, MapPin, User, Hash } from 'lucide-react';
+import { formatCurrency } from '@/lib/format';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -714,6 +715,60 @@ export function ContactFormModal({
                   </div>
                 </div>
               )}
+
+              {/* Conversões - só aparece no modo edit se tiver dados */}
+              {mode === 'edit' && (() => {
+                const conversoes = Array.isArray((initialData?.custom_fields as any)?.conversoes) 
+                  ? (initialData?.custom_fields as any).conversoes 
+                  : [];
+                if (conversoes.length === 0) return null;
+                const totalAcumulado = conversoes.reduce((sum: number, c: any) => sum + (parseFloat(c.total) || 0), 0);
+                return (
+                  <div className="border rounded-lg p-4 space-y-3 bg-muted/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ShoppingBag className="w-4 h-4 text-primary" />
+                        <Label className="font-semibold">Conversões ({conversoes.length})</Label>
+                      </div>
+                      <span className="text-sm font-semibold text-primary">{formatCurrency(totalAcumulado)}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {conversoes.map((conv: any, idx: number) => (
+                        <div key={idx} className="border rounded-md p-3 bg-background space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-3">
+                              <span className="flex items-center gap-1 font-mono font-medium">
+                                <Hash className="w-3 h-3 text-muted-foreground" />
+                                {conv.numero_pedido}
+                              </span>
+                              <span className="font-semibold text-primary">
+                                {formatCurrency(parseFloat(conv.total) || 0)}
+                              </span>
+                            </div>
+                            {conv.vendedor && (
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <User className="w-3 h-3" />
+                                {conv.vendedor}
+                              </span>
+                            )}
+                          </div>
+                          {(conv.cidade || conv.uf) && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <MapPin className="w-3 h-3" />
+                              {[conv.cidade, conv.uf].filter(Boolean).join(' - ')}
+                            </div>
+                          )}
+                          {conv.data && (
+                            <div className="text-xs text-muted-foreground">
+                              {conv.data}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </TabsContent>
 
             {/* History Tab - Always visible in edit mode */}
