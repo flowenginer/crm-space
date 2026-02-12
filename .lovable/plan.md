@@ -1,42 +1,39 @@
 
-# Corrigir exibicao de conversoes no WhatsApp Lead Tracking
 
-## Problema
-O dashboard filtra conversas por `created_at` dentro do range de datas selecionado. Porem, as conversoes sao registradas no contato (`custom_fields.conversoes`) com suas proprias datas, independente da data da conversa. Quando a conversa do lead foi criada fora do range de datas (ex: semanas atras), mas a conversao foi registrada hoje, o lead nao aparece no dashboard.
+# Adicionar todas as origens na aba de Conversoes
 
-## Solucao
-Adicionar uma query complementar que busca **contatos com conversoes dentro do periodo selecionado**, independentemente da data da conversa. Esses contatos serao mesclados com os leads ja encontrados, garantindo que toda conversao no periodo apareca na aba de Conversoes e nos Top 5.
+## O que sera feito
+Atualmente a aba "Conversoes" mostra apenas leads que possuem `creative_name` (anuncios). Leads que converteram via **Linktree**, **WhatsApp organico** ou **Manual** sao ignorados porque nao tem criativo associado.
+
+A mudanca vai incluir essas origens na mesma tabela, agrupando por nome do criativo quando disponivel, ou pelo nome da origem (ex: "Linktree", "WhatsApp Organico", "Manual") quando nao ha criativo.
+
+## Resultado esperado
+- A tabela de Conversoes passa a mostrar **todas** as conversoes, nao apenas as de anuncios
+- Leads sem criativo aparecem agrupados pela origem: "Linktree", "WhatsApp Organico", "Manual", "Redirect"
+- Os KPI cards (Total, Faturamento, Ticket Medio, Fontes unicas) refletem o total real
+- O ranking continua funcionando normalmente
 
 ## Detalhes tecnicos
 
-### Arquivo: `src/hooks/useWhatsAppLeadTracking.ts`
+### Arquivo: `src/pages/WhatsAppLeadTracking.tsx`
 
-**1. Nova query de contatos com conversoes recentes** (apos as queries existentes, ~linha 370):
+**1. Alterar o `allConversionCreatives` (linha 339-386)**:
+- Remover o filtro `!l.creative_name` (linha 342) que exclui leads sem criativo
+- Para leads sem `creative_name`, usar o `source_type` como chave de agrupamento, mapeando para nomes legiveis:
+  - `linktree` -> "Linktree"
+  - `whatsapp` -> "WhatsApp Organico"
+  - `manual` -> "Manual"
+  - `redirect` -> "Redirect"
+  - `ctwa` -> "CTWA (sem criativo)"
+- A coluna "Criativo" passa a mostrar o nome do criativo ou o nome da origem
+- As colunas "Conjunto" e "Campanha" ficam vazias para leads sem criativo
 
-Buscar contatos que possuem `custom_fields.conversoes` nao vazio, cujos IDs ainda nao estao nos leads ja processados. A filtragem por data da conversao sera feita no JS (ja que `conversoes` e um array JSONB).
+**2. Atualizar o `convTotals` (linha 388-395)**:
+- Remover o filtro `&& l.creative_name` para incluir todos os leads com conversao nos totais
+- Renomear "Criativos com Conversao" para "Fontes com Conversao" no KPI card
 
-```text
-Query: contacts com custom_fields != null
-  -> Filtrar no JS: conversoes[] onde data esta dentro do dateFrom/dateTo
-  -> Excluir contatos ja presentes nos leads processados
-  -> Para cada: buscar suas conversations para extrair tracking data
-  -> Adicionar ao array de leads com has_conversion = true
-```
+**3. Na tabela (coluna "Criativo")**:
+- Adicionar um indicador visual (badge ou icone) para diferenciar origens de criativos
+- Ex: leads de Linktree mostram um badge "Linktree" ao lado do nome
 
-**2. Para cada contato com conversao encontrado**:
-- Buscar todas as conversas desse contato (sem filtro de data) para encontrar dados de rastreamento (referral_source, referral_data)
-- Aplicar a mesma logica de priorizar a conversa com tracking
-- Construir o TrackedLead com `has_conversion: true` e `conversion_total` calculado apenas das conversoes dentro do periodo
-
-**3. Mesclar com os leads existentes**:
-- Se o contato ja existe nos leads (porque sua conversa caiu no range), nao duplicar
-- Se nao existe, adicionar como novo lead
-
-**4. Recalcular conversion_total baseado no periodo**:
-- Atualmente, `conversion_total` soma TODAS as conversoes do contato independente de data
-- Ajustar para que, na aba Conversoes, o total reflita apenas as conversoes dentro do periodo selecionado (filtrando pelo campo de data dentro de cada objeto em `custom_fields.conversoes`)
-
-### Impacto
-- Leads com conversoes recentes mas conversas antigas agora aparecerao na aba Conversoes e no Top 5
-- O calculo de faturamento sera mais preciso (baseado no periodo selecionado)
-- Nenhuma mudanca visual, apenas dados mais completos
+Nenhuma alteracao no hook -- todos os dados necessarios (`has_conversion`, `conversion_total`, `source_type`) ja existem no `TrackedLead`.
