@@ -1,31 +1,42 @@
 
-# Adicionar ordenacao clicavel na tabela "Criativo x Status do Lead"
+# Corrigir exibicao de conversoes no WhatsApp Lead Tracking
 
-## O que sera feito
-Tornar os cabecalhos da tabela "Criativo x Status do Lead" (aba Data Cross) clicaveis para ordenar os dados de maior para menor e de menor para maior. Ao clicar no nome da coluna, alterna entre ordem decrescente, crescente e sem ordenacao.
+## Problema
+O dashboard filtra conversas por `created_at` dentro do range de datas selecionado. Porem, as conversoes sao registradas no contato (`custom_fields.conversoes`) com suas proprias datas, independente da data da conversa. Quando a conversa do lead foi criada fora do range de datas (ex: semanas atras), mas a conversao foi registrada hoje, o lead nao aparece no dashboard.
 
-## Como funciona
-- Clicar uma vez: ordena do maior para o menor
-- Clicar novamente: ordena do menor para o maior
-- Clicar pela terceira vez: volta a ordenacao padrao (por Total decrescente)
-- Setas visuais indicam a direcao ativa (mesmo padrao ja usado em outras tabelas do sistema)
+## Solucao
+Adicionar uma query complementar que busca **contatos com conversoes dentro do periodo selecionado**, independentemente da data da conversa. Esses contatos serao mesclados com os leads ja encontrados, garantindo que toda conversao no periodo apareca na aba de Conversoes e nos Top 5.
 
 ## Detalhes tecnicos
 
-### Arquivo: `src/pages/WhatsAppLeadTracking.tsx`
+### Arquivo: `src/hooks/useWhatsAppLeadTracking.ts`
 
-**1. Novo state de ordenacao** para a tabela Data Cross (separado do `sortConfig` existente que e usado na aba Leads):
+**1. Nova query de contatos com conversoes recentes** (apos as queries existentes, ~linha 370):
 
+Buscar contatos que possuem `custom_fields.conversoes` nao vazio, cujos IDs ainda nao estao nos leads ja processados. A filtragem por data da conversao sera feita no JS (ja que `conversoes` e um array JSONB).
+
+```text
+Query: contacts com custom_fields != null
+  -> Filtrar no JS: conversoes[] onde data esta dentro do dateFrom/dateTo
+  -> Excluir contatos ja presentes nos leads processados
+  -> Para cada: buscar suas conversations para extrair tracking data
+  -> Adicionar ao array de leads com has_conversion = true
 ```
-dcSortConfig: { key: string; direction: 'asc' | 'desc' } | null
-```
 
-**2. Novo componente `DcSortableHeader`** (ou reutilizar o `SortableHeader` existente com o state correto) que usa `dcSortConfig` em vez de `sortConfig`.
+**2. Para cada contato com conversao encontrado**:
+- Buscar todas as conversas desse contato (sem filtro de data) para encontrar dados de rastreamento (referral_source, referral_data)
+- Aplicar a mesma logica de priorizar a conversa com tracking
+- Construir o TrackedLead com `has_conversion: true` e `conversion_total` calculado apenas das conversoes dentro do periodo
 
-**3. Aplicar ordenacao nas rows do `dcCrossData`**: Apos construir o array de rows (linha 467-472), aplicar a ordenacao baseada em `dcSortConfig`:
-- key `'creative'`: ordena pelo nome do criativo (alfabetico)
-- key `'total'`: ordena pelo total de leads
-- key de qualquer status (ex: `'new'`, `'01 - Nao respondeu'`): ordena pela contagem daquele status
-- key `'convRate'`: ordena pela taxa de avanco
+**3. Mesclar com os leads existentes**:
+- Se o contato ja existe nos leads (porque sua conversa caiu no range), nao duplicar
+- Se nao existe, adicionar como novo lead
 
-**4. Substituir os `TableHead` fixos** (linhas 1350-1362) por `DcSortableHeader` clicaveis em todas as colunas: Criativo, Total, cada status dinamico e Avanco.
+**4. Recalcular conversion_total baseado no periodo**:
+- Atualmente, `conversion_total` soma TODAS as conversoes do contato independente de data
+- Ajustar para que, na aba Conversoes, o total reflita apenas as conversoes dentro do periodo selecionado (filtrando pelo campo de data dentro de cada objeto em `custom_fields.conversoes`)
+
+### Impacto
+- Leads com conversoes recentes mas conversas antigas agora aparecerao na aba Conversoes e no Top 5
+- O calculo de faturamento sera mais preciso (baseado no periodo selecionado)
+- Nenhuma mudanca visual, apenas dados mais completos
