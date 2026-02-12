@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { formatCurrency } from '@/lib/format';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +13,8 @@ import {
   Users, Target, MessageCircle, Calendar as CalendarIcon,
   ChevronUp, ChevronDown, LinkIcon, Megaphone,
   CheckCircle2, AlertCircle, BarChart3, List,
-  Search, SlidersHorizontal, TrendingUp, X
+  Search, SlidersHorizontal, TrendingUp, X,
+  Trophy, Medal, ShoppingBag
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { format, subDays, startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
@@ -228,6 +230,9 @@ export default function WhatsAppLeadTracking() {
       allStatuses.add(l.lead_status || '(Sem status)');
     });
 
+    // Check if any lead has conversion
+    const hasAnyConversion = leads.some(l => l.has_conversion);
+
     // Sort statuses: numeric prefix first, then alphabetically
     const sortedStatuses = Array.from(allStatuses).sort((a, b) => {
       const numA = parseInt(a.match(/^(\d+)/)?.[1] || '999');
@@ -238,6 +243,11 @@ export default function WhatsAppLeadTracking() {
       return a.localeCompare(b);
     });
 
+    // Add "Conversão" as the last status if any lead has conversion
+    if (hasAnyConversion) {
+      sortedStatuses.push('Conversão');
+    }
+
     // Group leads by creative, count per status
     const creativeMap = new Map<string, Record<string, number>>();
     leads.forEach(l => {
@@ -246,13 +256,17 @@ export default function WhatsAppLeadTracking() {
       if (!creativeMap.has(creative)) creativeMap.set(creative, {});
       const counts = creativeMap.get(creative)!;
       counts[status] = (counts[status] || 0) + 1;
+      // Also count conversions independently
+      if (l.has_conversion) {
+        counts['Conversão'] = (counts['Conversão'] || 0) + 1;
+      }
     });
 
     // Top 10 creatives by total leads
     const creativeTotals = Array.from(creativeMap.entries())
       .map(([name, counts]) => ({
         name,
-        total: Object.values(counts).reduce((a, b) => a + b, 0),
+        total: Object.values(counts).reduce((a, b) => a + b, 0) - (counts['Conversão'] || 0),
         counts
       }))
       .sort((a, b) => b.total - a.total)
@@ -265,6 +279,25 @@ export default function WhatsAppLeadTracking() {
     }));
 
     return { barData, statuses: sortedStatuses };
+  }, [leads]);
+
+  // Top 5 criativos por conversão
+  const top5ConversionCreatives = useMemo(() => {
+    const creativeMap = new Map<string, { count: number; total: number }>();
+    leads.forEach(l => {
+      if (!l.has_conversion || !l.creative_name) return;
+      const existing = creativeMap.get(l.creative_name);
+      if (existing) {
+        existing.count += 1;
+        existing.total += l.conversion_total;
+      } else {
+        creativeMap.set(l.creative_name, { count: 1, total: l.conversion_total });
+      }
+    });
+    return Array.from(creativeMap.entries())
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
   }, [leads]);
 
   // Data Cross: filter options
@@ -762,7 +795,7 @@ export default function WhatsAppLeadTracking() {
                                 key={status}
                                 dataKey={status}
                                 stackId="status"
-                                fill={STATUS_PALETTE[idx % STATUS_PALETTE.length]}
+                                fill={status === 'Conversão' ? '#22c55e' : STATUS_PALETTE[idx % STATUS_PALETTE.length]}
                                 name={status}
                               />
                             ))}
@@ -811,6 +844,56 @@ export default function WhatsAppLeadTracking() {
                       ) : (
                         <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                           Nenhum dado disponivel
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ),
+              },
+              {
+                id: 'top5-conversions',
+                component: (
+                  <Card className="h-full">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Trophy className="h-5 w-5 text-amber-500" />
+                        Top 5 Criativos por Conversão
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {isLoading ? (
+                        <Skeleton className="h-[300px] w-full" />
+                      ) : top5ConversionCreatives.length > 0 ? (
+                        <div className="space-y-3">
+                          {top5ConversionCreatives.map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-3 py-2 px-3 rounded-md bg-muted/50">
+                              <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+                                style={{
+                                  backgroundColor: idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : 'transparent',
+                                  color: idx < 3 ? 'white' : 'inherit',
+                                }}>
+                                {idx < 3 ? (
+                                  <Trophy className="h-4 w-4" />
+                                ) : (
+                                  <span>{idx + 1}º</span>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate" title={item.name}>{item.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {item.count} {item.count === 1 ? 'conversão' : 'conversões'} · {formatCurrency(item.total)}
+                                </p>
+                              </div>
+                              <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                <ShoppingBag className="h-3 w-3 mr-1" />
+                                {formatCurrency(item.total)}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                          Nenhuma conversão registrada no período
                         </div>
                       )}
                     </CardContent>

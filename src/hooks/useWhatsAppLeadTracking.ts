@@ -26,6 +26,8 @@ export interface TrackedLead {
   source_type: 'ctwa' | 'redirect';
   creative_matched: boolean;
   segment_name: string | null;
+  has_conversion: boolean;
+  conversion_total: number;
 }
 
 export interface LeadTrackingSummary {
@@ -132,7 +134,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
           id, referral_source, referral_data, created_at, lead_status,
           contact:contacts!contact_id(
             id, full_name, phone, email, lead_status, origin, origin_campaign,
-            assigned_to, profiles:assigned_to(full_name),
+            assigned_to, custom_fields, profiles:assigned_to(full_name),
             segment:segments!segment_id(name)
           )
         `)
@@ -238,6 +240,10 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
             source_type: 'ctwa',
             creative_matched: !!matched,
             segment_name: segmentData?.name || null,
+            has_conversion: Array.isArray((contact.custom_fields as any)?.conversoes) && (contact.custom_fields as any).conversoes.length > 0,
+            conversion_total: Array.isArray((contact.custom_fields as any)?.conversoes)
+              ? (contact.custom_fields as any).conversoes.reduce((sum: number, c: any) => sum + (parseFloat(c.total) || 0), 0)
+              : 0,
           });
         } else if (isRedirect) {
           // --- Redirect Lead ---
@@ -271,6 +277,10 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
             source_type: 'redirect',
             creative_matched: !!(creativeName || matched),
             segment_name: segmentData?.name || null,
+            has_conversion: Array.isArray((contact.custom_fields as any)?.conversoes) && (contact.custom_fields as any).conversoes.length > 0,
+            conversion_total: Array.isArray((contact.custom_fields as any)?.conversoes)
+              ? (contact.custom_fields as any).conversoes.reduce((sum: number, c: any) => sum + (parseFloat(c.total) || 0), 0)
+              : 0,
           });
         }
       }
