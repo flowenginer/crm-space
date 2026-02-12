@@ -153,6 +153,8 @@ export default function WhatsAppLeadTracking() {
   const [sourceFilter, setSourceFilter] = useState<'all' | 'ctwa' | 'redirect'>('all');
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [convSearchQuery, setConvSearchQuery] = useState('');
+  const [convSortConfig, setConvSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'count', direction: 'desc' });
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
   // Data Cross filters
@@ -331,6 +333,65 @@ export default function WhatsAppLeadTracking() {
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
+  }, [leads]);
+
+  // All criativos por conversão (for dedicated tab)
+  const allConversionCreatives = useMemo(() => {
+    const creativeMap = new Map<string, { count: number; total: number; adset_name: string; campaign_name: string }>();
+    leads.forEach(l => {
+      if (!l.has_conversion || !l.creative_name) return;
+      const existing = creativeMap.get(l.creative_name);
+      if (existing) {
+        existing.count += 1;
+        existing.total += l.conversion_total;
+        if (!existing.adset_name && l.adset_name) existing.adset_name = l.adset_name;
+        if (!existing.campaign_name && l.campaign_name) existing.campaign_name = l.campaign_name;
+      } else {
+        creativeMap.set(l.creative_name, {
+          count: 1,
+          total: l.conversion_total,
+          adset_name: l.adset_name || '',
+          campaign_name: l.campaign_name || '',
+        });
+      }
+    });
+    let result = Array.from(creativeMap.entries())
+      .map(([name, data]) => ({ name, ...data, ticket: data.count > 0 ? data.total / data.count : 0 }));
+
+    // Filter by search
+    if (convSearchQuery) {
+      const q = convSearchQuery.toLowerCase();
+      result = result.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        c.adset_name.toLowerCase().includes(q) ||
+        c.campaign_name.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      const dir = convSortConfig.direction === 'asc' ? 1 : -1;
+      switch (convSortConfig.key) {
+        case 'name': return a.name.localeCompare(b.name) * dir;
+        case 'adset_name': return a.adset_name.localeCompare(b.adset_name) * dir;
+        case 'campaign_name': return a.campaign_name.localeCompare(b.campaign_name) * dir;
+        case 'count': return (a.count - b.count) * dir;
+        case 'total': return (a.total - b.total) * dir;
+        case 'ticket': return (a.ticket - b.ticket) * dir;
+        default: return (b.count - a.count);
+      }
+    });
+
+    return result;
+  }, [leads, convSearchQuery, convSortConfig]);
+
+  const convTotals = useMemo(() => {
+    const allWithConv = leads.filter(l => l.has_conversion && l.creative_name);
+    const totalConversions = allWithConv.length;
+    const totalRevenue = allWithConv.reduce((sum, l) => sum + l.conversion_total, 0);
+    const uniqueCreatives = new Set(allWithConv.map(l => l.creative_name)).size;
+    const avgTicket = totalConversions > 0 ? totalRevenue / totalConversions : 0;
+    return { totalConversions, totalRevenue, uniqueCreatives, avgTicket };
   }, [leads]);
 
   // Data Cross: filter options
@@ -636,7 +697,7 @@ export default function WhatsAppLeadTracking() {
 
       {/* Tabs: Charts / Creative Breakdown / Leads List */}
       <Tabs defaultValue="creatives" className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4">
+        <TabsList className="grid w-full max-w-3xl grid-cols-5">
           <TabsTrigger value="creatives" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             Criativos
@@ -644,6 +705,10 @@ export default function WhatsAppLeadTracking() {
           <TabsTrigger value="charts" className="flex items-center gap-2">
             <Target className="h-4 w-4" />
             Graficos
+          </TabsTrigger>
+          <TabsTrigger value="conversions" className="flex items-center gap-2">
+            <ShoppingBag className="h-4 w-4" />
+            Conversões
           </TabsTrigger>
           <TabsTrigger value="leads" className="flex items-center gap-2">
             <List className="h-4 w-4" />
@@ -1367,6 +1432,205 @@ export default function WhatsAppLeadTracking() {
             </CardContent>
           </Card>
         </TabsContent>
+        {/* Tab: Conversões */}
+        <TabsContent value="conversions" className="mt-6 space-y-6">
+          {/* KPI Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
+            <StatCard
+              title="Total de Conversões"
+              value={formatNumber(convTotals.totalConversions)}
+              icon={ShoppingBag}
+              color="text-green-500"
+              description="Leads com conversão e criativo"
+            />
+            <StatCard
+              title="Faturamento Total"
+              value={formatCurrency(convTotals.totalRevenue)}
+              icon={TrendingUp}
+              color="text-emerald-500"
+              description="Receita total dos criativos"
+            />
+            <StatCard
+              title="Ticket Médio"
+              value={formatCurrency(convTotals.avgTicket)}
+              icon={Target}
+              color="text-blue-500"
+              description="Valor médio por conversão"
+            />
+            <StatCard
+              title="Criativos com Conversão"
+              value={formatNumber(convTotals.uniqueCreatives)}
+              icon={Megaphone}
+              color="text-purple-500"
+              description="Criativos únicos que converteram"
+            />
+          </div>
+
+          {/* Search */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="h-5 w-5 text-yellow-500" />
+                  Todos os Criativos por Conversão
+                </CardTitle>
+                <div className="relative w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar criativo..."
+                    value={convSearchQuery}
+                    onChange={e => setConvSearchQuery(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {allConversionCreatives.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'name',
+                            direction: prev.key === 'name' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center gap-1">
+                            Criativo
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'name' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'name' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'adset_name',
+                            direction: prev.key === 'adset_name' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center gap-1">
+                            Conjunto
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'adset_name' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'adset_name' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'campaign_name',
+                            direction: prev.key === 'campaign_name' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center gap-1">
+                            Campanha
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'campaign_name' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'campaign_name' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none text-center"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'count',
+                            direction: prev.key === 'count' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            Conversões
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'count' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'count' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none text-right"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'total',
+                            direction: prev.key === 'total' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Faturamento
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'total' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'total' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none text-right"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'ticket',
+                            direction: prev.key === 'ticket' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Ticket Médio
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'ticket' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'ticket' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {allConversionCreatives.map((creative, index) => {
+                        // Use unsorted index for ranking (find position in original sorted-by-count list)
+                        const rankIcon = index === 0 ? <Trophy className="h-5 w-5 text-yellow-500" /> :
+                          index === 1 ? <Medal className="h-5 w-5 text-gray-400" /> :
+                          index === 2 ? <Medal className="h-5 w-5 text-amber-700" /> : null;
+
+                        return (
+                          <TableRow key={creative.name}>
+                            <TableCell className="font-medium">
+                              {rankIcon || <span className="text-muted-foreground">{index + 1}</span>}
+                            </TableCell>
+                            <TableCell className="font-medium max-w-[250px] truncate" title={creative.name}>
+                              {creative.name}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground max-w-[180px] truncate" title={creative.adset_name}>
+                              {creative.adset_name || '—'}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground max-w-[180px] truncate" title={creative.campaign_name}>
+                              {creative.campaign_name || '—'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                                {creative.count}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-green-600">
+                              {formatCurrency(creative.total)}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground">
+                              {formatCurrency(creative.ticket)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhum criativo com conversão encontrado no período selecionado.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
     </div>
   );
