@@ -1,97 +1,56 @@
 
+# Visualizacao de Conversoes na aba CRM do Contato
 
-# Correção: Requisições de Contato não Transferem Acesso
+## O que sera feito
 
-## Problema Identificado
+Adicionar uma secao "Conversoes" na aba CRM do modal de Editar Contato, exibindo os dados de vendas registrados via n8n no campo `custom_fields.conversoes`.
 
-Ao aprovar a requisição do Eduardo, **nada acontece**. Dois bugs combinados:
+## Onde aparece
 
-1. O `conversation_id` chega como `null` na requisição (o modal permite enviar sem conversa vinculada)
-2. O tipo "Atendente Atual" (attendant) só atualiza a conversa, mas sem `conversation_id`, a aprovação é um no-op total
+Na aba **CRM** do modal de edicao do contato, logo abaixo da secao "Dados de Aquisicao (UTMs)". Sera uma secao somente-leitura com visual de lista/cards.
 
-Dados reais confirmam: as 2 requisições aprovadas do Eduardo para "Jesse Miguel" têm `conversation_id: null`, e o contato continua atribuído ao dono original.
+## O que sera exibido
 
-## Solução
+Cada conversao mostrara:
+- Numero do pedido
+- Valor total (formatado em R$)
+- Cidade / UF
+- Vendedor
+- Data (se disponivel)
 
-### 1. Buscar conversa automaticamente na aprovação
-
-**Arquivo:** `src/hooks/useContactRequests.ts`
-
-Na funcao `useApproveContactRequest`, depois de buscar a requisicao, se `conversation_id` for null, buscar a conversa ativa (status = open) do contato automaticamente:
-
-```text
-// Pseudocode:
-Se request.conversation_id == null:
-  Buscar conversa com contact_id = request.contact_id E status = 'open'
-  Se encontrar, usar esse conversation_id
-```
-
-### 2. Para tipo "attendant" sem conversa, criar shared_conversations
-
-Se tipo = attendant e existe conversa, alem de reatribuir o `assigned_to` da conversa, criar um registro em `shared_conversations` para que Eduardo tenha visibilidade. Isso garante acesso mesmo sem ser o "dono" do contato.
-
-### 3. Para tipo "owner", garantir que o contato E a conversa sejam transferidos
-
-Mesmo quando `conversation_id` chega null, a conversa ativa sera encontrada e transferida junto com o contato.
-
-### 4. Ajustar o modal de criacao (preventivo)
-
-**Arquivo:** `src/components/conversations/ContactRequestModal.tsx`
-
-Quando o modal for aberto a partir de um contexto sem conversa, buscar a conversa ativa do contato e inclui-la automaticamente na requisicao.
+Inclui tambem um resumo no topo da secao com:
+- Total de conversoes
+- Valor total acumulado
 
 ## Detalhes Tecnicos
 
-### Alteracao principal em `useContactRequests.ts` - funcao `useApproveContactRequest`:
+### Arquivo: `src/components/contacts/ContactFormModal.tsx`
 
-```typescript
-// Apos buscar a requisicao (linha 230-234), adicionar:
-let conversationId = request.conversation_id;
+1. Ler `initialData?.custom_fields?.conversoes` (array de objetos JSON)
+2. Adicionar secao abaixo dos UTMs (dentro da TabsContent "crm"), apenas no modo `edit`
+3. Cada item renderizado como um card compacto com as informacoes do pedido
+4. Secao so aparece se houver pelo menos 1 conversao registrada
+5. Usar `formatCurrency` de `src/lib/format.ts` para formatar valores
+6. Usar icones do lucide-react (ShoppingBag, MapPin, User, Hash) para melhorar a leitura
 
-// Se nao tem conversation_id, buscar conversa ativa do contato
-if (!conversationId) {
-  const { data: activeConversation } = await supabase
-    .from('conversations')
-    .select('id')
-    .eq('contact_id', request.contact_id)
-    .eq('status', 'open')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+### Estrutura visual
 
-  if (activeConversation) {
-    conversationId = activeConversation.id;
-  }
-}
+```text
++------------------------------------------+
+| ShoppingBag  Conversoes (3)              |
+|  Total acumulado: R$ 8.500,00            |
++------------------------------------------+
+| #13751  |  R$ 3.742,50  |  Diego        |
+| Rio de Janeiro - RJ                      |
++------------------------------------------+
+| #13820  |  R$ 1.500,00  |  Eduardo      |
+| Sao Paulo - SP                           |
++------------------------------------------+
+| #14002  |  R$ 3.257,50  |  Diego        |
+| Belo Horizonte - MG                      |
++------------------------------------------+
 ```
 
-Depois, usar `conversationId` (a variavel local) em vez de `request.conversation_id` em todas as operacoes de transferencia.
+### Nenhuma alteracao de banco de dados necessaria
 
-### Para tipo "attendant", alem de atribuir conversa, criar shared_conversation:
-
-```typescript
-if (request.request_type === 'attendant' && conversationId) {
-  // Atribuir conversa ao requester
-  await supabase.from('conversations').update({
-    assigned_to: request.requester_id,
-    // ...
-  }).eq('id', conversationId);
-
-  // Criar acesso compartilhado como fallback
-  await supabase.from('shared_conversations').insert({
-    conversation_id: conversationId,
-    shared_by: user.id,
-    shared_with: request.requester_id,
-  });
-}
-```
-
-## Arquivos Modificados
-
-1. `src/hooks/useContactRequests.ts` - Corrigir logica de aprovacao
-2. `src/components/conversations/ContactRequestModal.tsx` - Vincular conversa ativa ao criar requisicao
-
-## Complexidade
-
-Media-baixa. Alteracoes em 2 arquivos, sem migracao SQL.
-
+Os dados ja estao no campo `custom_fields` (JSONB) da tabela `contacts`.
