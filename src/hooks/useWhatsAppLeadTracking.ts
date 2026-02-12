@@ -368,6 +368,175 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         }
       }
 
+      // =====================================================
+      // Complementary query: contacts with conversions in the period
+      // whose conversations may have been created outside the date range
+      // =====================================================
+      const allProcessedContactIds = new Set([
+        ...ctwaLeads.map(l => l.id),
+        ...redirectLeads.map(l => l.id),
+        ...linktreeLeads.map(l => l.id),
+        ...whatsappLeads.map(l => l.id),
+        ...manualLeads.map(l => l.id),
+      ]);
+
+      const dateFromTime = new Date(filters.dateFrom).getTime();
+      const dateToTime = new Date(filters.dateTo + 'T23:59:59').getTime();
+
+      // Helper to filter conversions within the selected period
+      const getConversionsInPeriod = (customFields: any): any[] => {
+        if (!customFields || !Array.isArray(customFields.conversoes)) return [];
+        return customFields.conversoes.filter((c: any) => {
+          if (!c.data) return false;
+          const convDate = new Date(c.data).getTime();
+          return convDate >= dateFromTime && convDate <= dateToTime;
+        });
+      };
+
+      // Fetch contacts that have custom_fields with conversions
+      const { data: contactsWithConversions } = await supabase
+        .from('contacts')
+        .select(`
+          id, full_name, phone, email, lead_status, origin, origin_campaign,
+          assigned_to, custom_fields, profiles:assigned_to(full_name),
+          segment:segments!segment_id(name)
+        `)
+        .eq('tenant_id', tenantId)
+        .not('custom_fields', 'is', null);
+
+      const conversionLeads: TrackedLead[] = [];
+
+      if (contactsWithConversions) {
+        // Filter contacts with conversions in the period that aren't already tracked
+        const contactsToProcess = contactsWithConversions.filter(contact => {
+          if (allProcessedContactIds.has(contact.id)) return false;
+          const conversionsInPeriod = getConversionsInPeriod(contact.custom_fields);
+          return conversionsInPeriod.length > 0;
+        });
+
+        if (contactsToProcess.length > 0) {
+          // Fetch conversations for these contacts to get tracking data
+          const contactIds = contactsToProcess.map(c => c.id);
+          const { data: convData } = await supabase
+            .from('conversations')
+            .select('id, referral_source, referral_data, created_at, lead_status, contact_id')
+            .eq('tenant_id', tenantId)
+            .in('contact_id', contactIds)
+            .order('created_at', { ascending: false });
+
+          const convByContact = new Map<string, typeof convData>();
+          for (const conv of (convData || [])) {
+            const arr = convByContact.get(conv.contact_id) || [];
+            arr.push(conv);
+            convByContact.set(conv.contact_id, arr);
+          }
+
+          for (const contact of contactsToProcess) {
+            const contactConvs = convByContact.get(contact.id) || [];
+            const trackedConv = contactConvs.find(c => c.referral_source) || contactConvs[0];
+            const recentConv = contactConvs[0];
+
+            const rawRef = trackedConv?.referral_data as Record<string, any> | null;
+            const norm = normalizeReferralFields(rawRef);
+            if (norm?.detectedBy) continue;
+
+            const assignedProfile = (contact as any).profiles as any;
+            const segmentData = (contact as any).segment as any;
+            const leadStatus = recentConv?.lead_status || contact.lead_status;
+            const referralSource = trackedConv?.referral_source;
+
+            const conversionsInPeriod = getConversionsInPeriod(contact.custom_fields);
+            const conversionTotal = conversionsInPeriod.reduce((sum: number, c: any) => sum + (parseFloat(c.total) || 0), 0);
+
+            // Determine source type
+            let sourceType: TrackedLead['source_type'] = 'whatsapp';
+            if (referralSource === 'meta_ads' || referralSource === 'ctwa_ad') sourceType = 'ctwa';
+            else if (referralSource === 'redirect') sourceType = 'redirect';
+            else if (referralSource === 'linktree' || contact.origin === 'linktree') sourceType = 'linktree';
+            else if (contact.origin === 'manual') sourceType = 'manual';
+
+            // Match creative if CTWA or redirect
+            let adName: string | null = null;
+            let adsetName: string | null = null;
+            let campaignName: string | null = null;
+            let creativeName: string | null = null;
+            let creativeMatched = false;
+
+            if (sourceType === 'ctwa' && norm) {
+              const matched = matchCreativeCTWA(norm, adByAdId, adByCreativeId, adByName);
+              const adsetData = matched?.adset as any;
+              const campaignData = matched?.campaign as any;
+              adName = matched?.name || norm.adName || null;
+              adsetName = adsetData?.name || null;
+              campaignName = campaignData?.name || norm.adName || null;
+              creativeName = matched?.name || norm.adName || norm.headline || null;
+              creativeMatched = !!matched;
+            } else if (sourceType === 'redirect' && norm) {
+              const matched = matchCreativeRedirect(norm, adByAdId);
+              const adsetData = matched?.adset as any;
+              const campaignData = matched?.campaign as any;
+              creativeName = norm.utmContent || matched?.name || null;
+              adsetName = norm.utmMedium || adsetData?.name || null;
+              campaignName = campaignData?.name || norm.utmCampaign || null;
+              adName = matched?.name || null;
+              creativeMatched = !!(creativeName || matched);
+            }
+
+            const lead: TrackedLead = {
+              id: contact.id,
+              conversation_id: recentConv?.id || '',
+              full_name: contact.full_name,
+              phone: contact.phone,
+              email: contact.email,
+              origin: contact.origin || referralSource || sourceType,
+              origin_campaign: contact.origin_campaign,
+              lead_status: leadStatus,
+              created_at: recentConv?.created_at || '',
+              assigned_to: contact.assigned_to,
+              assigned_to_name: assignedProfile?.full_name || null,
+              referral_data: rawRef,
+              ad_name: adName,
+              adset_name: adsetName,
+              campaign_name: campaignName,
+              creative_name: creativeName,
+              source_type: sourceType,
+              creative_matched: creativeMatched,
+              segment_name: segmentData?.name || null,
+              has_conversion: true,
+              conversion_total: conversionTotal,
+            };
+
+            conversionLeads.push(lead);
+
+            // Add to respective source arrays for summary counts
+            if (sourceType === 'ctwa') ctwaLeads.push(lead);
+            else if (sourceType === 'redirect') redirectLeads.push(lead);
+            else if (sourceType === 'linktree') linktreeLeads.push(lead);
+            else if (sourceType === 'manual') manualLeads.push(lead);
+            else whatsappLeads.push(lead);
+          }
+        }
+      }
+
+      // Recalculate conversion_total for ALL leads to only count conversions in the period
+      const allLeadArrays = [ctwaLeads, redirectLeads, linktreeLeads, whatsappLeads, manualLeads];
+      for (const arr of allLeadArrays) {
+        for (const lead of arr) {
+          // Skip leads that were just added from conversionLeads (already calculated correctly)
+          if (conversionLeads.includes(lead)) continue;
+          // Find original contact's custom_fields from the conversation data
+          const contactConvs = convsByContact.get(lead.id);
+          if (contactConvs && contactConvs.length > 0) {
+            const contact = (contactConvs[0].contact as any);
+            if (contact?.custom_fields) {
+              const inPeriod = getConversionsInPeriod(contact.custom_fields);
+              lead.has_conversion = inPeriod.length > 0;
+              lead.conversion_total = inPeriod.reduce((sum: number, c: any) => sum + (parseFloat(c.total) || 0), 0);
+            }
+          }
+        }
+      }
+
       // Apply source type filter
       let leads: TrackedLead[];
       if (filters.sourceType === 'ctwa') {
