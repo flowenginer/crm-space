@@ -184,15 +184,14 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         if (ad.name) adByName.set(ad.name.toLowerCase(), ad);
       });
 
-      // Deduplicate: keep only most recent conversation per contact
-      const latestByContact = new Map<string, typeof allConversations[0]>();
+      // Group ALL conversations by contact (instead of keeping only the most recent)
+      const convsByContact = new Map<string, typeof allConversations>();
       for (const conv of allConversations) {
         const contactId = (conv.contact as any)?.id;
         if (!contactId) continue;
-        const existing = latestByContact.get(contactId);
-        if (!existing || new Date(conv.created_at) > new Date(existing.created_at)) {
-          latestByContact.set(contactId, conv);
-        }
+        const arr = convsByContact.get(contactId) || [];
+        arr.push(conv);
+        convsByContact.set(contactId, arr);
       }
 
       // Process each unique lead
@@ -200,11 +199,20 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       const redirectLeads: TrackedLead[] = [];
       const linktreeLeads: TrackedLead[] = [];
 
-      for (const conv of latestByContact.values()) {
-        const contact = conv.contact as any;
+      for (const contactConvs of convsByContact.values()) {
+        // Sort by created_at DESC so [0] is the most recent
+        contactConvs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        // Find conversation with tracking data (referral_source filled)
+        const trackedConv = contactConvs.find(c => c.referral_source) || contactConvs[0];
+        // Most recent conversation for operational data
+        const recentConv = contactConvs[0];
+
+        const contact = recentConv.contact as any;
         if (!contact) continue;
 
-        const rawRef = conv.referral_data as Record<string, any> | null;
+        // Use tracking data from the tracked conversation
+        const rawRef = trackedConv.referral_data as Record<string, any> | null;
         const norm = normalizeReferralFields(rawRef);
 
         // Skip pattern-detected leads (not real ad referrals)
@@ -212,8 +220,9 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
 
         const assignedProfile = contact.profiles as any;
         const segmentData = contact.segment as any;
-        const referralSource = conv.referral_source;
-        const leadStatus = (conv as any).lead_status || contact.lead_status;
+        // Referral source from tracked conv, operational data from recent conv
+        const referralSource = trackedConv.referral_source;
+        const leadStatus = (recentConv as any).lead_status || contact.lead_status;
 
         const isCTWA = referralSource === 'meta_ads' || referralSource === 'ctwa_ad';
         const isLinktree = referralSource === 'linktree';
@@ -221,14 +230,14 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
 
         const buildLead = (sourceType: 'ctwa' | 'redirect' | 'linktree', extras: Partial<TrackedLead> = {}): TrackedLead => ({
           id: contact.id,
-          conversation_id: conv.id,
+          conversation_id: recentConv.id,
           full_name: contact.full_name,
           phone: contact.phone,
           email: contact.email,
           origin: contact.origin || referralSource || sourceType,
           origin_campaign: contact.origin_campaign,
           lead_status: leadStatus,
-          created_at: conv.created_at,
+          created_at: recentConv.created_at,
           assigned_to: contact.assigned_to,
           assigned_to_name: assignedProfile?.full_name || null,
           referral_data: rawRef,
