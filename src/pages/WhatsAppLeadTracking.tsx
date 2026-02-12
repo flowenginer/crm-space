@@ -93,7 +93,7 @@ function StatCard({ title, value, icon: Icon, description, color }: {
 // Source Badge
 // =====================================================
 
-function SourceBadge({ type }: { type: 'ctwa' | 'redirect' | 'linktree' | 'whatsapp' | 'mixed' }) {
+function SourceBadge({ type }: { type: 'ctwa' | 'redirect' | 'linktree' | 'whatsapp' | 'manual' | 'mixed' }) {
   if (type === 'ctwa') {
     return (
       <Badge variant="default" className="bg-blue-600 hover:bg-blue-700 text-xs">
@@ -123,6 +123,14 @@ function SourceBadge({ type }: { type: 'ctwa' | 'redirect' | 'linktree' | 'whats
       <Badge variant="default" className="bg-purple-600 hover:bg-purple-700 text-xs">
         <MessageCircle className="h-3 w-3 mr-1" />
         WhatsApp
+      </Badge>
+    );
+  }
+  if (type === 'manual') {
+    return (
+      <Badge variant="default" className="bg-pink-600 hover:bg-pink-700 text-xs">
+        <Users className="h-3 w-3 mr-1" />
+        Manual
       </Badge>
     );
   }
@@ -169,7 +177,7 @@ export default function WhatsAppLeadTracking() {
   });
 
   const leads = data?.leads || [];
-  const summary = data?.summary || { totalLeads: 0, ctwaLeads: 0, redirectLeads: 0, linktreeLeads: 0, whatsappLeads: 0, matchedCreatives: 0, unmatchedCreatives: 0 };
+  const summary = data?.summary || { totalLeads: 0, ctwaLeads: 0, redirectLeads: 0, linktreeLeads: 0, whatsappLeads: 0, manualLeads: 0, matchedCreatives: 0, unmatchedCreatives: 0 };
   const creativeBreakdown = data?.creativeBreakdown || [];
 
   // Filter leads by search
@@ -228,6 +236,9 @@ export default function WhatsAppLeadTracking() {
     }
     if (summary.whatsappLeads > 0) {
       result.push({ name: 'WhatsApp', value: summary.whatsappLeads, color: '#8b5cf6' });
+    }
+    if (summary.manualLeads > 0) {
+      result.push({ name: 'Manual', value: summary.manualLeads, color: '#ec4899' });
     }
     return result;
   }, [summary]);
@@ -554,7 +565,7 @@ export default function WhatsAppLeadTracking() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <Card key={i}>
@@ -597,6 +608,13 @@ export default function WhatsAppLeadTracking() {
               icon={MessageCircle}
               description="Organicos WhatsApp"
               color="text-purple-600"
+            />
+            <StatCard
+              title="Leads Manual"
+              value={formatNumber(summary.manualLeads)}
+              icon={Users}
+              description="Cadastro manual"
+              color="text-pink-600"
             />
             <StatCard
               title="Com Criativo"
