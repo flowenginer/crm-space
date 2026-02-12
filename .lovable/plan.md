@@ -1,56 +1,42 @@
 
-# Visualizacao de Conversoes na aba CRM do Contato
+# Top 5 Criativos por Conversao e Conversao no Grafico de Jornada
 
-## O que sera feito
+## Objetivo
 
-Adicionar uma secao "Conversoes" na aba CRM do modal de Editar Contato, exibindo os dados de vendas registrados via n8n no campo `custom_fields.conversoes`.
+Adicionar dois recursos na aba "Graficos" do WhatsApp Lead Tracking:
 
-## Onde aparece
+1. **Novo card: "Top 5 Criativos que mais Converteram"** - Ranking dos criativos com mais conversoes (vendas), baseado no campo `custom_fields.conversoes` dos contatos.
+2. **Nova barra no grafico "Jornada do Lead por Criativo"** - Adicionar uma barra/segmento "Conversao" (baseada no campo `custom_fields.conversoes`) ao grafico de barras empilhadas existente.
 
-Na aba **CRM** do modal de edicao do contato, logo abaixo da secao "Dados de Aquisicao (UTMs)". Sera uma secao somente-leitura com visual de lista/cards.
+## Como funciona
 
-## O que sera exibido
-
-Cada conversao mostrara:
-- Numero do pedido
-- Valor total (formatado em R$)
-- Cidade / UF
-- Vendedor
-- Data (se disponivel)
-
-Inclui tambem um resumo no topo da secao com:
-- Total de conversoes
-- Valor total acumulado
+- Cada contato pode ter um array de conversoes em `custom_fields.conversoes`
+- Se o array existe e tem pelo menos 1 item, o contato "converteu"
+- O sistema cruza: criativo vinculado ao lead x contato com conversao registrada
+- O Top 5 mostra os criativos ordenados por quantidade de contatos que converteram, incluindo o valor total acumulado
 
 ## Detalhes Tecnicos
 
-### Arquivo: `src/components/contacts/ContactFormModal.tsx`
+### 1. Hook: `src/hooks/useWhatsAppLeadTracking.ts`
 
-1. Ler `initialData?.custom_fields?.conversoes` (array de objetos JSON)
-2. Adicionar secao abaixo dos UTMs (dentro da TabsContent "crm"), apenas no modo `edit`
-3. Cada item renderizado como um card compacto com as informacoes do pedido
-4. Secao so aparece se houver pelo menos 1 conversao registrada
-5. Usar `formatCurrency` de `src/lib/format.ts` para formatar valores
-6. Usar icones do lucide-react (ShoppingBag, MapPin, User, Hash) para melhorar a leitura
+- Adicionar `custom_fields` ao select da query de contacts (linha 133)
+- Adicionar campo `has_conversion` (boolean) e `conversion_total` (number) ao tipo `TrackedLead`
+- Preencher esses campos verificando se `contact.custom_fields?.conversoes` e um array com itens
 
-### Estrutura visual
+### 2. Pagina: `src/pages/WhatsAppLeadTracking.tsx`
 
-```text
-+------------------------------------------+
-| ShoppingBag  Conversoes (3)              |
-|  Total acumulado: R$ 8.500,00            |
-+------------------------------------------+
-| #13751  |  R$ 3.742,50  |  Diego        |
-| Rio de Janeiro - RJ                      |
-+------------------------------------------+
-| #13820  |  R$ 1.500,00  |  Eduardo      |
-| Sao Paulo - SP                           |
-+------------------------------------------+
-| #14002  |  R$ 3.257,50  |  Diego        |
-| Belo Horizonte - MG                      |
-+------------------------------------------+
-```
+**Novo card "Top 5 Criativos por Conversao":**
+- Posicionar na aba "charts", no lugar do card "Leads sem Criativo Vinculado" (que sera movido para baixo ou colocado ao lado)
+- Agrupar leads por `creative_name`, contar quantos tem `has_conversion = true` e somar `conversion_total`
+- Exibir como lista rankeada com nome do criativo, quantidade de conversoes e valor total
+- Usar icones de trofeu/medal para os top 3
 
-### Nenhuma alteracao de banco de dados necessaria
+**Grafico "Jornada do Lead por Criativo":**
+- Adicionar um status sintetico "Conversao" ao array de statuses quando houver leads com conversao
+- Esse status tera uma cor verde destacada (ex: #22c55e)
+- Sera contabilizado independentemente do status atual do lead -- se tem `has_conversion`, conta como "Conversao" naquele criativo
 
-Os dados ja estao no campo `custom_fields` (JSONB) da tabela `contacts`.
+### Arquivos modificados
+
+1. `src/hooks/useWhatsAppLeadTracking.ts` - Adicionar `custom_fields` na query e campos de conversao no TrackedLead
+2. `src/pages/WhatsAppLeadTracking.tsx` - Novo card de Top 5 e barra de conversao no grafico de jornada
