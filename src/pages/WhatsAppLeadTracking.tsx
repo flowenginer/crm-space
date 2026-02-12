@@ -93,7 +93,7 @@ function StatCard({ title, value, icon: Icon, description, color }: {
 // Source Badge
 // =====================================================
 
-function SourceBadge({ type }: { type: 'ctwa' | 'redirect' | 'mixed' }) {
+function SourceBadge({ type }: { type: 'ctwa' | 'redirect' | 'linktree' | 'whatsapp' | 'mixed' }) {
   if (type === 'ctwa') {
     return (
       <Badge variant="default" className="bg-blue-600 hover:bg-blue-700 text-xs">
@@ -107,6 +107,22 @@ function SourceBadge({ type }: { type: 'ctwa' | 'redirect' | 'mixed' }) {
       <Badge variant="default" className="bg-amber-600 hover:bg-amber-700 text-xs">
         <LinkIcon className="h-3 w-3 mr-1" />
         Redirect
+      </Badge>
+    );
+  }
+  if (type === 'linktree') {
+    return (
+      <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs">
+        <LinkIcon className="h-3 w-3 mr-1" />
+        Linktree
+      </Badge>
+    );
+  }
+  if (type === 'whatsapp') {
+    return (
+      <Badge variant="default" className="bg-purple-600 hover:bg-purple-700 text-xs">
+        <MessageCircle className="h-3 w-3 mr-1" />
+        WhatsApp
       </Badge>
     );
   }
@@ -153,7 +169,7 @@ export default function WhatsAppLeadTracking() {
   });
 
   const leads = data?.leads || [];
-  const summary = data?.summary || { totalLeads: 0, ctwaLeads: 0, redirectLeads: 0, matchedCreatives: 0, unmatchedCreatives: 0 };
+  const summary = data?.summary || { totalLeads: 0, ctwaLeads: 0, redirectLeads: 0, linktreeLeads: 0, whatsappLeads: 0, matchedCreatives: 0, unmatchedCreatives: 0 };
   const creativeBreakdown = data?.creativeBreakdown || [];
 
   // Filter leads by search
@@ -206,6 +222,12 @@ export default function WhatsAppLeadTracking() {
     }
     if (summary.redirectLeads > 0) {
       result.push({ name: 'Redirect', value: summary.redirectLeads, color: '#f59e0b' });
+    }
+    if (summary.linktreeLeads > 0) {
+      result.push({ name: 'Linktree', value: summary.linktreeLeads, color: '#22c55e' });
+    }
+    if (summary.whatsappLeads > 0) {
+      result.push({ name: 'WhatsApp', value: summary.whatsappLeads, color: '#8b5cf6' });
     }
     return result;
   }, [summary]);
@@ -561,6 +583,20 @@ export default function WhatsAppLeadTracking() {
               icon={LinkIcon}
               description="Campanhas de redirect"
               color="text-amber-600"
+            />
+            <StatCard
+              title="Leads Linktree"
+              value={formatNumber(summary.linktreeLeads)}
+              icon={LinkIcon}
+              description="Via Linktree"
+              color="text-green-600"
+            />
+            <StatCard
+              title="Leads WhatsApp"
+              value={formatNumber(summary.whatsappLeads)}
+              icon={MessageCircle}
+              description="Organicos WhatsApp"
+              color="text-purple-600"
             />
             <StatCard
               title="Com Criativo"
