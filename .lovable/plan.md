@@ -1,62 +1,40 @@
 
-# Configuracao do Bloco "Definir Variavel" no Flow Builder
+# Unificacao dos 4 Contatos Duplicados
 
-## Problema
+## Resumo
 
-O bloco "Definir Variavel" (`set_variable`) existe na paleta de blocos, mas quando clicado, o painel de propriedades mostra "Nenhuma configuracao disponivel para este bloco" porque nao ha um `case 'set_variable'` no switch do `PropertiesPanel.tsx`.
+Foram encontrados 4 pares de contatos duplicados (mesmo telefone, formatos diferentes). O plano e manter o contato mais completo (com conversoes, historico, etc.) e transferir qualquer dado util do duplicado antes de exclui-lo.
 
-## Solucao
+## Pares identificados
 
-Adicionar um formulario de configuracao para o bloco `set_variable` que permita:
+| # | Manter (principal) | Excluir (duplicado) | Acao extra |
+|---|---|---|---|
+| 1 | CLEITON OS GURI DO AGRO (`8b0e39e9`) - tem conversoes, lead_status, negotiated_value, 2 conversas | CLEITON SANTOS DE LIMA (`2be14f8d`) - vazio, sem conversas | Atualizar nome para versao mais completa |
+| 2 | 5521979840013 (`1408c6c2`) - tem conversoes, lead_status, state=RJ, 2 conversas | LEONARDO COELHO DOS SANTOS MACHADO (`92eb21be`) - vazio, 1 conversa | Transferir conversa, atualizar nome |
+| 3 | FLAVIO SILVEIRA ROCK & BIKERS (`7925fd15`) - tem conversoes, origin=linktree, negotiated_value, 1 conversa | FLAVIO DA COSTA SILVEIRA (`f73a6d01`) - vazio, sem conversas | Atualizar nome para versao completa |
+| 4 | RODRIGO (`57f8a5db`) - tem conversoes, 4 conversas | RODRIGO / GELA MAIS (`8622635b`) - vazio, sem conversas | Atualizar nome para versao completa |
 
-1. **Selecionar o campo do contato** a ser alterado (dropdown com todos os campos relevantes)
-2. **Definir o valor** a ser atribuido (campo de texto livre ou selecao, dependendo do tipo)
+## Etapas da execucao
 
-## Campos disponiveis no dropdown
+### 1. Atualizar nomes dos contatos mantidos
+Copiar os nomes mais completos dos duplicados para os contatos principais:
+- CLEITON: "CLEITON SANTOS DE LIMA / OS GURI DO AGRO"
+- LEONARDO: "LEONARDO COELHO DOS SANTOS MACHADO"
+- FLAVIO: "FLAVIO DA COSTA SILVEIRA / FLAVIO SILVEIRA ROCK & BIKERS"
+- RODRIGO: "RODRIGO / GELA MAIS"
 
-O dropdown "Campo do contato" incluira:
+### 2. Transferir conversa do Leonardo
+O duplicado `92eb21be` possui 1 conversa que sera movida para o contato principal `1408c6c2`.
 
-| Campo | Label |
-|-------|-------|
-| full_name | Nome completo |
-| email | Email |
-| origin | Origem |
-| lead_status | Status do Lead |
-| notes | Observacoes |
-| city | Cidade |
-| state | Estado |
-| neighborhood | Bairro |
-| street | Rua |
-| number | Numero |
-| complement | Complemento |
-| zip_code | CEP |
-| country | Pais |
-| cpf_cnpj | CPF/CNPJ |
-| person_type | Tipo de Pessoa |
-| contact_type | Tipo de Contato |
-| negotiated_value | Valor Negociado |
-| origin_campaign | Campanha de Origem |
+### 3. Excluir os 4 contatos duplicados
+Remover: `2be14f8d`, `92eb21be`, `f73a6d01`, `8622635b`
 
-O campo "Valor" sera um Input de texto livre, permitindo tambem o uso de variaveis como `{{nome}}`, `{{telefone}}`, etc.
+## Detalhes tecnicos
 
-## Detalhes Tecnicos
+Serao executados UPDATE e DELETE diretamente no banco via ferramenta de dados:
 
-### Arquivo: `src/components/flow-builder/PropertiesPanel.tsx`
+1. **UPDATE contacts** SET full_name para os 4 contatos principais
+2. **UPDATE conversations** SET contact_id para transferir a conversa do Leonardo
+3. **DELETE FROM contacts** WHERE id IN (4 duplicados)
 
-Adicionar um novo `case 'set_variable':` no switch da funcao `renderNodeConfig` (antes do `default`), contendo:
-
-1. Um `Select` com label "Campo do contato" -- lista os campos da tabela `contacts` que fazem sentido ser alterados via automacao
-2. Um `Input` com label "Valor" -- onde o usuario digita o valor fixo ou uma variavel (ex: `{{nome}}`)
-3. Uma secao de ajuda mostrando as variaveis disponiveis (`{{nome}}`, `{{telefone}}`, `{{email}}`, `{{data}}`, `{{hora}}`, etc.)
-
-A config salva sera:
-```json
-{
-  "variable": "origin",
-  "value": "WhatsApp Campanha X"
-}
-```
-
-### Sem alteracoes no backend
-
-A Edge Function `execute-flow-node` ja precisa tratar o `set_variable` para fazer o UPDATE no contato. Se ja existir essa logica, nada muda. Se nao existir, sera necessario verificar separadamente.
+Nenhuma alteracao de schema e necessaria. Apenas operacoes de dados.
