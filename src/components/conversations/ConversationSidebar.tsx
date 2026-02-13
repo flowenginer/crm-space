@@ -186,11 +186,12 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   );
 
   // Fetch referral_data from any conversation of the contact (fallback when current conversation doesn't have it)
+  const conversationHasReferral = !!conversation?.referral_data;
   const { data: contactReferralData } = useQuery({
     queryKey: ['contact-referral-data', conversationContactId],
     queryFn: async () => {
       if (!conversationContactId) return null;
-      
+
       const { data, error } = await supabase
         .from('conversations')
         .select('referral_data')
@@ -198,15 +199,16 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
         .not('referral_data', 'is', null)
         .limit(1)
         .maybeSingle();
-      
+
       if (error) {
         console.error('Error fetching contact referral data:', error);
         return null;
       }
       return data?.referral_data;
     },
-    enabled: !!conversationContactId,
-    staleTime: 60000, // 1 minuto de cache
+    // Only fetch if current conversation doesn't already have referral_data
+    enabled: !!conversationContactId && !conversationHasReferral,
+    staleTime: 300000,
   });
 
   // Extract ad source ID from referral data for meta_ads enrichment
