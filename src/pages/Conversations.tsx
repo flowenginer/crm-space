@@ -4663,7 +4663,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                                     if (selectedConversation?.contact?.id) {
                                       addTagToContact.mutate(
                                         { contactId: selectedConversation.contact.id, tagId: tag.id },
-                                        { onSuccess: () => { refetchContactTags(); setShowHeaderTagPopover(false); setTagSearchQuery(''); } }
+                                        { onSuccess: () => { refetchContactTags(); setTagSearchQuery(''); } }
                                       );
                                     }
                                   }}
