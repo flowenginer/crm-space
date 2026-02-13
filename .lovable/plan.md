@@ -1,74 +1,56 @@
 
-# Importacao de 92 Leads Perdidos — Canal EMPREGA-MAIS
+## Correção da Automacao EMPREGA-MAIS - Atribuição de Leads
 
-## Contexto
+### Problema
+Leads respondem o chatbot mas nao sao atribuidos a nenhum vendedor. A automacao trava no no de delay (30 segundos) e nunca executa os passos seguintes: envio de audio, mudanca de status e transferencia de departamento.
 
-Durante a interrupcao do dia 12/02/2026, aproximadamente 92 atendimentos do canal EMPREGA-MAIS nao foram registrados no banco de dados. O arquivo Excel exportado contem todos esses leads com nome, telefone, primeira mensagem e status.
+### Causa Raiz
+A Edge Function `process-flow-delays` deployada esta em versao antiga que tenta acessar `flow_nodes.connections` -- uma coluna que nao existe mais. O codigo no repositorio ja esta correto (usa a tabela `flow_connections`), mas nunca foi re-deployado.
 
-## Situacao Atual no Banco
-
-- **10 contatos** ja existem (por terem sido criados antes ou depois da interrupcao)
-  - 9 desses ja possuem conversa no canal EMPREGA-MAIS
-  - 1 (Jana - 5521976240806) existe mas sem conversa
-- **82 contatos** nao existem e precisam ser criados do zero
-- A maioria nao possui a primeira mensagem registrada
-
-## Plano de Execucao
-
-### Passo 1: Criar os 82 contatos novos
-
-Inserir na tabela `contacts` com:
-- `full_name`: nome do Excel
-- `phone`: numero do contato
-- `lead_status`: "Pre-contato" (quando indicado) ou NULL
-- `tenant_id`: 664dfcb4-5432-4c14-9838-7db14360cabf
-- `created_at`: 2026-02-12 (data da abertura)
-- `contact_type`: "lead"
-
-### Passo 2: Criar conversas para os 83 contatos sem conversa
-
-Inserir na tabela `conversations` com:
-- `contact_id`: ID do contato (novo ou existente)
-- `channel_id`: ed6f2c8c-7339-4e92-8948-3f74baf280df (EMPREGA-MAIS)
-- `status`: "open" (Pendente)
-- `tenant_id`: 664dfcb4-5432-4c14-9838-7db14360cabf
-- `created_at`: 2026-02-12
-- `last_client_message_at`: 2026-02-12 (para ativar a janela 24h corretamente)
-- `last_message_preview`: conteudo da primeira mensagem (truncado)
-
-### Passo 3: Inserir a primeira mensagem de cada lead
-
-Para cada conversa (nova e existente), inserir na tabela `messages`:
-- `conversation_id`: ID da conversa
-- `content`: texto da coluna "1a Mensagem" do Excel
-- `is_from_me`: false (mensagem do cliente)
-- `message_type`: "text"
-- `status`: "received"
-- `tenant_id`: 664dfcb4-5432-4c14-9838-7db14360cabf
-- `created_at`: 2026-02-12
-
-Obs: Leads sem primeira mensagem no Excel (4 registros) terao apenas o contato e conversa criados, sem mensagem.
-
-### Passo 4: Atualizar last_client_message_at
-
-Rodar UPDATE nas conversas recem-criadas para garantir que o campo `last_client_message_at` esteja correto (o trigger so funciona para novas mensagens futuras).
-
-## Detalhes Tecnicos
-
-A operacao sera feita via SQL direto (INSERT statements) em lotes, pois sao 92 registros. Serao usados CTEs (WITH) para encadear as operacoes de forma atomica:
-
+### Fluxo do erro:
 ```text
--- Pseudocodigo da abordagem:
--- 1. INSERT INTO contacts (...) VALUES (...) ON CONFLICT (phone, tenant_id) DO NOTHING RETURNING id, phone
--- 2. INSERT INTO conversations (...) SELECT ... FROM contacts_inseridos
--- 3. INSERT INTO messages (...) SELECT ... FROM conversas_inseridas
+Lead entra --> Audio boas-vindas --> Perguntas --> Delay 30s
+                                                      |
+                                              process-flow-delays tenta
+                                              buscar flow_nodes.connections
+                                                      |
+                                                  ERRO 42703
+                                                      |
+                                              Execucao fica em "error"
+                                                      |
+                                          Nunca executa: audio final,
+                                          mudanca status, transferencia
+                                                      |
+                                          Lead fica SEM atendente
 ```
 
-Os 10 contatos existentes serao tratados com `ON CONFLICT DO NOTHING` para evitar duplicatas. Para eles, a conversa e mensagem serao criadas apenas se ainda nao existirem.
+### Plano de Correção
 
-## Volume
+**Passo 1 - Deploy da Edge Function atualizada**
+Re-deployar `process-flow-delays` com a versao do repositorio que usa `flow_connections` ao inves de `flow_nodes.connections`.
 
-- ~82 INSERTs em contacts
-- ~83 INSERTs em conversations
-- ~88 INSERTs em messages (92 - 4 sem mensagem)
-- ~83 UPDATEs em conversations (last_client_message_at)
+**Passo 2 - Reprocessar execuções travadas**
+Executar SQL para resetar as execucoes que ficaram com `status = 'error'` e `error_message = 'Delay node not found'` ou `'Timeout node not found'` neste fluxo, colocando-as de volta em `waiting_delay` / `waiting_reply` com `waiting_until` no passado para que sejam imediatamente reprocessadas no proximo ciclo.
+
+Execucoes afetadas (hoje):
+- Sophia Tonelli, Eduarda, Tavinho, Gesilene Silva, Beatriz, millena, Diana, M2 eletrica, jeny, Davi Costa, e outras
+
+**Passo 3 - Validacao**
+Acompanhar os logs de `process-flow-delays` apos o deploy para confirmar que as execucoes sao retomadas e os leads sao transferidos para o departamento `fd51d4fb-4688-4a03-a2ed-1a7fb485d40b`.
+
+### Secao Tecnica
+
+- Tabela com coluna inexistente: `flow_nodes.connections` (removida em migracao anterior)
+- Tabela correta: `flow_connections` (source_node_id, target_node_id, source_handle)
+- Edge Function: `supabase/functions/process-flow-delays/index.ts` -- codigo ja correto no repositorio
+- Erro Postgres: `42703` (undefined_column)
+- SQL de reset:
+```text
+UPDATE flow_executions
+SET status = 'waiting_delay',
+    error_message = NULL,
+    waiting_until = NOW() - interval '1 minute'
+WHERE flow_id = '381a4177-6a52-4531-9f2c-f09cb5fc586f'
+  AND status = 'error'
+  AND error_message IN ('Delay node not found', 'Timeout node not found')
+```
