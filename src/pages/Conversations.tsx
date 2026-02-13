@@ -2181,13 +2181,36 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         return;
       }
       
-      // Marcar como lida
-      console.log('[Auto-read] Marcando conversa como lida:', selectedConversationId);
-      updateConversation.mutate({
-        id: selectedConversationId,
-        is_unread: false,
-        unread_count: 0,
-      });
+      // Marcar como lida - atualização OTIMISTA do cache (sem invalidar a lista)
+      console.log('[Auto-read] Marcando conversa como lida (otimista):', selectedConversationId);
+      
+      // 1. Atualizar cache local imediatamente (sem reordenar)
+      queryClient.setQueriesData(
+        { queryKey: ['conversations-paginated'] },
+        (oldData: any) => {
+          if (!oldData?.pages) return oldData;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page: any) => ({
+              ...page,
+              conversations: (page.conversations || []).map((c: any) =>
+                c.id === selectedConversationId
+                  ? { ...c, is_unread: false, unread_count: 0 }
+                  : c
+              ),
+            })),
+          };
+        }
+      );
+      
+      // 2. Enviar update ao servidor silenciosamente (sem trigger de invalidação via mutate)
+      supabase
+        .from('conversations')
+        .update({ is_unread: false, unread_count: 0 })
+        .eq('id', selectedConversationId)
+        .then(() => {
+          console.log('[Auto-read] Servidor atualizado silenciosamente');
+        });
     }, 500);
     
     return () => clearTimeout(timeoutId);
@@ -2795,6 +2818,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       }
     }
     // ============ FIM DA VERIFICAÇÃO ============
+    
+    // Salvar posição do scroll antes de mudar de conversa
+    if (conversationListRef.current) {
+      savedScrollTopRef.current = conversationListRef.current.scrollTop;
+      console.log('[Scroll] Saved scrollTop on conversation click:', savedScrollTopRef.current);
+    }
     
     // Marcar como clique EXPLÍCITO do usuário (para limpar proteção de "marcar como não lida")
     userClickedConversationRef.current = conv.id;
