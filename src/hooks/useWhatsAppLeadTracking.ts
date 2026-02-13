@@ -125,7 +125,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       // Source of truth: conversations table (both webhooks always write here)
       const referralSources = ['meta_ads', 'ctwa_ad', 'redirect', 'linktree'];
 
-      // 1. Query conversations with contact data joined
+      // 1. Query conversations with contact data joined (limited to prevent overload)
       const conversationsQuery = supabase
         .from('conversations')
         .select(`
@@ -140,7 +140,8 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         .in('referral_source', referralSources)
         .gte('created_at', filters.dateFrom)
         .lte('created_at', filters.dateTo + 'T23:59:59')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(5000);
 
       // 2. Fetch meta_ads with adsets and campaigns for cross-referencing
       const metaAdsQuery = supabase
@@ -150,7 +151,8 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
           adset:meta_adsets(id, adset_id, name),
           campaign:meta_campaigns(id, campaign_id, name, meta_account_id)
         `)
-        .eq('tenant_id', tenantId);
+        .eq('tenant_id', tenantId)
+        .limit(2000);
 
       // Execute in parallel
       const [conversationsResult, metaAdsResult] = await Promise.all([
