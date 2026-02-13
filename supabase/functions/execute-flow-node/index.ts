@@ -1056,6 +1056,94 @@ async function executeAction(
         `Template Meta enviado: ${template.name}`, execution.tenant_id);
       break;
     }
+
+    case 'set_variable': {
+      console.log(`[execute-flow-node v${VERSION}] set_variable config:`, JSON.stringify(config));
+
+      const variableName = config.variable as string;
+      const rawValue = config.value as string;
+
+      if (!variableName) {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          `Erro: campo (variable) não configurado. Config: ${JSON.stringify(config)}`, execution.tenant_id);
+        break;
+      }
+
+      const processedValue = rawValue ? replaceVariables(rawValue, execution) : '';
+
+      // Campos válidos da tabela contacts
+      const contactFields = [
+        'origin', 'full_name', 'email', 'lead_status', 'notes',
+        'city', 'state', 'neighborhood', 'street', 'number',
+        'complement', 'zip_code', 'country', 'cpf_cnpj',
+        'person_type', 'contact_type', 'negotiated_value', 'origin_campaign'
+      ];
+
+      if (!contactFields.includes(variableName)) {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          `Campo não suportado: ${variableName}`, execution.tenant_id);
+        break;
+      }
+
+      // Para lead_status, reutilizar a mesma lógica do set_lead_status (atualizar contato + conversas)
+      if (variableName === 'lead_status') {
+        const oldStatus = execution.contact?.lead_status || null;
+        const { error: contactErr } = await supabase
+          .from('contacts')
+          .update({ lead_status: processedValue, tenant_id: execution.tenant_id })
+          .eq('id', execution.contact_id)
+          .eq('tenant_id', execution.tenant_id);
+
+        if (contactErr) {
+          console.error(`[execute-flow-node] set_variable lead_status erro:`, contactErr);
+          await logExecution(supabase, execution.id, node.id, 'error',
+            `Erro ao definir lead_status: ${contactErr.message}`, execution.tenant_id);
+          break;
+        }
+
+        // Atualizar conversas abertas/pending
+        if (execution.conversation_id) {
+          await supabase
+            .from('conversations')
+            .update({ lead_status: processedValue, tenant_id: execution.tenant_id })
+            .eq('id', execution.conversation_id)
+            .eq('tenant_id', execution.tenant_id);
+        }
+        await supabase
+          .from('conversations')
+          .update({ lead_status: processedValue, tenant_id: execution.tenant_id })
+          .eq('contact_id', execution.contact_id)
+          .eq('tenant_id', execution.tenant_id)
+          .in('status', ['open', 'pending'])
+          .neq('id', execution.conversation_id || '');
+
+        await logExecution(supabase, execution.id, node.id, 'info',
+          `Variável lead_status definida: ${oldStatus || 'null'} → ${processedValue}`, execution.tenant_id);
+        break;
+      }
+
+      // Para negotiated_value, converter para número
+      const updateValue = variableName === 'negotiated_value'
+        ? parseFloat(processedValue) || 0
+        : processedValue;
+
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update({ [variableName]: updateValue, tenant_id: execution.tenant_id })
+        .eq('id', execution.contact_id)
+        .eq('tenant_id', execution.tenant_id);
+
+      if (updateError) {
+        console.error(`[execute-flow-node] set_variable erro ao atualizar ${variableName}:`, updateError);
+        await logExecution(supabase, execution.id, node.id, 'error',
+          `Erro ao definir ${variableName}: ${updateError.message}`, execution.tenant_id);
+      } else {
+        console.log(`[execute-flow-node] ✅ set_variable: ${variableName} = ${processedValue}`);
+        await logExecution(supabase, execution.id, node.id, 'info',
+          `Variável ${variableName} definida: ${processedValue}`, execution.tenant_id);
+      }
+      break;
+    }
   }
   
   // Por padrão, não parar o fluxo (continua para o próximo nó)

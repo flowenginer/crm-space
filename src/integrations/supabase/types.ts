@@ -10854,6 +10854,10 @@ export type Database = {
           total_records: number
         }[]
       }
+      batch_update_media_urls: {
+        Args: { p_duplicate_names: string[]; p_new_url: string }
+        Returns: number
+      }
       calculate_variation_price: {
         Args: {
           p_attribute_value_ids: string[]
@@ -10929,6 +10933,15 @@ export type Database = {
       create_tenant_triggers: { Args: never; Returns: undefined }
       current_tenant_id: { Args: never; Returns: string }
       current_user_is_super_admin: { Args: never; Returns: boolean }
+      deduplicate_storage_files: {
+        Args: { p_bucket_id?: string; p_dry_run?: boolean; p_limit?: number }
+        Returns: {
+          action: string
+          details: string
+          files_affected: number
+          space_freed: string
+        }[]
+      }
       delete_contact_permanently: {
         Args: { p_contact_id: string }
         Returns: undefined
@@ -10984,6 +10997,20 @@ export type Database = {
       find_or_create_direct_thread: {
         Args: { p_other_user_id: string; p_user_id: string }
         Returns: string
+      }
+      find_orphaned_storage_files: {
+        Args: {
+          p_bucket_id?: string
+          p_limit?: number
+          p_older_than_days?: number
+        }
+        Returns: {
+          created_at: string
+          file_id: string
+          file_name: string
+          file_size: string
+          mime_type: string
+        }[]
       }
       fix_conversation_last_message_sync: {
         Args: never
@@ -11785,6 +11812,16 @@ export type Database = {
           status_color: string
           status_name: string
           status_order: number
+        }[]
+      }
+      get_storage_duplicates: {
+        Args: { p_limit?: number }
+        Returns: {
+          duplicate_names: string[]
+          etag: string
+          file_size: number
+          keep_name: string
+          total_copies: number
         }[]
       }
       get_support_dashboard_metrics: {
