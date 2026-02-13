@@ -1,52 +1,74 @@
 
-# Correção do Timer de Janela 24h — Trigger Perdido no Reset
+# Importacao de 92 Leads Perdidos — Canal EMPREGA-MAIS
 
-## Problema Confirmado
+## Contexto
 
-O reset do banco de dados removeu o **trigger `trigger_update_last_client_message_at`** da tabela `messages`. A função PostgreSQL ainda existe, mas sem o trigger ela nunca é chamada. Resultado:
+Durante a interrupcao do dia 12/02/2026, aproximadamente 92 atendimentos do canal EMPREGA-MAIS nao foram registrados no banco de dados. O arquivo Excel exportado contem todos esses leads com nome, telefone, primeira mensagem e status.
 
-- **6 conversas** com `last_client_message_at` completamente NULL (sem timer)
-- **4.937 conversas** com timestamp desatualizado (timer mostrando tempo errado)
+## Situacao Atual no Banco
 
-Os cron jobs estao todos intactos — o problema é exclusivamente o trigger ausente.
+- **10 contatos** ja existem (por terem sido criados antes ou depois da interrupcao)
+  - 9 desses ja possuem conversa no canal EMPREGA-MAIS
+  - 1 (Jana - 5521976240806) existe mas sem conversa
+- **82 contatos** nao existem e precisam ser criados do zero
+- A maioria nao possui a primeira mensagem registrada
 
-## Plano de Correção
+## Plano de Execucao
 
-### Passo 1: Recriar o trigger
+### Passo 1: Criar os 82 contatos novos
 
-Criar uma migration SQL que:
+Inserir na tabela `contacts` com:
+- `full_name`: nome do Excel
+- `phone`: numero do contato
+- `lead_status`: "Pre-contato" (quando indicado) ou NULL
+- `tenant_id`: 664dfcb4-5432-4c14-9838-7db14360cabf
+- `created_at`: 2026-02-12 (data da abertura)
+- `contact_type`: "lead"
+
+### Passo 2: Criar conversas para os 83 contatos sem conversa
+
+Inserir na tabela `conversations` com:
+- `contact_id`: ID do contato (novo ou existente)
+- `channel_id`: ed6f2c8c-7339-4e92-8948-3f74baf280df (EMPREGA-MAIS)
+- `status`: "open" (Pendente)
+- `tenant_id`: 664dfcb4-5432-4c14-9838-7db14360cabf
+- `created_at`: 2026-02-12
+- `last_client_message_at`: 2026-02-12 (para ativar a janela 24h corretamente)
+- `last_message_preview`: conteudo da primeira mensagem (truncado)
+
+### Passo 3: Inserir a primeira mensagem de cada lead
+
+Para cada conversa (nova e existente), inserir na tabela `messages`:
+- `conversation_id`: ID da conversa
+- `content`: texto da coluna "1a Mensagem" do Excel
+- `is_from_me`: false (mensagem do cliente)
+- `message_type`: "text"
+- `status`: "received"
+- `tenant_id`: 664dfcb4-5432-4c14-9838-7db14360cabf
+- `created_at`: 2026-02-12
+
+Obs: Leads sem primeira mensagem no Excel (4 registros) terao apenas o contato e conversa criados, sem mensagem.
+
+### Passo 4: Atualizar last_client_message_at
+
+Rodar UPDATE nas conversas recem-criadas para garantir que o campo `last_client_message_at` esteja correto (o trigger so funciona para novas mensagens futuras).
+
+## Detalhes Tecnicos
+
+A operacao sera feita via SQL direto (INSERT statements) em lotes, pois sao 92 registros. Serao usados CTEs (WITH) para encadear as operacoes de forma atomica:
 
 ```text
--- Recriar o trigger perdido no reset
-CREATE TRIGGER trigger_update_last_client_message_at
-AFTER INSERT ON messages
-FOR EACH ROW
-EXECUTE FUNCTION update_last_client_message_at();
+-- Pseudocodigo da abordagem:
+-- 1. INSERT INTO contacts (...) VALUES (...) ON CONFLICT (phone, tenant_id) DO NOTHING RETURNING id, phone
+-- 2. INSERT INTO conversations (...) SELECT ... FROM contacts_inseridos
+-- 3. INSERT INTO messages (...) SELECT ... FROM conversas_inseridas
 ```
 
-### Passo 2: Backfill dos dados
+Os 10 contatos existentes serao tratados com `ON CONFLICT DO NOTHING` para evitar duplicatas. Para eles, a conversa e mensagem serao criadas apenas se ainda nao existirem.
 
-Na mesma migration, atualizar todas as conversas de canais oficiais com o timestamp correto da ultima mensagem do cliente:
+## Volume
 
-```text
-UPDATE conversations c
-SET last_client_message_at = (
-  SELECT MAX(m.created_at)
-  FROM messages m
-  WHERE m.conversation_id = c.id
-    AND m.is_from_me = false
-)
-WHERE EXISTS (
-  SELECT 1 FROM messages m
-  WHERE m.conversation_id = c.id
-    AND m.is_from_me = false
-);
-```
-
-Isso corrige as 4.943 conversas afetadas (6 NULL + 4.937 desatualizadas).
-
-## Resultado Esperado
-
-- Timer de janela 24h volta a funcionar em tempo real para todas as conversas
-- Novas mensagens de clientes atualizam o timer automaticamente via trigger
-- Nenhuma alteracao de codigo frontend necessaria — o hook `use24hWindow` ja le o campo corretamente
+- ~82 INSERTs em contacts
+- ~83 INSERTs em conversations
+- ~88 INSERTs em messages (92 - 4 sem mensagem)
+- ~83 UPDATEs em conversations (last_client_message_at)
