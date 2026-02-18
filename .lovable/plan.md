@@ -1,88 +1,86 @@
 
-## Diagnostico: Conversas embaralhando ao clicar
 
-### Problema identificado
-Quando o usuario clica em uma conversa na aba "Minhas Conversas", a conversa selecionada "desce" na lista, perdendo a posicao original. O comportamento esperado seria manter a ordem visual estavel.
+## Corrigir Bug na Distribuicao Automatica por Percentual
 
-### Causa raiz
-O fluxo problematico e o seguinte:
+### Problema Identificado
 
-1. Usuario clica em uma conversa
-2. O sistema marca a conversa como lida (UPDATE em `is_unread=false, unread_count=0`)
-3. Esse UPDATE dispara o listener de Realtime na tabela `conversations`
-4. O listener invalida o cache `conversations-paginated` (debounce 800ms)
-5. O refetch busca todas as conversas novamente do servidor, ordenadas por `last_message_at DESC`
-6. Se OUTRAS conversas receberam mensagens enquanto o usuario navegava, elas agora aparecem ACIMA da conversa selecionada
-7. A conversa selecionada "desce" na lista visual
+Analisei a edge function `distribute-lead/index.ts` e encontrei **3 bugs criticos** no algoritmo de distribuicao por percentual (linhas 256-301):
 
-O sistema de preservacao de scroll (`savedScrollTopRef`) so e ativado ao ENVIAR mensagem, nao ao clicar em uma conversa. Entao quando a lista e reordenada pelo refetch, o scroll nao e restaurado.
+### Bug 1: Algoritmo de selecao matematicamente quebrado
 
-### Solucao proposta
-
-**1. Atualizar o cache de forma otimista ao marcar como lida (sem invalidar a lista)**
-
-Em vez de depender do Realtime para reordenar a lista apos marcar como lida, atualizar apenas os campos `is_unread` e `unread_count` diretamente no cache local via `setQueriesData`. Isso evita um refetch completo da lista que causa a reordenacao.
-
-**2. Ignorar eventos Realtime de UPDATE que sao apenas "mark as read"**
-
-No handler de Realtime em `useRealtimeChat.ts`, detectar quando o UPDATE e apenas uma mudanca de `is_unread` (sem mudanca de `assigned_to`, `status`, `last_message_at`) e NAO invalidar a lista paginada nesses casos. A conversa ja esta atualizada localmente pelo passo 1.
-
-**3. Salvar e restaurar posicao do scroll ao selecionar conversa**
-
-Estender o mecanismo existente de `savedScrollTopRef` para tambem salvar a posicao do scroll quando o usuario clica em uma conversa, nao apenas ao enviar mensagem.
-
-### Secao tecnica
-
-**Arquivo: `src/pages/Conversations.tsx`**
-
-No `useEffect` de mark-as-read (linha ~2186), substituir `updateConversation.mutate()` por uma atualizacao otimista do cache + chamada direta ao Supabase:
+O codigo tenta encontrar o agente com maior "deficit" entre o percentual configurado e o percentual real recebido, mas a logica de comparacao esta incorreta:
 
 ```text
-// Atualizar cache local imediatamente (sem invalidar a lista)
-queryClient.setQueriesData(
-  { queryKey: ['conversations-paginated'] },
-  (oldData) => {
-    // Atualizar is_unread e unread_count da conversa no cache
-    // SEM reordenar
+// Codigo atual (bugado):
+const deficit = targetRatio - currentRatio;
+if (deficit > lowestRatio * -1 || !bestAgent) {
+  if (deficit > 0 || bestAgent === null) {
+    bestAgent = agent;
+    lowestRatio = currentRatio - targetRatio;
   }
-);
-
-// Enviar update ao servidor silenciosamente (sem trigger de invalidacao)
-supabase.from('conversations')
-  .update({ is_unread: false, unread_count: 0 })
-  .eq('id', conversationId);
-```
-
-**Arquivo: `src/hooks/useRealtimeChat.ts`**
-
-No handler de UPDATE da tabela `conversations` (linha ~273), adicionar verificacao:
-
-```text
-// Se o UPDATE e APENAS mudanca de is_unread (sem mudanca de status/assigned_to),
-// nao invalidar a lista paginada
-const onlyUnreadChanged = 
-  oldAssignedTo === newAssignedTo && 
-  oldStatus === newStatus &&
-  (payload.old as any)?.last_message_at === (payload.new as any)?.last_message_at;
-
-if (onlyUnreadChanged) {
-  // Atualizar apenas o cache local sem refetch
-  return;
 }
 ```
 
-**Arquivo: `src/pages/Conversations.tsx`**
+Quando `leads_received` esta zerado para todos, o deficit de cada agente equivale ao seu percentual configurado (40, 40, 20). A comparacao `deficit > lowestRatio * -1` faz com que apenas o **primeiro agente da lista** seja selecionado repetidamente, pois o segundo agente com deficit igual nao passa na condicao `40 > 40` (falso).
 
-No handler de click/navegacao de conversa, salvar scroll:
+### Bug 2: Contador `leads_received` sempre reseta para 0
+
+Os dados atuais na tabela `company_settings` mostram que **todos os agentes estao com `leads_received: 0`**, apesar de centenas de leads terem sido distribuidos. Isso ocorre porque:
+- Cada invocacao da function le os contadores do banco
+- Se duas distribuicoes acontecem simultaneamente (ou quase), ambas leem `leads_received: 0` e gravam `leads_received: 1`, perdendo uma contagem
+- Qualquer edicao na tela de configuracao de distribuicao provavelmente sobrescreve os contadores com 0
+
+### Bug 3: Agentes offline eliminam o balanceamento
+
+Quando Rainy e Nadia ficam offline (`is_available: false`), apenas Beatriz permanece no pool. Os leads vao 100% para ela, e o contador nao compensa quando as outras voltam. Os dados confirmam isso: nos dias 17 e 18/02, a distribuicao enviou leads para Beatriz, Bruna e Susana - **nenhum para Rainy ou Nadia**, indicando que estavam indisponiveis.
+
+### Solucao Proposta
+
+Substituir o algoritmo quebrado por **distribuicao ponderada por peso (weighted random)** que:
+1. Nao depende de contadores persistentes (elimina race conditions)
+2. Funciona corretamente mesmo com agentes entrando/saindo do pool
+3. Respeita os percentuais configurados estatisticamente ao longo do tempo
+
+### Secao Tecnica
+
+**Arquivo**: `supabase/functions/distribute-lead/index.ts`
+
+**Mudanca principal** (linhas 256-301): Substituir todo o bloco de selecao por percentual por:
 
 ```text
-// Antes de navegar, salvar posicao do scroll
-if (conversationListRef.current) {
-  savedScrollTopRef.current = conversationListRef.current.scrollTop;
+// Weighted random selection based on configured percentages
+// 1. Filter active configured agents in pool
+// 2. Normalize percentages (so they sum to 100% among available agents)
+// 3. Generate random number and select agent based on cumulative weights
+
+function selectByPercentage(agents, agentPool) {
+  // Filter to only available configured agents
+  const eligible = agents
+    .filter(a => a.is_active && agentPool.some(p => p.id === a.user_id))
+
+  if (eligible.length === 0) return null;
+  if (eligible.length === 1) return eligible[0];
+
+  // Normalize percentages among available agents
+  const totalPercentage = eligible.reduce((sum, a) => sum + a.percentage, 0);
+  const random = Math.random() * totalPercentage;
+
+  let cumulative = 0;
+  for (const agent of eligible) {
+    cumulative += agent.percentage;
+    if (random <= cumulative) return agent;
+  }
+  return eligible[eligible.length - 1]; // fallback
 }
 ```
 
-### Impacto
-- A lista de conversas mantera a ordem estavel ao clicar/navegar entre conversas
-- A reordenacao so ocorrera quando houver mudancas reais (nova mensagem, transferencia, etc)
-- Nenhuma mudanca no banco de dados necessaria
+**Vantagens**:
+- Se Beatriz tem 20% e as outras 40% cada, a cada lead ha 20% de chance de ir para Beatriz e 40% para cada uma das outras
+- Se Rainy fica offline, os percentuais se renormalizam automaticamente: Nadia (40/60 = 67%) e Beatriz (20/60 = 33%)
+- Zero dependencia de contadores, zero race conditions
+- Ainda atualiza `leads_received` para fins de monitoramento/relatorio, mas nao usa para decisao
+
+**Tambem sera feito**:
+- Resetar os contadores `leads_received` atuais no banco para refletir a realidade
+- Atualizar a versao da function para rastreabilidade
+
