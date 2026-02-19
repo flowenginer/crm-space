@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { Eye, Repeat, Building2, Users, Info, ChevronDown } from 'lucide-react';
+import { Eye, Repeat, Building2, Users, Info, ChevronDown, List, Pin, Share2, User, Clock, UserX } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
@@ -20,6 +20,7 @@ interface UserWithAccess {
   role: string | null;
   can_view_all_conversations: boolean;
   can_transfer_freely: boolean;
+  permissions: Record<string, Record<string, boolean>> | null;
 }
 
 interface DepartmentWithAccess {
@@ -43,7 +44,7 @@ export function AccessPermissionsSettings() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, avatar_url, role, can_view_all_conversations, can_transfer_freely')
+        .select('id, full_name, avatar_url, role, can_view_all_conversations, can_transfer_freely, permissions')
         .eq('tenant_id', tenantId!)
         .eq('is_active', true)
         .not('role', 'in', '("admin","supervisor")')
@@ -71,7 +72,7 @@ export function AccessPermissionsSettings() {
     },
   });
 
-  // Update user permissions
+  // Update user simple permission fields (can_view_all_conversations, can_transfer_freely)
   const updateUserPermission = useMutation({
     mutationFn: async ({ userId, field, value }: { userId: string; field: string; value: boolean }) => {
       const { error } = await supabase
@@ -87,6 +88,37 @@ export function AccessPermissionsSettings() {
     },
     onError: () => {
       toast.error('Erro ao atualizar permissão');
+    },
+  });
+
+  // Update tab permissions stored in profiles.permissions JSONB
+  const updateUserTabPermission = useMutation({
+    mutationFn: async ({ userId, currentPermissions, tabKey, value }: {
+      userId: string;
+      currentPermissions: Record<string, Record<string, boolean>> | null;
+      tabKey: string;
+      value: boolean;
+    }) => {
+      const merged = {
+        ...(currentPermissions || {}),
+        conversations: {
+          ...(currentPermissions?.conversations || {}),
+          [tabKey]: value,
+        },
+      };
+      const { error } = await supabase
+        .from('profiles')
+        .update({ permissions: merged })
+        .eq('id', userId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users-access-permissions'] });
+      toast.success('Permissão de aba atualizada');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar permissão de aba');
     },
   });
 
@@ -113,8 +145,23 @@ export function AccessPermissionsSettings() {
     updateUserPermission.mutate({ userId, field, value });
   };
 
+  const handleUserTabToggle = (user: UserWithAccess, tabKey: string, value: boolean) => {
+    updateUserTabPermission.mutate({
+      userId: user.id,
+      currentPermissions: user.permissions,
+      tabKey,
+      value,
+    });
+  };
+
   const handleDepartmentToggle = (departmentId: string, field: 'can_view_all_conversations' | 'can_transfer_freely', value: boolean) => {
     updateDepartmentPermission.mutate({ departmentId, field, value });
+  };
+
+  // Helper: get tab permission value (undefined = not configured = show by default = true)
+  const getTabPermission = (user: UserWithAccess, tabKey: string): boolean => {
+    const val = user.permissions?.conversations?.[tabKey];
+    return val !== false; // undefined or true → show tab
   };
 
   const getInitials = (name: string | null) => {
@@ -176,7 +223,7 @@ export function AccessPermissionsSettings() {
                   Nenhum usuário disponível (exceto admin/supervisor)
                 </p>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {users.map(user => (
                     <div 
                       key={user.id} 
@@ -196,7 +243,9 @@ export function AccessPermissionsSettings() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 text-xs">
+
+                      {/* Permissões de acesso geral */}
+                      <div className="flex items-center gap-3 text-xs mb-3">
                         <label className="flex items-center gap-1.5 cursor-pointer">
                           <Switch
                             className="scale-75"
@@ -217,6 +266,34 @@ export function AccessPermissionsSettings() {
                           <Repeat className="h-3 w-3 text-muted-foreground" />
                           <span className="text-muted-foreground">Transf.</span>
                         </label>
+                      </div>
+
+                      {/* Divisor */}
+                      <div className="border-t pt-2">
+                        <p className="text-xs text-muted-foreground mb-2 font-medium">Abas visíveis</p>
+                        <div className="grid grid-cols-2 gap-1.5 text-xs">
+                          {[
+                            { key: 'tab_all', label: 'Todas', icon: <List className="h-3 w-3" /> },
+                            { key: 'tab_pinned', label: 'Fixadas', icon: <Pin className="h-3 w-3" /> },
+                            { key: 'tab_shared', label: 'Compart.', icon: <Share2 className="h-3 w-3" /> },
+                            { key: 'tab_mine', label: 'Minhas', icon: <User className="h-3 w-3" /> },
+                            { key: 'view_pending', label: 'Pendentes', icon: <Clock className="h-3 w-3" /> },
+                            { key: 'view_unassigned', label: 'Não Atrib.', icon: <UserX className="h-3 w-3" /> },
+                          ].map(tab => (
+                            <label key={tab.key} className="flex items-center gap-1 cursor-pointer">
+                              <Switch
+                                className="scale-[0.65]"
+                                checked={getTabPermission(user, tab.key)}
+                                onCheckedChange={(checked) => handleUserTabToggle(user, tab.key, checked)}
+                                disabled={updateUserTabPermission.isPending}
+                              />
+                              <span className="text-muted-foreground flex items-center gap-0.5">
+                                {tab.icon}
+                                {tab.label}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ))}
