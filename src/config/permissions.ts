@@ -99,6 +99,10 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
       { key: 'conversations.transfer', name: 'Transferir Conversa', description: 'Transferir para outro atendente/departamento' },
       { key: 'conversations.close', name: 'Fechar Conversa', description: 'Fechar atendimentos' },
       { key: 'conversations.requests', name: 'Gerenciar Requisições', description: 'Visualizar e gerenciar requisições de contato' },
+      { key: 'conversations.tab_all', name: 'Aba "Todas"', description: 'Exibir aba com todas as conversas na lista' },
+      { key: 'conversations.tab_pinned', name: 'Aba "Fixadas"', description: 'Exibir aba com conversas fixadas' },
+      { key: 'conversations.tab_shared', name: 'Aba "Compartilhadas"', description: 'Exibir aba com conversas compartilhadas' },
+      { key: 'conversations.tab_mine', name: 'Aba "Minhas"', description: 'Exibir aba com as conversas do próprio usuário' },
     ],
   },
   {

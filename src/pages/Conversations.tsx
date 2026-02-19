@@ -1548,16 +1548,38 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Acesso total: admin, supervisor, ou usuários com permissão especial (individual ou do departamento)
   const canAccessAllConversations = canViewAllConversations;
   
-  // Permissão para ver conversas não atribuídas (admins, supervisores ou com permissão específica)
-  const canViewUnassigned = canAccessAllConversations || hasPermission('conversations', 'view_unassigned');
+  // Permissão para ver conversas não atribuídas
+  // Se explicitamente false no perfil individual → negar; caso contrário usa lógica padrão
+  const canViewUnassigned = (() => {
+    if (isAdmin || isSupervisor) return true;
+    if (profile?.permissions?.conversations?.view_unassigned === false) return false;
+    return canAccessAllConversations || hasPermission('conversations', 'view_unassigned');
+  })();
   
   // Permissão para ver conversas pendentes do departamento
-  // Vendedores com permissão básica de ver conversas podem ver pending dos SEUS departamentos
-  const canViewPending = canAccessAllConversations || hasPermission('conversations', 'view_pending') || hasPermission('conversations', 'view');
+  // Se explicitamente false no perfil individual → negar; caso contrário usa lógica padrão
+  const canViewPending = (() => {
+    if (isAdmin || isSupervisor) return true;
+    if (profile?.permissions?.conversations?.view_pending === false) return false;
+    return canAccessAllConversations || hasPermission('conversations', 'view_pending') || hasPermission('conversations', 'view');
+  })();
   
   // Filtros disponíveis baseados nas permissões
+  // Para abas tab_*: se a permissão não está configurada (undefined), mostra por padrão.
+  // Apenas se explicitamente configurada como false a aba é ocultada.
+  // Admins e supervisores sempre veem tudo.
+  const canTabAll = isAdmin || isSupervisor || profile?.permissions?.conversations?.tab_all !== false;
+  const canTabPinned = isAdmin || isSupervisor || profile?.permissions?.conversations?.tab_pinned !== false;
+  const canTabShared = isAdmin || isSupervisor || profile?.permissions?.conversations?.tab_shared !== false;
+  const canTabMine = isAdmin || isSupervisor || profile?.permissions?.conversations?.tab_mine !== false;
+
   const availableQuickFilters = useMemo(() => {
-    const filters: ('all' | 'pinned' | 'shared' | 'mine' | 'pending' | 'unassigned')[] = ['all', 'pinned', 'shared', 'mine'];
+    const filters: ('all' | 'pinned' | 'shared' | 'mine' | 'pending' | 'unassigned')[] = [];
+    
+    if (canTabAll) filters.push('all');
+    if (canTabPinned) filters.push('pinned');
+    if (canTabShared) filters.push('shared');
+    if (canTabMine) filters.push('mine');
     
     if (canViewPending) {
       filters.push('pending');
@@ -1568,7 +1590,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
     
     return filters;
-  }, [canViewPending, canViewUnassigned]);
+  }, [canTabAll, canTabPinned, canTabShared, canTabMine, canViewPending, canViewUnassigned]);
 
   // Configuração dos filtros para exibição responsiva
   const filterConfig: Record<string, { 
