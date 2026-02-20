@@ -75,6 +75,7 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'sent_messages_count', label: 'Msgs Enviadas', enabled: false },
   { key: 'received_messages_count', label: 'Msgs Recebidas', enabled: false },
   { key: 'lead_score', label: 'Score do Lead', enabled: false },
+  { key: 'internal_notes', label: 'Notas Internas', enabled: false },
 ];
 
 function mergeWithDefaults(saved: ColumnDef[]): ColumnDef[] {
@@ -194,6 +195,7 @@ function getFieldValue(conv: any, key: string): any {
     case 'sent_messages_count': return conv.sent_messages_count ?? '-';
     case 'received_messages_count': return conv.received_messages_count ?? '-';
     case 'lead_score': return conv.contact?.lead_score ?? '-';
+    case 'internal_notes': return conv.internal_notes_text || '-';
     default: return '';
   }
 }
@@ -374,6 +376,7 @@ export default function ConversationReportPage() {
         received_messages_count: row.received_messages_count,
         referral_source_app: row.referral_source_app || '',
         referral_source_url: row.referral_source_url || '',
+        internal_notes_text: row.internal_notes_text || '',
         contact: {
           full_name: row.contact_full_name,
           phone: row.contact_phone,
@@ -531,6 +534,7 @@ export default function ConversationReportPage() {
           received_messages_count: row.received_messages_count,
           referral_source_app: row.referral_source_app || '',
           referral_source_url: row.referral_source_url || '',
+          internal_notes_text: row.internal_notes_text || '',
           contact: { full_name: row.contact_full_name, phone: row.contact_phone, lead_status: row.contact_lead_status, origin: row.contact_origin, lead_score: row.contact_lead_score },
           channel: { name: row.channel_name },
           assigned_user: { full_name: row.agent_name },
