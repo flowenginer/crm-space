@@ -1,140 +1,125 @@
 
-# Melhorias no Relatório de Atendimentos
+# Adicionar Novas Colunas ao Relatório de Atendimentos
 
-## O Que Será Implementado
+## Resumo das Mudanças
 
-### Funcionalidade 1 — Configurador de Colunas para Export
+### 1. Novas Colunas para Export (5 novas)
 
-Um modal de configuração que aparece ao clicar no botão Excel (ou num ícone de configuração ao lado dele), permitindo:
-- **Marcar/desmarcar** quais colunas incluir no arquivo baixado
-- **Reordenar as colunas** via drag-and-drop (usando o `@dnd-kit/sortable` já instalado no projeto)
-- As configurações ficam salvas no `localStorage` do navegador (persistem entre sessões)
+| Coluna | Fonte | Cálculo |
+|---|---|---|
+| Tempo 1º Atendimento | `conversations.first_response_at` - `conversations.created_at` | Diferença em minutos/horas |
+| Tempo Total Atendimento | `conversations.total_active_time_seconds` | Converter segundos para hh:mm:ss |
+| Msgs Enviadas | Contagem de `messages` onde `is_from_me = true` | Agregação no RPC |
+| Msgs Recebidas | Contagem de `messages` onde `is_from_me = false` | Agregação no RPC |
+| Score do Lead | `contacts.lead_score` | Já existe na tabela, falta retornar |
 
-As colunas disponíveis (todas as que já existem hoje no export):
-- `#` (Protocolo)
-- Nome
-- Contato (Telefone)
-- Origem
-- Plataforma Anúncio
-- URL Anúncio
-- Status do Lead
-- Canal
-- Agente
-- Departamento
-- Etiquetas
-- Status Conversa
-- Motivo Fechamento
-- Data Abertura
-- Data Fechamento
-- 1ª Mensagem
+### 2. Correção Visual — Coluna `#` cortada
 
-O botão Excel terá um pequeno ícone de engrenagem ao lado. Ao clicar, abre um Sheet/Dialog com a lista de colunas, checkboxes e alças de drag.
+O screenshot mostra que o header da tabela começa com "NOME" cortado — a coluna `#` (protocolo) está sendo cortada pela borda esquerda. Isso acontece porque o `overflow-x-auto` está no container interno mas o padding `px-6` do container externo não tem `min-width`. A correção é garantir que o container da tabela não esconça o conteúdo.
 
 ---
 
-### Funcionalidade 2 — "Selecionar Todos" Cross-Page
+## Mudanças Técnicas
 
-Hoje o `handleSelectAll` só seleciona os 50 da página atual. A nova lógica será:
+### Arquivo 1: Nova Migration SQL
 
-**Fluxo ao clicar no checkbox do header:**
-1. Se nada está selecionado → seleciona os 50 da página atual
-2. Se os 50 da página atual estão selecionados E há mais páginas → aparece um banner:
+O RPC `search_conversations_report` precisa ser atualizado para retornar os novos campos. A migration irá recriar a função adicionando:
 
-```text
-┌───────────────────────────────────────────────────────────────┐
-│ 50 atendimentos desta página selecionados.                     │
-│ [Selecionar todos os 847 atendimentos do filtro atual]         │
-└───────────────────────────────────────────────────────────────┘
+```sql
+-- Novos campos no RETURN:
+first_response_at timestamp with time zone,
+total_active_time_seconds integer,
+contact_lead_score integer,
+sent_messages_count bigint,    -- COUNT messages WHERE is_from_me = true
+received_messages_count bigint -- COUNT messages WHERE is_from_me = false
 ```
 
-3. Ao clicar no banner → estado `selectAllPages = true` é ativado
-4. O export e as ações em massa respeitam esse estado:
-   - **Export Excel**: faz uma query sem paginação (todos os IDs do filtro atual) e baixa tudo
-   - **Ações em massa** (transferir, fechar, etc.): passam `selectAllPages: true` para as funções existentes
+No SELECT da função, adicionamos:
+```sql
+c.first_response_at,
+c.total_active_time_seconds,
+ct.lead_score as contact_lead_score,
+COUNT(CASE WHEN m.is_from_me = true THEN 1 END) as sent_messages_count,
+COUNT(CASE WHEN m.is_from_me = false THEN 1 END) as received_messages_count
+```
 
-**Implementação técnica:**
-- Um estado `selectAllPages: boolean` é adicionado
-- Quando `selectAllPages = true`, o export chama o RPC `search_conversations_report` com `p_page_size = total` para buscar tudo de uma vez antes de gerar o Excel
-- Um banner amarelo aparece abaixo da tabela header com a opção de expandir a seleção
+O JOIN com a tabela `messages` já pode ser feito via LEFT JOIN usando `m.conversation_id = c.id`.
+
+**Atenção**: Como a função usa `DISTINCT ON (c.id)` e precisamos de agregações, a query será reestruturada usando um subquery/CTE para separar a agregação de mensagens do DISTINCT ON.
+
+### Arquivo 2: `src/pages/ConversationReport.tsx`
+
+**Novas colunas no `DEFAULT_COLUMNS`:**
+```typescript
+{ key: 'first_response_time', label: 'Tempo 1º Atendimento', enabled: false },
+{ key: 'total_active_time', label: 'Tempo Total Atendimento', enabled: false },
+{ key: 'sent_messages_count', label: 'Msgs Enviadas', enabled: false },
+{ key: 'received_messages_count', label: 'Msgs Recebidas', enabled: false },
+{ key: 'lead_score', label: 'Score do Lead', enabled: false },
+```
+
+> Novas colunas chegam como `enabled: false` por padrão — não quebra o comportamento atual de nenhum usuário.
+
+**Novas entradas na função `getFieldValue`:**
+```typescript
+case 'first_response_time': {
+  if (!conv.first_response_at || !conv.created_at) return '-';
+  const diffMs = new Date(conv.first_response_at).getTime() - new Date(conv.created_at).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const remaining = mins % 60;
+  return `${hrs}h ${remaining}min`;
+}
+case 'total_active_time': {
+  const secs = conv.total_active_time_seconds;
+  if (!secs) return '-';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+case 'sent_messages_count': return conv.sent_messages_count ?? '-';
+case 'received_messages_count': return conv.received_messages_count ?? '-';
+case 'lead_score': return conv.contact?.lead_score ?? '-';
+```
+
+**Mapeamento de dados da query** — no `queryFn`, adicionar ao objeto conversation:
+```typescript
+first_response_at: row.first_response_at,
+total_active_time_seconds: row.total_active_time_seconds,
+sent_messages_count: row.sent_messages_count,
+received_messages_count: row.received_messages_count,
+contact: {
+  ...
+  lead_score: row.contact_lead_score,
+}
+```
+
+**Correção visual do overflow:**
+A `div` que envolve a tabela usa `overflow-x-auto` internamente. O problema é que o container pai tem `px-6` mas não define um `min-width` para o scroll funcionar corretamente. A correção é adicionar a classe `overflow-x-auto` no container externo e garantir que o `<table>` tenha `min-w-max` ou `table-fixed` para não compactar as colunas iniciais:
+
+```jsx
+// Antes:
+<div className="overflow-x-auto">
+  <table className="w-full text-sm">
+
+// Depois:
+<div className="overflow-x-auto">
+  <table className="w-full min-w-[900px] text-sm">
+```
 
 ---
 
 ## Arquivos a Modificar
 
-### Único arquivo: `src/pages/ConversationReport.tsx`
-
-Todas as mudanças ficam neste arquivo. Não há necessidade de criar componentes novos.
-
-**Adições no estado:**
-```typescript
-// Configuração de colunas (persiste em localStorage)
-const [columnConfig, setColumnConfig] = useState<ColumnDef[]>(defaultColumns);
-const [showColumnSettings, setShowColumnSettings] = useState(false);
-
-// Seleção cross-page
-const [selectAllPages, setSelectAllPages] = useState(false);
-```
-
-**Estrutura de coluna:**
-```typescript
-type ColumnDef = {
-  key: string;        // ex: 'protocol_number'
-  label: string;      // ex: '#'
-  enabled: boolean;   // visível/incluído no export
-  order: number;      // posição
-}
-```
-
-**Lógica do export atualizada:**
-```typescript
-const handleExportExcel = async () => {
-  let dataToExport;
-  
-  if (selectAllPages) {
-    // Busca TODOS os registros sem paginação
-    const { data } = await supabase.rpc('search_conversations_report', {
-      ...appliedFilters,
-      p_page: 1,
-      p_page_size: reportData.total  // busca tudo
-    });
-    dataToExport = data;
-  } else {
-    dataToExport = selectedRows.size > 0
-      ? reportData.conversations.filter(c => selectedRows.has(c.id))
-      : reportData.conversations;
-  }
-  
-  // Aplica apenas as colunas habilitadas, na ordem configurada
-  const activeColumns = columnConfig
-    .filter(col => col.enabled)
-    .sort((a, b) => a.order - b.order);
-    
-  const excelData = dataToExport.map(conv => 
-    Object.fromEntries(activeColumns.map(col => [col.label, getFieldValue(conv, col.key)]))
-  );
-  // ... gera Excel
-};
-```
-
-**Modal de configuração de colunas:**
-- Usa `@dnd-kit/sortable` (já instalado) para drag-and-drop
-- Botão "Restaurar padrão" que volta para todas as colunas habilitadas na ordem original
-- Salva automaticamente no `localStorage` com chave `conversation-report-columns`
-
-**Banner de seleção cross-page:**
-```text
-Aparece entre o header da tabela e as linhas, quando selectAll = true E total > pageSize:
-
-[⚠] 50 atendimentos desta página foram selecionados.
-    Clique aqui para selecionar todos os 847 atendimentos →  [Selecionar todos] [Cancelar]
-```
+1. **Nova migration SQL** — atualiza a função `search_conversations_report` para retornar os 5 novos campos.
+2. **`src/pages/ConversationReport.tsx`** — adiciona as 5 novas colunas ao configurador + `getFieldValue` + mapeamento de dados + correção do overflow visual.
 
 ---
 
 ## Compatibilidade
 
-- O export normal (sem seleção) continua funcionando igual — baixa a página atual
-- Usuários que nunca configuraram colunas veem o comportamento padrão (todas as colunas)
-- O localStorage garante que a configuração persiste entre sessões no mesmo browser
-- Nenhuma mudança no banco de dados ou edge functions
-
+- As 5 novas colunas chegam com `enabled: false` por padrão — usuários existentes não veem mudança até optarem por habilitá-las.
+- O RPC é retrocompatível: todos os campos existentes permanecem no mesmo lugar.
+- A correção do overflow é puramente visual e não afeta funcionalidade.
