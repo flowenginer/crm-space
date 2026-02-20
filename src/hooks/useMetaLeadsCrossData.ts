@@ -98,11 +98,11 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
       // Buscar status de conversão do company_settings
       const { data: companySettings } = await supabase
         .from('company_settings')
-        .select('conversion_status_id')
+        .select('conversion_status_ids')
         .eq('tenant_id', tenantId)
         .single();
 
-      const conversionStatusId = companySettings?.conversion_status_id;
+      const conversionStatusId = companySettings?.conversion_status_ids?.[0];
 
       // Fetch active segments for matching - FILTRADO POR TENANT
       const { data: segments } = await supabase
