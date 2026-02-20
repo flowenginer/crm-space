@@ -1,127 +1,140 @@
 
-# Controle de Visibilidade das Tabs de Conversas por Usuário
+# Melhorias no Relatório de Atendimentos
 
-## Objetivo
+## O Que Será Implementado
 
-Permitir que administradores controlem quais abas/filtros de conversas (Todas, Fixadas, Compartilhadas, Minhas, Pendentes, Não Atribuídas) cada usuário pode ver. Todos os usuários existentes começam com acesso total a todas as abas — basta desativar o que não deve ser visível.
+### Funcionalidade 1 — Configurador de Colunas para Export
 
-## Como o Sistema Já Funciona (Contexto)
+Um modal de configuração que aparece ao clicar no botão Excel (ou num ícone de configuração ao lado dele), permitindo:
+- **Marcar/desmarcar** quais colunas incluir no arquivo baixado
+- **Reordenar as colunas** via drag-and-drop (usando o `@dnd-kit/sortable` já instalado no projeto)
+- As configurações ficam salvas no `localStorage` do navegador (persistem entre sessões)
 
-O sistema já possui toda a infraestrutura necessária:
+As colunas disponíveis (todas as que já existem hoje no export):
+- `#` (Protocolo)
+- Nome
+- Contato (Telefone)
+- Origem
+- Plataforma Anúncio
+- URL Anúncio
+- Status do Lead
+- Canal
+- Agente
+- Departamento
+- Etiquetas
+- Status Conversa
+- Motivo Fechamento
+- Data Abertura
+- Data Fechamento
+- 1ª Mensagem
 
-- `profiles.permissions` (JSONB) armazena overrides individuais por usuário, com prioridade sobre as permissões do perfil/role
-- `hasPermission('conversations', 'view_pending')` e `hasPermission('conversations', 'view_unassigned')` já existem e já controlam parcialmente as abas Pendentes e Não Atribuídas
-- O array `availableQuickFilters` em `Conversations.tsx` já filtra quais abas aparecem com base nessas permissões
-- As abas "Todas", "Fixadas", "Compartilhadas" e "Minhas" hoje são sempre mostradas para todos
+O botão Excel terá um pequeno ícone de engrenagem ao lado. Ao clicar, abre um Sheet/Dialog com a lista de colunas, checkboxes e alças de drag.
 
-## O Que Será Adicionado
+---
 
-Novas permissões granulares para as 6 abas no arquivo `src/config/permissions.ts`:
+### Funcionalidade 2 — "Selecionar Todos" Cross-Page
 
-```text
-conversations.tab_all        → Aba "Todas"
-conversations.tab_pinned     → Aba "Fixadas"  
-conversations.tab_shared     → Aba "Compartilhadas"
-conversations.tab_mine       → Aba "Minhas"
-conversations.tab_pending    → Aba "Pendentes" (já existe como view_pending)
-conversations.tab_unassigned → Aba "Não Atribuídas" (já existe como view_unassigned)
-```
+Hoje o `handleSelectAll` só seleciona os 50 da página atual. A nova lógica será:
 
-## Onde Cada Peça Será Tocada
-
-### 1. `src/config/permissions.ts`
-Adicionar 4 novas permissões na categoria `conversations`:
-- `conversations.tab_all` — Aba "Todas"
-- `conversations.tab_pinned` — Aba "Fixadas"
-- `conversations.tab_shared` — Aba "Compartilhadas"
-- `conversations.tab_mine` — Aba "Minhas"
-
-(Pendentes e Não Atribuídas já existem como `view_pending` e `view_unassigned`)
-
-### 2. `src/pages/Conversations.tsx` — Lógica de `availableQuickFilters`
-Atualmente (linhas 1559-1571), o array começa fixo com `['all', 'pinned', 'shared', 'mine']` e adiciona `pending` e `unassigned` condicionalmente. Será mudado para:
-
-```text
-Antes (hoje):
-  filters = ['all', 'pinned', 'shared', 'mine']
-  if (canViewPending) → push('pending')
-  if (canViewUnassigned) → push('unassigned')
-
-Depois:
-  if (canTabAll OR isAdmin)     → push('all')
-  if (canTabPinned OR isAdmin)  → push('pinned')
-  if (canTabShared OR isAdmin)  → push('shared')
-  if (canTabMine OR isAdmin)    → push('mine')
-  if (canViewPending OR isAdmin) → push('pending')
-  if (canViewUnassigned OR isAdmin) → push('unassigned')
-```
-
-Para não quebrar usuários existentes, a lógica de fallback será: **se o usuário não tiver NENHUMA permissão de tab configurada, mostra todas** (retrocompatibilidade).
-
-### 3. `src/components/settings/AccessPermissionsSettings.tsx`
-Adicionar uma nova seção "Abas de Conversas" no card de configuração por usuário. Cada usuário terá 6 switches, um por aba. O padrão de todos começa como `true` (todos habilitados).
-
-A seção ficará assim:
+**Fluxo ao clicar no checkbox do header:**
+1. Se nada está selecionado → seleciona os 50 da página atual
+2. Se os 50 da página atual estão selecionados E há mais páginas → aparece um banner:
 
 ```text
-[Card: Por Usuário]
-  ┌─────────────────────────────┐
-  │ Avatar | Nome | Role         │
-  │                              │
-  │ Ver  Transf.                 │  ← switches atuais
-  │                              │
-  │ [v] Todas  [v] Fixadas       │  ← novos switches de abas
-  │ [v] Compart. [v] Minhas     │
-  │ [v] Pendentes [v] Não Atrib.│
-  └─────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│ 50 atendimentos desta página selecionados.                     │
+│ [Selecionar todos os 847 atendimentos do filtro atual]         │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-### 4. Migration SQL (sem tocar na tabela — usa `profiles.permissions` existente)
-Nenhuma coluna nova será criada. O sistema já salva overrides em `profiles.permissions` (JSONB). A mutation de update simplesmente escreve:
-```json
-{
-  "conversations": {
-    "tab_all": true,
-    "tab_pinned": true,
-    "tab_shared": true,
-    "tab_mine": true,
-    "view_pending": true,
-    "view_unassigned": true
-  }
+3. Ao clicar no banner → estado `selectAllPages = true` é ativado
+4. O export e as ações em massa respeitam esse estado:
+   - **Export Excel**: faz uma query sem paginação (todos os IDs do filtro atual) e baixa tudo
+   - **Ações em massa** (transferir, fechar, etc.): passam `selectAllPages: true` para as funções existentes
+
+**Implementação técnica:**
+- Um estado `selectAllPages: boolean` é adicionado
+- Quando `selectAllPages = true`, o export chama o RPC `search_conversations_report` com `p_page_size = total` para buscar tudo de uma vez antes de gerar o Excel
+- Um banner amarelo aparece abaixo da tabela header com a opção de expandir a seleção
+
+---
+
+## Arquivos a Modificar
+
+### Único arquivo: `src/pages/ConversationReport.tsx`
+
+Todas as mudanças ficam neste arquivo. Não há necessidade de criar componentes novos.
+
+**Adições no estado:**
+```typescript
+// Configuração de colunas (persiste em localStorage)
+const [columnConfig, setColumnConfig] = useState<ColumnDef[]>(defaultColumns);
+const [showColumnSettings, setShowColumnSettings] = useState(false);
+
+// Seleção cross-page
+const [selectAllPages, setSelectAllPages] = useState(false);
+```
+
+**Estrutura de coluna:**
+```typescript
+type ColumnDef = {
+  key: string;        // ex: 'protocol_number'
+  label: string;      // ex: '#'
+  enabled: boolean;   // visível/incluído no export
+  order: number;      // posição
 }
 ```
-Usuários sem esse campo configurado verão todas as abas (fallback gracioso).
 
-## Compatibilidade com Usuários Existentes
-
-Todos os usuários existentes **não têm** as permissões `tab_*` configuradas em `profiles.permissions`. A lógica de `hasPermission()` retorna `false` quando a permissão não existe — então usaremos a seguinte regra:
-
-```text
-canShowTab = hasPermission('conversations', 'tab_X') !== false
-           = true se UNDEFINED (não configurado) OU se configurado como true
-           = false APENAS se explicitamente configurado como false
+**Lógica do export atualizada:**
+```typescript
+const handleExportExcel = async () => {
+  let dataToExport;
+  
+  if (selectAllPages) {
+    // Busca TODOS os registros sem paginação
+    const { data } = await supabase.rpc('search_conversations_report', {
+      ...appliedFilters,
+      p_page: 1,
+      p_page_size: reportData.total  // busca tudo
+    });
+    dataToExport = data;
+  } else {
+    dataToExport = selectedRows.size > 0
+      ? reportData.conversations.filter(c => selectedRows.has(c.id))
+      : reportData.conversations;
+  }
+  
+  // Aplica apenas as colunas habilitadas, na ordem configurada
+  const activeColumns = columnConfig
+    .filter(col => col.enabled)
+    .sort((a, b) => a.order - b.order);
+    
+  const excelData = dataToExport.map(conv => 
+    Object.fromEntries(activeColumns.map(col => [col.label, getFieldValue(conv, col.key)]))
+  );
+  // ... gera Excel
+};
 ```
 
-Isso garante que todos os usuários atuais continuem vendo todas as abas. O administrador só precisa **desativar** o que não quer mostrar.
+**Modal de configuração de colunas:**
+- Usa `@dnd-kit/sortable` (já instalado) para drag-and-drop
+- Botão "Restaurar padrão" que volta para todas as colunas habilitadas na ordem original
+- Salva automaticamente no `localStorage` com chave `conversation-report-columns`
 
-## Seção Técnica
+**Banner de seleção cross-page:**
+```text
+Aparece entre o header da tabela e as linhas, quando selectAll = true E total > pageSize:
 
-### Arquivos a modificar:
-1. `src/config/permissions.ts` — Adicionar 4 novas permissões `tab_*`
-2. `src/pages/Conversations.tsx` — Modificar `availableQuickFilters` (linhas ~1559-1571) e adicionar os 4 novos `canTab*` vars
-3. `src/components/settings/AccessPermissionsSettings.tsx` — Adicionar seção de controle de abas por usuário com 6 switches, expandindo o card de usuários existente
+[⚠] 50 atendimentos desta página foram selecionados.
+    Clique aqui para selecionar todos os 847 atendimentos →  [Selecionar todos] [Cancelar]
+```
 
-### Lógica de permissão no hook `usePermissions`:
-O `hasPermission()` já funciona perfeitamente:
-- Se `profile.permissions.conversations.tab_all === undefined` → `return false` (hoje)
-- Mas a nova lógica em `availableQuickFilters` tratará `undefined` como `true` (permissão implícita se não configurada)
-- Isso se faz verificando `profile.permissions?.conversations?.tab_all !== false` no lugar de `hasPermission()`
+---
 
-### Mutation para salvar:
-A `AccessPermissionsSettings` fará `supabase.from('profiles').update({ permissions: mergedPermissions }).eq('id', userId)`, preservando as permissões existentes e apenas atualizando as chaves de `tab_*`.
+## Compatibilidade
 
-### Onde NÃO haverá mudanças:
-- Nenhuma mudança em banco de dados (sem migrations)
-- Nenhuma mudança em RLS policies
-- Nenhuma mudança em edge functions
-- O sistema de permissões por role/perfil não é alterado (tabs podem ser configuradas individualmente por usuário)
+- O export normal (sem seleção) continua funcionando igual — baixa a página atual
+- Usuários que nunca configuraram colunas veem o comportamento padrão (todas as colunas)
+- O localStorage garante que a configuração persiste entre sessões no mesmo browser
+- Nenhuma mudança no banco de dados ou edge functions
+
