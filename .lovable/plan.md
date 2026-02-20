@@ -1,96 +1,59 @@
 
-# Adicionar Coluna "Notas Internas" ao Relatório de Atendimentos
+# Correção: Conflito de Funções Duplicadas no Relatório de Atendimentos
 
-## Contexto
+## Diagnóstico
 
-A tabela `internal_notes` existe e possui os campos: `id`, `conversation_id`, `author_id`, `content`, `is_pinned`, `created_at`, `tenant_id`. Cada conversa pode ter **várias** notas internas. O relatório precisa exibir/exportar essas notas como uma coluna adicional.
+Após investigação no banco de dados, foram encontradas **duas versões da função `search_conversations_report` registradas simultaneamente**:
 
-A estratégia é concatenar todas as notas de cada conversa em um único campo de texto, separadas por um delimitador claro, para que caibam em uma única célula do Excel.
+| OID | Versão | Tipos de parâmetro |
+|-----|--------|-------------------|
+| 511461 | Antiga | `timestamp with time zone`, `uuid[]` (original) |
+| 511494 | Nova | `text`, `text[]` (criada pela última migration) |
 
----
-
-## Decisão de Design
-
-Como uma conversa pode ter múltiplas notas internas, existem duas abordagens:
-
-**Opção A (escolhida):** Concatenar todas as notas em uma única célula, separadas por `" | "`.
-Exemplo: `"Cliente quer desconto | Ligue amanhã cedo | Verificar contrato"`
-
-Isso mantém o formato do Excel simples (uma linha por atendimento) e é compatível com o configurador de colunas existente.
+O `DROP FUNCTION` na migration mais recente usou a assinatura `text[]`, mas a função original usa `uuid[]` e `timestamp with time zone` — então o DROP **não removeu a função antiga**. Com duas funções de mesmo nome, o PostgreSQL retorna erro de ambiguidade e o relatório fica em branco.
 
 ---
 
-## Mudanças Técnicas
+## Solução
 
-### 1. Migration SQL — Atualizar `search_conversations_report`
+Uma única migration SQL que:
 
-O RPC precisa de um novo campo de retorno: `internal_notes_text text`.
+1. **Remove as DUAS versões** da função, usando os tipos corretos de cada assinatura para garantir que ambas sejam dropadas sem ambiguidade.
+2. **Recria a função** com a versão mais recente (com `internal_notes_text`, `sent_messages_count`, `received_messages_count`, `contact_lead_score`, `first_response_at`, `total_active_time_seconds`) — usando assinatura `text` para todos os parâmetros.
+3. **Notifica o PostgREST** para recarregar o schema cache com `NOTIFY pgrst, 'reload schema'`.
 
-Adicionar uma nova CTE `internal_notes_agg` que agrega as notas de cada conversa via `STRING_AGG`:
+### SQL da migration (resumo):
 
 ```sql
--- Novo campo no RETURNS TABLE:
-internal_notes_text text
+-- Remove a versão antiga (com uuid[] e timestamptz)
+DROP FUNCTION IF EXISTS public.search_conversations_report(
+  timestamp with time zone, timestamp with time zone, text, text,
+  text[], uuid[], text[], text[], uuid[], text[], integer, integer
+);
 
--- Nova CTE:
-internal_notes_agg AS (
-  SELECT
-    conversation_id,
-    STRING_AGG(content, ' | ' ORDER BY created_at ASC) as notes_text
-  FROM internal_notes
-  WHERE conversation_id IN (SELECT id FROM base_conversations)
-  GROUP BY conversation_id
-)
+-- Remove a versão nova (com text[])
+DROP FUNCTION IF EXISTS public.search_conversations_report(
+  text, text, text, text,
+  text[], text[], text[], text[], text[], text[], integer, integer
+);
 
--- No SELECT final:
-LEFT JOIN internal_notes_agg ina ON ina.conversation_id = bc.id
--- Campo retornado:
-COALESCE(ina.notes_text, '') as internal_notes_text
-```
+-- Recria com a versão completa e correta
+CREATE OR REPLACE FUNCTION public.search_conversations_report(...)
+...
 
-> A migration irá fazer DROP da função atual e recriar com o novo campo, mantendo todos os campos existentes intactos.
-
-### 2. Frontend — `src/pages/ConversationReport.tsx`
-
-**a) Nova coluna em `DEFAULT_COLUMNS`:**
-```typescript
-{ key: 'internal_notes', label: 'Notas Internas', enabled: false },
-```
-Chega como `enabled: false` por padrão — não quebra usuários existentes.
-
-**b) Novo case em `getFieldValue`:**
-```typescript
-case 'internal_notes': return conv.internal_notes_text || '-';
-```
-
-**c) Mapeamento no `queryFn`** (tanto na query principal quanto no export de todas as páginas):
-```typescript
-internal_notes_text: row.internal_notes_text || '',
+-- Recarrega o schema cache do PostgREST
+NOTIFY pgrst, 'reload schema';
 ```
 
 ---
 
-## Fluxo no Excel
+## Arquivos Afetados
 
-Quando habilitada, a coluna "Notas Internas" aparece no `.xlsx` como uma célula de texto com todas as notas concatenadas. Se não houver notas, a célula mostrará vazio.
-
-Exemplo de saída:
-| # | Nome | Status Conversa | Notas Internas |
-|---|------|----------------|----------------|
-| AB123C | João Silva | Fechado | Cliente pediu retorno | Confirmado via WhatsApp |
-| DE456F | Maria Souza | Ativo | *(vazio)* |
+1. **Nova migration SQL** — faz o DROP correto das duas versões e recria a função uma única vez limpa.
+2. **Nenhuma alteração no frontend** — o `ConversationReport.tsx` já está correto chamando com parâmetros `text`.
 
 ---
 
-## Arquivos a Modificar
+## Resultado Esperado
 
-1. **Nova migration SQL** — adiciona `internal_notes_text` ao RPC `search_conversations_report` via nova CTE com `STRING_AGG`.
-2. **`src/pages/ConversationReport.tsx`** — adiciona coluna ao configurador + `getFieldValue` + mapeamento nos dois lugares onde os dados são mapeados (query principal e export full-page).
-
----
-
-## Compatibilidade
-
-- A nova coluna chega com `enabled: false` — nenhum usuário existente verá mudança até habilitar manualmente no configurador de colunas.
-- O RPC mantém todos os 25 campos existentes; o novo é adicionado como 26º.
-- Sem impacto em performance significativo: a CTE usa `IN (SELECT id FROM base_conversations)` para limitar o escopo às conversas já filtradas.
+Após aplicar a migration, o relatório voltará a carregar normalmente com todas as colunas existentes mais a nova coluna "Notas Internas".
