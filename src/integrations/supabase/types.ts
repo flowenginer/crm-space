@@ -12203,6 +12203,7 @@ export type Database = {
           closed_at: string
           contact_full_name: string
           contact_id: string
+          contact_lead_score: number
           contact_lead_status: string
           contact_origin: string
           contact_phone: string
@@ -12210,12 +12211,16 @@ export type Database = {
           department_id: string
           department_name: string
           first_message_content: string
+          first_response_at: string
           id: string
           last_message_at: string
           lead_status: string
+          received_messages_count: number
           referral_source_app: string
           referral_source_url: string
+          sent_messages_count: number
           status: string
+          total_active_time_seconds: number
           total_count: number
         }[]
       }
