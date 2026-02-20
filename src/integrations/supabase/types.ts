@@ -7288,6 +7288,7 @@ export type Database = {
           max_conversations: number | null
           permissions: Json | null
           phone: string | null
+          preferences: Json | null
           role: string | null
           sales_target_1: number | null
           sales_target_2: number | null
@@ -7325,6 +7326,7 @@ export type Database = {
           max_conversations?: number | null
           permissions?: Json | null
           phone?: string | null
+          preferences?: Json | null
           role?: string | null
           sales_target_1?: number | null
           sales_target_2?: number | null
@@ -7362,6 +7364,7 @@ export type Database = {
           max_conversations?: number | null
           permissions?: Json | null
           phone?: string | null
+          preferences?: Json | null
           role?: string | null
           sales_target_1?: number | null
           sales_target_2?: number | null
