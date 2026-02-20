@@ -70,6 +70,11 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'created_at', label: 'Data Abertura', enabled: true },
   { key: 'closed_at', label: 'Data Fechamento', enabled: true },
   { key: 'first_message', label: '1ª Mensagem', enabled: true },
+  { key: 'first_response_time', label: 'Tempo 1º Atendimento', enabled: false },
+  { key: 'total_active_time', label: 'Tempo Total Atendimento', enabled: false },
+  { key: 'sent_messages_count', label: 'Msgs Enviadas', enabled: false },
+  { key: 'received_messages_count', label: 'Msgs Recebidas', enabled: false },
+  { key: 'lead_score', label: 'Score do Lead', enabled: false },
 ];
 
 function mergeWithDefaults(saved: ColumnDef[]): ColumnDef[] {
@@ -168,6 +173,27 @@ function getFieldValue(conv: any, key: string): any {
     case 'created_at': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
     case 'closed_at': return conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '';
     case 'first_message': return conv.first_message || '';
+    case 'first_response_time': {
+      if (!conv.first_response_at || !conv.created_at) return '-';
+      const diffMs = new Date(conv.first_response_at).getTime() - new Date(conv.created_at).getTime();
+      if (diffMs < 0) return '-';
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 60) return `${mins} min`;
+      const hrs = Math.floor(mins / 60);
+      const remaining = mins % 60;
+      return `${hrs}h ${remaining}min`;
+    }
+    case 'total_active_time': {
+      const secs = conv.total_active_time_seconds;
+      if (!secs) return '-';
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = secs % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    case 'sent_messages_count': return conv.sent_messages_count ?? '-';
+    case 'received_messages_count': return conv.received_messages_count ?? '-';
+    case 'lead_score': return conv.contact?.lead_score ?? '-';
     default: return '';
   }
 }
@@ -342,13 +368,18 @@ export default function ConversationReportPage() {
         closed_at: row.closed_at,
         close_reason: row.close_reason,
         last_message_at: row.last_message_at,
+        first_response_at: row.first_response_at,
+        total_active_time_seconds: row.total_active_time_seconds,
+        sent_messages_count: row.sent_messages_count,
+        received_messages_count: row.received_messages_count,
         referral_source_app: row.referral_source_app || '',
         referral_source_url: row.referral_source_url || '',
         contact: {
           full_name: row.contact_full_name,
           phone: row.contact_phone,
           lead_status: row.contact_lead_status,
-          origin: row.contact_origin
+          origin: row.contact_origin,
+          lead_score: row.contact_lead_score,
         },
         channel: { name: row.channel_name },
         assigned_user: { full_name: row.agent_name },
@@ -494,9 +525,13 @@ export default function ConversationReportPage() {
           created_at: row.created_at,
           closed_at: row.closed_at,
           close_reason: row.close_reason,
+          first_response_at: row.first_response_at,
+          total_active_time_seconds: row.total_active_time_seconds,
+          sent_messages_count: row.sent_messages_count,
+          received_messages_count: row.received_messages_count,
           referral_source_app: row.referral_source_app || '',
           referral_source_url: row.referral_source_url || '',
-          contact: { full_name: row.contact_full_name, phone: row.contact_phone, lead_status: row.contact_lead_status, origin: row.contact_origin },
+          contact: { full_name: row.contact_full_name, phone: row.contact_phone, lead_status: row.contact_lead_status, origin: row.contact_origin, lead_score: row.contact_lead_score },
           channel: { name: row.channel_name },
           assigned_user: { full_name: row.agent_name },
           department: { name: row.department_name },
@@ -762,7 +797,7 @@ export default function ConversationReportPage() {
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[1100px] text-sm">
               <thead>
                 <tr className="bg-muted/50 border-b border-border">
                   <th className="px-3 py-3 text-left">
