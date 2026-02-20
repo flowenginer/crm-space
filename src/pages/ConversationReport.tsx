@@ -387,7 +387,7 @@ export default function ConversationReportPage() {
         channel: { name: row.channel_name },
         assigned_user: { full_name: row.agent_name },
         department: { name: row.department_name },
-        first_message: row.first_message_content || '',
+        first_message: row.first_message || '',
         protocol_number: row.id.slice(-6).toUpperCase(),
         tags: []
       }));
@@ -539,7 +539,7 @@ export default function ConversationReportPage() {
           channel: { name: row.channel_name },
           assigned_user: { full_name: row.agent_name },
           department: { name: row.department_name },
-          first_message: row.first_message_content || '',
+          first_message: row.first_message || '',
           protocol_number: row.id.slice(-6).toUpperCase(),
           tags: []
         }));
