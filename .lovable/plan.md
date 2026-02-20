@@ -1,46 +1,46 @@
 
-# Correção: `sender_type` não existe — substituir por `is_from_me`
+## Diagnóstico Completo
 
-## Causa Raiz Confirmada
+Após analisar o banco de dados com dados reais, identifiquei a causa raiz:
 
-A tabela `messages` não possui a coluna `sender_type`. A coluna correta para identificar quem enviou a mensagem é `is_from_me` (boolean):
+**A coluna "URL Anúncio" está vazia porque a função RPC foi recriada mas o Supabase ainda está executando a versão em cache**, ou porque o campo correto para leads do tipo `redirect` não é uma URL — é o nome do criativo (utm_content).
 
-- `is_from_me = true` → mensagem enviada pelo agente
-- `is_from_me = false` → mensagem enviada pelo contato
+### Estrutura real dos dados no banco
 
-A função `search_conversations_report` criada pelas migrations anteriores referencia `m.sender_type = 'contact'` e `m.sender_type = 'agent'` em três lugares, o que causa o erro `column m.sender_type does not exist` toda vez que o relatório é gerado.
+| Tipo de lead | Campo disponível | Valor real |
+|---|---|---|
+| `ctwa_ad` (CTWA direto) | `video_url` | URL do reel (ex: `https://www.facebook.com/reel/913176884570657/`) |
+| `ctwa_ad` (CTWA direto) | `source_url` | URL do post Instagram (ex: `https://www.instagram.com/p/DT94h2jAMYb/`) |
+| `redirect` (UTM/link) | `utm_content` | Nome do criativo (ex: `"SS02.4-1 CT_VIDEO - AGRO"`) |
+| `redirect` (UTM/link) | `utm_medium` | Nome do conjunto (ex: `"SS02.4 | AGRO | SEGMENTADO"`) |
+| `meta_ads` (detectado) | nenhum | vazio |
 
-## O Que Precisa Mudar
+A lógica `COALESCE` atual **funciona corretamente no banco** quando testada diretamente. O problema é que o **DROP FUNCTION** nas migrations anteriores pode não ter eliminado todas as assinaturas sobrepostas, e o PostgREST pode estar usando uma versão desatualizada da função.
 
-Dentro do corpo da função, nos três subqueries de mensagens:
+### Solução
 
-```sql
--- ERRADO (atual):
-AND m.sender_type = 'contact'   -- first_message
-AND m.sender_type = 'agent'     -- sent_messages_count
-AND m.sender_type = 'contact'   -- received_messages_count
+1. **Nova migration definitiva** que:
+   - Dropa **todas** as variações de assinatura existentes da função (para garantir limpeza total)
+   - Recria a função com a lógica `COALESCE` correta para `referral_source_url`:
+     - Prioridade 1: `video_url` (CTWA — URL do vídeo/reel no Facebook)
+     - Prioridade 2: `source_url` (CTWA — URL do post no Instagram)
+     - Prioridade 3: `utm_content` (redirect/UTM — nome do criativo)
+     - Prioridade 4: `utm_medium` (redirect/UTM — nome do conjunto de anúncios)
+   - Re-concede permissões
+   - Força reload do schema
 
--- CORRETO (após fix):
-AND m.is_from_me = false        -- first_message (contato enviou)
-AND m.is_from_me = true         -- sent_messages_count (agente enviou)
-AND m.is_from_me = false        -- received_messages_count (contato enviou)
-```
+2. **Separar em 2 colunas no relatório** (melhoria): 
+   - `referral_source_url` → URL real (apenas para CTWA)
+   - Renomear para algo que faça mais sentido — para leads `redirect`, mostrar o nome do criativo na coluna "Criativo" e a URL real na coluna "URL Anúncio"
 
-## Solução
+### Arquivos afetados
 
-Uma nova migration SQL que:
+- **1 nova migration SQL** — corrigir e garantir que a função está ativa com a lógica certa
 
-1. **Dropa** a versão atual da função (assinatura `text, text, text, text, text[], text[], text[], text[], text[], text[], integer, integer`)
-2. **Recria** a função completa com a correção dos três `sender_type` → `is_from_me`
-3. **Mantém** todos os outros campos intactos: `internal_notes_text`, `first_response_at`, `total_active_time_seconds`, `contact_lead_score`, etc.
-4. **Re-concede** permissão `EXECUTE` ao role `authenticated`
-5. **Notifica** o PostgREST com `NOTIFY pgrst, 'reload schema'`
+### Resultado esperado
 
-## Arquivos Afetados
+- Leads `ctwa_ad`: coluna "URL Anúncio" mostra `https://www.facebook.com/reel/...` ou `https://www.instagram.com/p/...`
+- Leads `redirect`: coluna mostra o nome do criativo (ex: `"SS02.4-1 CT_VIDEO - AGRO"`) — pois não há URL disponível nesse tipo de rastreamento
+- Leads `meta_ads` (detectados por padrão): coluna vazia (sem dados de rastreamento)
 
-1. **Nova migration SQL** — única alteração necessária, no banco de dados
-2. **Nenhuma mudança no frontend** — `ConversationReport.tsx` está correto
-
-## Resultado Esperado
-
-Após a migration, ao clicar em "Gerar" no relatório de atendimentos, os contatos e dados serão carregados normalmente.
+Isso é o máximo que os dados permitem — leads do tipo `redirect` rastreados via UTM simplesmente não possuem uma URL de anúncio armazenada, apenas o nome do criativo.
