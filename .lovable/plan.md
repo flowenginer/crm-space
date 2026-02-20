@@ -1,125 +1,96 @@
 
-# Adicionar Novas Colunas ao Relatório de Atendimentos
+# Adicionar Coluna "Notas Internas" ao Relatório de Atendimentos
 
-## Resumo das Mudanças
+## Contexto
 
-### 1. Novas Colunas para Export (5 novas)
+A tabela `internal_notes` existe e possui os campos: `id`, `conversation_id`, `author_id`, `content`, `is_pinned`, `created_at`, `tenant_id`. Cada conversa pode ter **várias** notas internas. O relatório precisa exibir/exportar essas notas como uma coluna adicional.
 
-| Coluna | Fonte | Cálculo |
-|---|---|---|
-| Tempo 1º Atendimento | `conversations.first_response_at` - `conversations.created_at` | Diferença em minutos/horas |
-| Tempo Total Atendimento | `conversations.total_active_time_seconds` | Converter segundos para hh:mm:ss |
-| Msgs Enviadas | Contagem de `messages` onde `is_from_me = true` | Agregação no RPC |
-| Msgs Recebidas | Contagem de `messages` onde `is_from_me = false` | Agregação no RPC |
-| Score do Lead | `contacts.lead_score` | Já existe na tabela, falta retornar |
+A estratégia é concatenar todas as notas de cada conversa em um único campo de texto, separadas por um delimitador claro, para que caibam em uma única célula do Excel.
 
-### 2. Correção Visual — Coluna `#` cortada
+---
 
-O screenshot mostra que o header da tabela começa com "NOME" cortado — a coluna `#` (protocolo) está sendo cortada pela borda esquerda. Isso acontece porque o `overflow-x-auto` está no container interno mas o padding `px-6` do container externo não tem `min-width`. A correção é garantir que o container da tabela não esconça o conteúdo.
+## Decisão de Design
+
+Como uma conversa pode ter múltiplas notas internas, existem duas abordagens:
+
+**Opção A (escolhida):** Concatenar todas as notas em uma única célula, separadas por `" | "`.
+Exemplo: `"Cliente quer desconto | Ligue amanhã cedo | Verificar contrato"`
+
+Isso mantém o formato do Excel simples (uma linha por atendimento) e é compatível com o configurador de colunas existente.
 
 ---
 
 ## Mudanças Técnicas
 
-### Arquivo 1: Nova Migration SQL
+### 1. Migration SQL — Atualizar `search_conversations_report`
 
-O RPC `search_conversations_report` precisa ser atualizado para retornar os novos campos. A migration irá recriar a função adicionando:
+O RPC precisa de um novo campo de retorno: `internal_notes_text text`.
+
+Adicionar uma nova CTE `internal_notes_agg` que agrega as notas de cada conversa via `STRING_AGG`:
 
 ```sql
--- Novos campos no RETURN:
-first_response_at timestamp with time zone,
-total_active_time_seconds integer,
-contact_lead_score integer,
-sent_messages_count bigint,    -- COUNT messages WHERE is_from_me = true
-received_messages_count bigint -- COUNT messages WHERE is_from_me = false
+-- Novo campo no RETURNS TABLE:
+internal_notes_text text
+
+-- Nova CTE:
+internal_notes_agg AS (
+  SELECT
+    conversation_id,
+    STRING_AGG(content, ' | ' ORDER BY created_at ASC) as notes_text
+  FROM internal_notes
+  WHERE conversation_id IN (SELECT id FROM base_conversations)
+  GROUP BY conversation_id
+)
+
+-- No SELECT final:
+LEFT JOIN internal_notes_agg ina ON ina.conversation_id = bc.id
+-- Campo retornado:
+COALESCE(ina.notes_text, '') as internal_notes_text
 ```
 
-No SELECT da função, adicionamos:
-```sql
-c.first_response_at,
-c.total_active_time_seconds,
-ct.lead_score as contact_lead_score,
-COUNT(CASE WHEN m.is_from_me = true THEN 1 END) as sent_messages_count,
-COUNT(CASE WHEN m.is_from_me = false THEN 1 END) as received_messages_count
-```
+> A migration irá fazer DROP da função atual e recriar com o novo campo, mantendo todos os campos existentes intactos.
 
-O JOIN com a tabela `messages` já pode ser feito via LEFT JOIN usando `m.conversation_id = c.id`.
+### 2. Frontend — `src/pages/ConversationReport.tsx`
 
-**Atenção**: Como a função usa `DISTINCT ON (c.id)` e precisamos de agregações, a query será reestruturada usando um subquery/CTE para separar a agregação de mensagens do DISTINCT ON.
-
-### Arquivo 2: `src/pages/ConversationReport.tsx`
-
-**Novas colunas no `DEFAULT_COLUMNS`:**
+**a) Nova coluna em `DEFAULT_COLUMNS`:**
 ```typescript
-{ key: 'first_response_time', label: 'Tempo 1º Atendimento', enabled: false },
-{ key: 'total_active_time', label: 'Tempo Total Atendimento', enabled: false },
-{ key: 'sent_messages_count', label: 'Msgs Enviadas', enabled: false },
-{ key: 'received_messages_count', label: 'Msgs Recebidas', enabled: false },
-{ key: 'lead_score', label: 'Score do Lead', enabled: false },
+{ key: 'internal_notes', label: 'Notas Internas', enabled: false },
 ```
+Chega como `enabled: false` por padrão — não quebra usuários existentes.
 
-> Novas colunas chegam como `enabled: false` por padrão — não quebra o comportamento atual de nenhum usuário.
-
-**Novas entradas na função `getFieldValue`:**
+**b) Novo case em `getFieldValue`:**
 ```typescript
-case 'first_response_time': {
-  if (!conv.first_response_at || !conv.created_at) return '-';
-  const diffMs = new Date(conv.first_response_at).getTime() - new Date(conv.created_at).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 60) return `${mins} min`;
-  const hrs = Math.floor(mins / 60);
-  const remaining = mins % 60;
-  return `${hrs}h ${remaining}min`;
-}
-case 'total_active_time': {
-  const secs = conv.total_active_time_seconds;
-  if (!secs) return '-';
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-}
-case 'sent_messages_count': return conv.sent_messages_count ?? '-';
-case 'received_messages_count': return conv.received_messages_count ?? '-';
-case 'lead_score': return conv.contact?.lead_score ?? '-';
+case 'internal_notes': return conv.internal_notes_text || '-';
 ```
 
-**Mapeamento de dados da query** — no `queryFn`, adicionar ao objeto conversation:
+**c) Mapeamento no `queryFn`** (tanto na query principal quanto no export de todas as páginas):
 ```typescript
-first_response_at: row.first_response_at,
-total_active_time_seconds: row.total_active_time_seconds,
-sent_messages_count: row.sent_messages_count,
-received_messages_count: row.received_messages_count,
-contact: {
-  ...
-  lead_score: row.contact_lead_score,
-}
+internal_notes_text: row.internal_notes_text || '',
 ```
 
-**Correção visual do overflow:**
-A `div` que envolve a tabela usa `overflow-x-auto` internamente. O problema é que o container pai tem `px-6` mas não define um `min-width` para o scroll funcionar corretamente. A correção é adicionar a classe `overflow-x-auto` no container externo e garantir que o `<table>` tenha `min-w-max` ou `table-fixed` para não compactar as colunas iniciais:
+---
 
-```jsx
-// Antes:
-<div className="overflow-x-auto">
-  <table className="w-full text-sm">
+## Fluxo no Excel
 
-// Depois:
-<div className="overflow-x-auto">
-  <table className="w-full min-w-[900px] text-sm">
-```
+Quando habilitada, a coluna "Notas Internas" aparece no `.xlsx` como uma célula de texto com todas as notas concatenadas. Se não houver notas, a célula mostrará vazio.
+
+Exemplo de saída:
+| # | Nome | Status Conversa | Notas Internas |
+|---|------|----------------|----------------|
+| AB123C | João Silva | Fechado | Cliente pediu retorno | Confirmado via WhatsApp |
+| DE456F | Maria Souza | Ativo | *(vazio)* |
 
 ---
 
 ## Arquivos a Modificar
 
-1. **Nova migration SQL** — atualiza a função `search_conversations_report` para retornar os 5 novos campos.
-2. **`src/pages/ConversationReport.tsx`** — adiciona as 5 novas colunas ao configurador + `getFieldValue` + mapeamento de dados + correção do overflow visual.
+1. **Nova migration SQL** — adiciona `internal_notes_text` ao RPC `search_conversations_report` via nova CTE com `STRING_AGG`.
+2. **`src/pages/ConversationReport.tsx`** — adiciona coluna ao configurador + `getFieldValue` + mapeamento nos dois lugares onde os dados são mapeados (query principal e export full-page).
 
 ---
 
 ## Compatibilidade
 
-- As 5 novas colunas chegam com `enabled: false` por padrão — usuários existentes não veem mudança até optarem por habilitá-las.
-- O RPC é retrocompatível: todos os campos existentes permanecem no mesmo lugar.
-- A correção do overflow é puramente visual e não afeta funcionalidade.
+- A nova coluna chega com `enabled: false` — nenhum usuário existente verá mudança até habilitar manualmente no configurador de colunas.
+- O RPC mantém todos os 25 campos existentes; o novo é adicionado como 26º.
+- Sem impacto em performance significativo: a CTE usa `IN (SELECT id FROM base_conversations)` para limitar o escopo às conversas já filtradas.
