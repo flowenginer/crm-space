@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,24 +72,10 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'first_message', label: '1ª Mensagem', enabled: true },
 ];
 
-const STORAGE_KEY = 'conversation-report-columns';
-
-function loadColumnsFromStorage(): ColumnDef[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed: ColumnDef[] = JSON.parse(saved);
-      // Merge with default to add any new columns
-      const keys = parsed.map(c => c.key);
-      const newCols = DEFAULT_COLUMNS.filter(c => !keys.includes(c.key));
-      return [...parsed, ...newCols];
-    }
-  } catch { /* ignore */ }
-  return DEFAULT_COLUMNS.map(c => ({ ...c }));
-}
-
-function saveColumnsToStorage(cols: ColumnDef[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cols));
+function mergeWithDefaults(saved: ColumnDef[]): ColumnDef[] {
+  const keys = saved.map(c => c.key);
+  const newCols = DEFAULT_COLUMNS.filter(c => !keys.includes(c.key));
+  return [...saved, ...newCols];
 }
 
 // ---- Sortable Column Item ----
@@ -198,9 +184,10 @@ export default function ConversationReportPage() {
   const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  // Column config state
-  const [columnConfig, setColumnConfig] = useState<ColumnDef[]>(loadColumnsFromStorage);
+  // Column config state — starts with defaults, will be overwritten once DB data loads
+  const [columnConfig, setColumnConfig] = useState<ColumnDef[]>(DEFAULT_COLUMNS.map(c => ({ ...c })));
   const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Bulk action modals
   const [bulkTransferModalOpen, setBulkTransferModalOpen] = useState(false);
@@ -218,9 +205,54 @@ export default function ConversationReportPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Save columns to localStorage whenever they change
+  // Load user preferences from DB
+  const { data: userProfile } = useQuery({
+    queryKey: ['profile-preferences'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from('profiles')
+        .select('preferences')
+        .eq('id', user.id)
+        .single();
+      return data;
+    }
+  });
+
+  // Populate column config from DB preferences once loaded
   useEffect(() => {
-    saveColumnsToStorage(columnConfig);
+    if (userProfile?.preferences) {
+      const prefs = userProfile.preferences as any;
+      if (Array.isArray(prefs.report_columns)) {
+        setColumnConfig(mergeWithDefaults(prefs.report_columns));
+      }
+    }
+  }, [userProfile]);
+
+  // Save preferences mutation (debounced)
+  const savePreferencesMutation = useMutation({
+    mutationFn: async (cols: ColumnDef[]) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const currentPrefs = (userProfile?.preferences as any) || {};
+      await supabase
+        .from('profiles')
+        .update({ preferences: { ...currentPrefs, report_columns: cols } })
+        .eq('id', user.id);
+    }
+  });
+
+  // Debounced save to DB when columnConfig changes (skip initial render)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      savePreferencesMutation.mutate(columnConfig);
+    }, 800);
+    return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columnConfig]);
 
   // Setup realtime subscription
