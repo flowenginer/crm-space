@@ -1,59 +1,37 @@
 
-# Correção: Conflito de Funções Duplicadas no Relatório de Atendimentos
+# Correção: Erro de Ambiguidade "id" na Função RPC
 
-## Diagnóstico
+## Causa Raiz
 
-Após investigação no banco de dados, foram encontradas **duas versões da função `search_conversations_report` registradas simultaneamente**:
+A função `search_conversations_report` possui um campo `id uuid` declarado no `RETURNS TABLE(...)`. Dentro do corpo PL/pgSQL, a linha:
 
-| OID | Versão | Tipos de parâmetro |
-|-----|--------|-------------------|
-| 511461 | Antiga | `timestamp with time zone`, `uuid[]` (original) |
-| 511494 | Nova | `text`, `text[]` (criada pela última migration) |
+```sql
+SELECT tenant_id INTO v_tenant_id
+FROM profiles
+WHERE id = auth.uid();
+```
 
-O `DROP FUNCTION` na migration mais recente usou a assinatura `text[]`, mas a função original usa `uuid[]` e `timestamp with time zone` — então o DROP **não removeu a função antiga**. Com duas funções de mesmo nome, o PostgreSQL retorna erro de ambiguidade e o relatório fica em branco.
-
----
+...causa erro de ambiguidade porque o PostgreSQL não distingue se `id` se refere à coluna `profiles.id` ou ao campo de retorno `id` do `RETURNS TABLE`. Isso faz a função falhar imediatamente, retornando 0 resultados e deixando o relatório em loop de carregamento.
 
 ## Solução
 
-Uma única migration SQL que:
-
-1. **Remove as DUAS versões** da função, usando os tipos corretos de cada assinatura para garantir que ambas sejam dropadas sem ambiguidade.
-2. **Recria a função** com a versão mais recente (com `internal_notes_text`, `sent_messages_count`, `received_messages_count`, `contact_lead_score`, `first_response_at`, `total_active_time_seconds`) — usando assinatura `text` para todos os parâmetros.
-3. **Notifica o PostgREST** para recarregar o schema cache com `NOTIFY pgrst, 'reload schema'`.
-
-### SQL da migration (resumo):
+Criar uma nova migration que **dropa e recria** a função com uma correção simples: qualificar `id` com o alias da tabela na query de lookup do tenant:
 
 ```sql
--- Remove a versão antiga (com uuid[] e timestamptz)
-DROP FUNCTION IF EXISTS public.search_conversations_report(
-  timestamp with time zone, timestamp with time zone, text, text,
-  text[], uuid[], text[], text[], uuid[], text[], integer, integer
-);
+-- Antes (ambíguo):
+WHERE id = auth.uid();
 
--- Remove a versão nova (com text[])
-DROP FUNCTION IF EXISTS public.search_conversations_report(
-  text, text, text, text,
-  text[], text[], text[], text[], text[], text[], integer, integer
-);
-
--- Recria com a versão completa e correta
-CREATE OR REPLACE FUNCTION public.search_conversations_report(...)
-...
-
--- Recarrega o schema cache do PostgREST
-NOTIFY pgrst, 'reload schema';
+-- Depois (correto):
+WHERE profiles.id = auth.uid();
 ```
 
----
+Todos os outros campos da função ficam intactos — `internal_notes_text`, `sent_messages_count`, `received_messages_count`, `contact_lead_score`, `first_response_at`, `total_active_time_seconds` — a única mudança é essa qualificação da coluna.
 
 ## Arquivos Afetados
 
-1. **Nova migration SQL** — faz o DROP correto das duas versões e recria a função uma única vez limpa.
-2. **Nenhuma alteração no frontend** — o `ConversationReport.tsx` já está correto chamando com parâmetros `text`.
-
----
+1. **Nova migration SQL** — DROP da função atual + recriação com `profiles.id = auth.uid()` + `NOTIFY pgrst, 'reload schema'`.
+2. **Nenhuma alteração no frontend** — o `ConversationReport.tsx` está correto.
 
 ## Resultado Esperado
 
-Após aplicar a migration, o relatório voltará a carregar normalmente com todas as colunas existentes mais a nova coluna "Notas Internas".
+Após a migration, a função será executada sem erro de ambiguidade, e o relatório voltará a carregar os atendimentos normalmente ao clicar em "Gerar".
