@@ -11,7 +11,7 @@ export default function InternalChat() {
   useInternalChatRealtime(selectedThreadId);
 
   return (
-    <div className="h-full flex bg-background overflow-hidden">
+    <div className="h-full max-h-full flex bg-background overflow-hidden">
       {/* Sidebar com lista de contatos/conversas */}
       <InternalChatSidebar
         selectedThreadId={selectedThreadId}
