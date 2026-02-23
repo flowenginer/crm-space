@@ -1,46 +1,52 @@
 
-## Diagnóstico Completo
 
-Após analisar o banco de dados com dados reais, identifiquei a causa raiz:
+## Plano: Otimizar velocidade de envio de mensagens no Chat Interno
 
-**A coluna "URL Anúncio" está vazia porque a função RPC foi recriada mas o Supabase ainda está executando a versão em cache**, ou porque o campo correto para leads do tipo `redirect` não é uma URL — é o nome do criativo (utm_content).
+### Problema Identificado
 
-### Estrutura real dos dados no banco
+Ao enviar qualquer tipo de mensagem (texto, link, PDF, foto, audio), o sistema aguarda a resposta completa do servidor antes de exibir a mensagem na tela. O fluxo atual:
 
-| Tipo de lead | Campo disponível | Valor real |
-|---|---|---|
-| `ctwa_ad` (CTWA direto) | `video_url` | URL do reel (ex: `https://www.facebook.com/reel/913176884570657/`) |
-| `ctwa_ad` (CTWA direto) | `source_url` | URL do post Instagram (ex: `https://www.instagram.com/p/DT94h2jAMYb/`) |
-| `redirect` (UTM/link) | `utm_content` | Nome do criativo (ex: `"SS02.4-1 CT_VIDEO - AGRO"`) |
-| `redirect` (UTM/link) | `utm_medium` | Nome do conjunto (ex: `"SS02.4 | AGRO | SEGMENTADO"`) |
-| `meta_ads` (detectado) | nenhum | vazio |
+1. Usuário envia mensagem
+2. Aguarda INSERT no banco (Supabase)
+3. `onSuccess` dispara `invalidateQueries` para mensagens E threads
+4. Aguarda refetch completo de TODAS as mensagens da thread
+5. Só então a mensagem aparece na tela
 
-A lógica `COALESCE` atual **funciona corretamente no banco** quando testada diretamente. O problema é que o **DROP FUNCTION** nas migrations anteriores pode não ter eliminado todas as assinaturas sobrepostas, e o PostgREST pode estar usando uma versão desatualizada da função.
+Isso causa uma demora perceptível, especialmente com mídias (upload + insert + refetch).
 
-### Solução
+### Solução: Optimistic Updates
 
-1. **Nova migration definitiva** que:
-   - Dropa **todas** as variações de assinatura existentes da função (para garantir limpeza total)
-   - Recria a função com a lógica `COALESCE` correta para `referral_source_url`:
-     - Prioridade 1: `video_url` (CTWA — URL do vídeo/reel no Facebook)
-     - Prioridade 2: `source_url` (CTWA — URL do post no Instagram)
-     - Prioridade 3: `utm_content` (redirect/UTM — nome do criativo)
-     - Prioridade 4: `utm_medium` (redirect/UTM — nome do conjunto de anúncios)
-   - Re-concede permissões
-   - Força reload do schema
+Implementar atualizações otimistas no React Query - a mensagem aparece **instantaneamente** na tela enquanto o envio acontece em background.
 
-2. **Separar em 2 colunas no relatório** (melhoria): 
-   - `referral_source_url` → URL real (apenas para CTWA)
-   - Renomear para algo que faça mais sentido — para leads `redirect`, mostrar o nome do criativo na coluna "Criativo" e a URL real na coluna "URL Anúncio"
+### Detalhes Técnicos
 
-### Arquivos afetados
+**Arquivo: `src/hooks/useInternalChat.ts`**
 
-- **1 nova migration SQL** — corrigir e garantir que a função está ativa com a lógica certa
+1. **`useSendInternalMessage`** - Adicionar `onMutate` para inserir a mensagem imediatamente no cache local:
+   - Criar um objeto de mensagem temporária com ID provisório e flag `isPending`
+   - Usar `queryClient.setQueryData` para adicionar ao array de mensagens existente
+   - No `onSuccess`, substituir a mensagem temporária pela real (com ID do servidor)
+   - No `onError`, reverter o cache ao estado anterior
+   - Remover `invalidateQueries` de mensagens do `onSuccess` (o realtime já cuida disso)
 
-### Resultado esperado
+2. **`useUploadInternalChatMedia`** - Sem mudança, mas o fluxo em `InternalChatInput` será ajustado para mostrar um placeholder de "enviando..." enquanto o upload acontece.
 
-- Leads `ctwa_ad`: coluna "URL Anúncio" mostra `https://www.facebook.com/reel/...` ou `https://www.instagram.com/p/...`
-- Leads `redirect`: coluna mostra o nome do criativo (ex: `"SS02.4-1 CT_VIDEO - AGRO"`) — pois não há URL disponível nesse tipo de rastreamento
-- Leads `meta_ads` (detectados por padrão): coluna vazia (sem dados de rastreamento)
+3. **`useInternalChatRealtime`** - Ajustar para fazer merge inteligente:
+   - Quando receber uma mensagem via realtime que já existe no cache (mensagem otimista), substituir ao invés de duplicar
+   - Evitar `invalidateQueries` desnecessário quando a mensagem já está no cache
 
-Isso é o máximo que os dados permitem — leads do tipo `redirect` rastreados via UTM simplesmente não possuem uma URL de anúncio armazenada, apenas o nome do criativo.
+**Arquivo: `src/components/internal-chat/InternalChatInput.tsx`**
+
+4. Para uploads de mídia, mostrar preview/placeholder instantâneo na lista de mensagens antes do upload completar.
+
+**Arquivo: `src/components/internal-chat/InternalChatMessageItem.tsx`**
+
+5. Adicionar indicador visual sutil (opacidade reduzida ou ícone de relógio) para mensagens em estado `isPending`.
+
+### Resultado Esperado
+
+- Mensagens de texto aparecem **instantaneamente** ao pressionar Enter
+- Mensagens de mídia mostram placeholder imediato com indicador de progresso
+- Se o envio falhar, a mensagem é removida e o texto é restaurado no input
+- Sem duplicação de mensagens (merge com realtime)
+
