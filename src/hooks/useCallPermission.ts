@@ -107,8 +107,12 @@ export function useCallPermission({
 
       return data;
     },
-    onSuccess: () => {
-      toast.success('Solicitação de permissão enviada!');
+    onSuccess: (data) => {
+      if (data.already_granted) {
+        toast.success('Permissão já concedida anteriormente! Você pode ligar.');
+      } else {
+        toast.success('Solicitação de permissão enviada!');
+      }
       queryClient.invalidateQueries({ queryKey: ['call-permission', contactId] });
     },
     onError: (error) => {
