@@ -206,10 +206,10 @@ export function useTeamMembers() {
   });
 }
 
-// Hook para enviar mensagem
+// Hook para enviar mensagem - COM OPTIMISTIC UPDATES
 export function useSendInternalMessage() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   return useMutation({
     mutationFn: async ({ 
@@ -247,12 +247,67 @@ export function useSendInternalMessage() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['internal-chat-messages', variables.threadId] });
+    onMutate: async (variables) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['internal-chat-messages', variables.threadId] });
+
+      // Snapshot previous value
+      const previousMessages = queryClient.getQueryData<InternalChatMessage[]>(
+        ['internal-chat-messages', variables.threadId]
+      );
+
+      // Create optimistic message
+      const optimisticMessage: InternalChatMessage & { isPending?: boolean } = {
+        id: `temp-${Date.now()}`,
+        thread_id: variables.threadId,
+        sender_id: user!.id,
+        content: variables.content || null,
+        message_type: variables.messageType || 'text',
+        media_url: variables.mediaUrl || null,
+        media_name: variables.mediaName || null,
+        media_mime_type: variables.mediaMimeType || null,
+        reply_to_message_id: variables.replyToMessageId || null,
+        reply_to_message: null,
+        is_deleted: false,
+        created_at: new Date().toISOString(),
+        sender: {
+          id: user!.id,
+          full_name: profile?.full_name || user!.email || null,
+          avatar_url: profile?.avatar_url || null,
+        },
+        isPending: true,
+      };
+
+      // Optimistically add to cache
+      queryClient.setQueryData<(InternalChatMessage & { isPending?: boolean })[]>(
+        ['internal-chat-messages', variables.threadId],
+        (old) => [...(old || []), optimisticMessage]
+      );
+
+      return { previousMessages, optimisticId: optimisticMessage.id };
+    },
+    onSuccess: (serverData, variables, context) => {
+      // Replace optimistic message with real server data
+      queryClient.setQueryData<(InternalChatMessage & { isPending?: boolean })[]>(
+        ['internal-chat-messages', variables.threadId],
+        (old) => (old || []).map(msg => 
+          msg.id === context?.optimisticId 
+            ? { ...msg, ...serverData, isPending: false, sender: msg.sender } 
+            : msg
+        )
+      );
+      // Only invalidate threads for sidebar update (not messages - realtime handles it)
       queryClient.invalidateQueries({ queryKey: ['internal-chat-threads', user?.id] });
     },
-    onError: (error) => {
+    onError: (error, variables, context) => {
       console.error('Error sending message:', error);
+      // Rollback to previous state
+      if (context?.previousMessages) {
+        queryClient.setQueryData(
+          ['internal-chat-messages', variables.threadId],
+          context.previousMessages
+        );
+      }
       toast.error('Erro ao enviar mensagem');
     }
   });
@@ -413,10 +468,32 @@ export function useInternalChatRealtime(threadId: string | null) {
             content_preview: newMessage.content?.substring(0, 30)
           });
           
-          // Invalidar queries com keys completas
-          queryClient.invalidateQueries({ 
-            queryKey: ['internal-chat-messages', newMessage.thread_id] 
-          });
+          // Smart merge: check if message already exists in cache (optimistic)
+          const existingMessages = queryClient.getQueryData<(InternalChatMessage & { isPending?: boolean })[]>(
+            ['internal-chat-messages', newMessage.thread_id]
+          );
+          
+          const hasOptimistic = existingMessages?.some(
+            m => m.isPending && m.sender_id === newMessage.sender_id && m.content === newMessage.content
+          );
+
+          if (hasOptimistic) {
+            // Replace optimistic message with real one instead of refetching
+            queryClient.setQueryData<(InternalChatMessage & { isPending?: boolean })[]>(
+              ['internal-chat-messages', newMessage.thread_id],
+              (old) => (old || []).map(msg => 
+                (msg.isPending && msg.sender_id === newMessage.sender_id && msg.content === newMessage.content)
+                  ? { ...msg, id: newMessage.id, isPending: false, created_at: newMessage.created_at }
+                  : msg
+              )
+            );
+          } else if (newMessage.sender_id !== user.id) {
+            // Only refetch if it's from another user (not our own optimistic)
+            queryClient.invalidateQueries({ 
+              queryKey: ['internal-chat-messages', newMessage.thread_id] 
+            });
+          }
+          
           queryClient.invalidateQueries({ 
             queryKey: ['internal-chat-threads', user.id] 
           });
