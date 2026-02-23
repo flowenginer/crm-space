@@ -1,52 +1,43 @@
 
+## Correção: Data do Relatório de Atendimentos vindo com dia anterior
 
-## Plano: Otimizar velocidade de envio de mensagens no Chat Interno
+### Problema
+Ao filtrar o relatório por "hoje" (ex: 23/02/2026), as datas são enviadas ao banco como `2026-02-23T00:00:00` e `2026-02-23T23:59:59` **sem fuso horário**. O PostgreSQL interpreta como UTC, mas o usuário está em BRT (UTC-3). Isso faz com que:
+- Conversas criadas entre 00:00 e 02:59 BRT apareçam no dia anterior
+- Conversas criadas entre 21:00 e 23:59 BRT não apareçam no dia correto
 
-### Problema Identificado
-
-Ao enviar qualquer tipo de mensagem (texto, link, PDF, foto, audio), o sistema aguarda a resposta completa do servidor antes de exibir a mensagem na tela. O fluxo atual:
-
-1. Usuário envia mensagem
-2. Aguarda INSERT no banco (Supabase)
-3. `onSuccess` dispara `invalidateQueries` para mensagens E threads
-4. Aguarda refetch completo de TODAS as mensagens da thread
-5. Só então a mensagem aparece na tela
-
-Isso causa uma demora perceptível, especialmente com mídias (upload + insert + refetch).
-
-### Solução: Optimistic Updates
-
-Implementar atualizações otimistas no React Query - a mensagem aparece **instantaneamente** na tela enquanto o envio acontece em background.
+### Solução
+Incluir o offset do fuso horário do navegador nas datas enviadas ao RPC, para que o PostgreSQL converta corretamente.
 
 ### Detalhes Técnicos
 
-**Arquivo: `src/hooks/useInternalChat.ts`**
+**Arquivo: `src/pages/ConversationReport.tsx`**
 
-1. **`useSendInternalMessage`** - Adicionar `onMutate` para inserir a mensagem imediatamente no cache local:
-   - Criar um objeto de mensagem temporária com ID provisório e flag `isPending`
-   - Usar `queryClient.setQueryData` para adicionar ao array de mensagens existente
-   - No `onSuccess`, substituir a mensagem temporária pela real (com ID do servidor)
-   - No `onError`, reverter o cache ao estado anterior
-   - Remover `invalidateQueries` de mensagens do `onSuccess` (o realtime já cuida disso)
+Alterar as linhas onde as datas são montadas para a chamada RPC (linhas ~346-347 e ~509-510), adicionando o offset do timezone local do navegador.
 
-2. **`useUploadInternalChatMedia`** - Sem mudança, mas o fluxo em `InternalChatInput` será ajustado para mostrar um placeholder de "enviando..." enquanto o upload acontece.
+De:
+```typescript
+p_start_date: appliedFilters.startDate ? `${appliedFilters.startDate}T00:00:00` : null,
+p_end_date: appliedFilters.endDate ? `${appliedFilters.endDate}T23:59:59` : null,
+```
 
-3. **`useInternalChatRealtime`** - Ajustar para fazer merge inteligente:
-   - Quando receber uma mensagem via realtime que já existe no cache (mensagem otimista), substituir ao invés de duplicar
-   - Evitar `invalidateQueries` desnecessário quando a mensagem já está no cache
+Para:
+```typescript
+p_start_date: appliedFilters.startDate 
+  ? `${appliedFilters.startDate}T00:00:00${getTimezoneOffset()}` : null,
+p_end_date: appliedFilters.endDate 
+  ? `${appliedFilters.endDate}T23:59:59${getTimezoneOffset()}` : null,
+```
 
-**Arquivo: `src/components/internal-chat/InternalChatInput.tsx`**
+Adicionar uma função utilitaria no mesmo arquivo:
+```typescript
+function getTimezoneOffset(): string {
+  const offset = new Date().getTimezoneOffset();
+  const sign = offset <= 0 ? '+' : '-';
+  const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
+  const minutes = String(Math.abs(offset) % 60).padStart(2, '0');
+  return `${sign}${hours}:${minutes}`;
+}
+```
 
-4. Para uploads de mídia, mostrar preview/placeholder instantâneo na lista de mensagens antes do upload completar.
-
-**Arquivo: `src/components/internal-chat/InternalChatMessageItem.tsx`**
-
-5. Adicionar indicador visual sutil (opacidade reduzida ou ícone de relógio) para mensagens em estado `isPending`.
-
-### Resultado Esperado
-
-- Mensagens de texto aparecem **instantaneamente** ao pressionar Enter
-- Mensagens de mídia mostram placeholder imediato com indicador de progresso
-- Se o envio falhar, a mensagem é removida e o texto é restaurado no input
-- Sem duplicação de mensagens (merge com realtime)
-
+Para o fuso BRT, isso geraria `2026-02-23T00:00:00-03:00`, fazendo com que o PostgreSQL entenda corretamente que "meia-noite" é no horário de Brasilia. A correção se aplica nos dois locais que chamam o RPC: a query principal e a exportacao Excel (select all).
