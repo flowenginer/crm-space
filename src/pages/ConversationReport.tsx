@@ -1,4 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+
+function getTimezoneOffset(): string {
+  const offset = new Date().getTimezoneOffset();
+  const sign = offset <= 0 ? '+' : '-';
+  const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
+  const minutes = String(Math.abs(offset) % 60).padStart(2, '0');
+  return `${sign}${hours}:${minutes}`;
+}
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -343,8 +351,8 @@ export default function ConversationReportPage() {
     queryKey: ['conversation-report', appliedFilters, page],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('search_conversations_report', {
-        p_start_date: appliedFilters.startDate ? `${appliedFilters.startDate}T00:00:00` : null,
-        p_end_date: appliedFilters.endDate ? `${appliedFilters.endDate}T23:59:59` : null,
+        p_start_date: appliedFilters.startDate ? `${appliedFilters.startDate}T00:00:00${getTimezoneOffset()}` : null,
+        p_end_date: appliedFilters.endDate ? `${appliedFilters.endDate}T23:59:59${getTimezoneOffset()}` : null,
         p_name: appliedFilters.name || null,
         p_phone: appliedFilters.phone || null,
         p_lead_status: appliedFilters.leadStatus.length > 0 ? appliedFilters.leadStatus : null,
@@ -506,8 +514,8 @@ export default function ConversationReportPage() {
       if (selectAllPages && reportData?.total) {
         toast.info(`Buscando todos os ${reportData.total} registros...`);
         const { data, error } = await supabase.rpc('search_conversations_report', {
-          p_start_date: appliedFilters.startDate ? `${appliedFilters.startDate}T00:00:00` : null,
-          p_end_date: appliedFilters.endDate ? `${appliedFilters.endDate}T23:59:59` : null,
+          p_start_date: appliedFilters.startDate ? `${appliedFilters.startDate}T00:00:00${getTimezoneOffset()}` : null,
+          p_end_date: appliedFilters.endDate ? `${appliedFilters.endDate}T23:59:59${getTimezoneOffset()}` : null,
           p_name: appliedFilters.name || null,
           p_phone: appliedFilters.phone || null,
           p_lead_status: appliedFilters.leadStatus.length > 0 ? appliedFilters.leadStatus : null,
