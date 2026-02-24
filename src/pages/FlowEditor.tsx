@@ -14,6 +14,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { ArrowLeft, Save, Play, Loader2, Plus, AlertTriangle } from 'lucide-react';
+import { FlowExecutionLogs } from '@/components/flow-builder/FlowExecutionLogs';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -476,6 +477,7 @@ function FlowEditorInner() {
         </div>
         
         <div className="flex items-center gap-2">
+          {flowId && <FlowExecutionLogs flowId={flowId} />}
           <Button variant="outline" size="sm">
             <Play size={16} className="mr-2" />
             Testar
