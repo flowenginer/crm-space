@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // VERSIONAMENTO: Alterações importantes devem atualizar esta versão
-const VERSION = '2026-02-03.1930';
+const VERSION = '2026-02-24.1510';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -73,19 +73,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Mapear para estrutura mais simples
-    const flows: FlowWithTrigger[] = flowsWithTriggers.map(f => {
-      const triggerNode = Array.isArray(f.flow_nodes) ? f.flow_nodes[0] : f.flow_nodes;
-      return {
-        flow_id: f.id,
-        flow_name: f.name,
-        channel_ids: f.channel_ids as string[] | null,
-        run_once_per_contact: f.run_once_per_contact ?? false,
-        trigger_node_id: triggerNode?.id || '',
-        trigger_subtype: triggerNode?.node_subtype || '',
-        trigger_config: (triggerNode?.config as Record<string, unknown>) || {},
-      };
-    }).filter(f => f.trigger_node_id); // Filtrar fluxos sem trigger node
+    // Mapear para estrutura mais simples - IMPORTANTE: flatMap para suportar fluxos com múltiplos triggers
+    const flows: FlowWithTrigger[] = flowsWithTriggers.flatMap(f => {
+      const triggerNodes = Array.isArray(f.flow_nodes) ? f.flow_nodes : [f.flow_nodes];
+      return triggerNodes
+        .filter((n: any) => n?.id)
+        .map((triggerNode: any) => ({
+          flow_id: f.id,
+          flow_name: f.name,
+          channel_ids: f.channel_ids as string[] | null,
+          run_once_per_contact: f.run_once_per_contact ?? false,
+          trigger_node_id: triggerNode.id,
+          trigger_subtype: triggerNode.node_subtype || '',
+          trigger_config: (triggerNode.config as Record<string, unknown>) || {},
+        }));
+    });
 
     // OTIMIZAÇÃO: Pré-filtrar fluxos por tipo de trigger antes do loop
     const matchingFlows = flows.filter(flow => {
@@ -203,6 +205,20 @@ Deno.serve(async (req) => {
           } else {
             shouldTrigger = false;
           }
+          break;
+
+        case 'first_message':
+        case 'new_contact':
+          // Filtrar por canal específico configurado no nó trigger
+          if (config.channel_id && channel_id) {
+            shouldTrigger = config.channel_id === channel_id;
+            console.log(`[process-flow-triggers] ${trigger_type}: config.channel_id=${config.channel_id}, actual=${channel_id}, match=${shouldTrigger}`);
+          } else if (config.channel_id && !channel_id) {
+            // Trigger exige canal específico mas não temos canal - não dispara
+            shouldTrigger = false;
+            console.log(`[process-flow-triggers] ${trigger_type}: canal requerido ${config.channel_id} mas sem canal na requisição`);
+          }
+          // Se config.channel_id é null/undefined, aceita qualquer canal
           break;
 
         case 'tag_added':
