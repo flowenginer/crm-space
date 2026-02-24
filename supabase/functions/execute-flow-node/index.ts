@@ -1212,10 +1212,17 @@ function evaluateTimeCondition(node: FlowNode): string {
   const config = node.config;
   const timeRanges = (config.time_ranges as Array<{ id: string; label: string; start: string; end: string }>) || [];
   
-  // Obter hora atual (no timezone do servidor - geralmente UTC)
+  // Obter hora atual no fuso horário de São Paulo (America/Sao_Paulo)
   const now = new Date();
-  const currentHours = now.getHours();
-  const currentMinutes = now.getMinutes();
+  const spFormatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = spFormatter.formatToParts(now);
+  const currentHours = Number(parts.find(p => p.type === 'hour')?.value ?? 0);
+  const currentMinutes = Number(parts.find(p => p.type === 'minute')?.value ?? 0);
   const currentTimeMinutes = currentHours * 60 + currentMinutes;
   
   console.log(`[evaluateTimeCondition] Hora atual: ${currentHours.toString().padStart(2, '0')}:${currentMinutes.toString().padStart(2, '0')} (${currentTimeMinutes} minutos)`);
