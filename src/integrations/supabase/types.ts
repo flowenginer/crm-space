@@ -10448,6 +10448,7 @@ export type Database = {
           tenant_id: string
           type: string | null
           updated_at: string
+          webhook_events_configured_at: string | null
           webhook_url: string | null
         }
         Insert: {
@@ -10475,6 +10476,7 @@ export type Database = {
           tenant_id: string
           type?: string | null
           updated_at?: string
+          webhook_events_configured_at?: string | null
           webhook_url?: string | null
         }
         Update: {
@@ -10502,6 +10504,7 @@ export type Database = {
           tenant_id?: string
           type?: string | null
           updated_at?: string
+          webhook_events_configured_at?: string | null
           webhook_url?: string | null
         }
         Relationships: [
