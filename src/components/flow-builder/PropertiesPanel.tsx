@@ -10,6 +10,7 @@ import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
+import { useChannels } from '@/hooks/useChannels';
 import { FlowNodeData } from '@/types/flow';
 import { WebhookBodyFields, BodyField, bodyFieldsToObject, objectToBodyFields } from './WebhookBodyFields';
 import { MetaTemplateSelector } from '@/components/meta-templates';
@@ -33,6 +34,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
   const { data: departments } = useDepartments();
   const { data: campaigns } = useRedirectCampaigns();
   const { data: leadStatuses } = useLeadStatuses();
+  const { data: channels } = useChannels();
   
   const updateConfig = useCallback((key: string, value: unknown) => {
     if (!node) return;
@@ -75,7 +77,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
         </div>
         
         {/* Campos específicos por tipo */}
-        {renderNodeConfig(node, updateConfig, onUpdate, { tags, team, departments, campaigns, leadStatuses })}
+        {renderNodeConfig(node, updateConfig, onUpdate, { tags, team, departments, campaigns, leadStatuses, channels })}
       </div>
     </div>
   );
@@ -87,6 +89,7 @@ interface DataProps {
   departments: Array<{ id: string; name: string }> | undefined;
   campaigns: Array<{ id: string; name: string }> | undefined;
   leadStatuses: Array<{ id: string; name: string; color: string | null }> | undefined;
+  channels: Array<{ id: string; name: string; phone: string }> | undefined;
 }
 
 function renderNodeConfig(
@@ -1145,6 +1148,35 @@ function renderNodeConfig(
             <p>{'{{hora}}'} - Hora atual (HH:MM)</p>
             <p>{'{{dia_semana}}'} - Dia da semana</p>
           </div>
+        </div>
+      );
+
+    case 'first_message':
+    case 'new_contact':
+      return (
+        <div className="space-y-2">
+          <Label>Canal (opcional)</Label>
+          <Select 
+            value={(config?.channel_id as string) || 'any'}
+            onValueChange={(v) => updateConfig('channel_id', v === 'any' ? null : v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Qualquer canal" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Qualquer canal</SelectItem>
+              {data.channels?.map((channel) => (
+                <SelectItem key={channel.id} value={channel.id}>
+                  {channel.name} ({channel.phone})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {node.nodeSubtype === 'first_message' 
+              ? 'Filtra o disparo apenas para mensagens vindas deste canal'
+              : 'Filtra o disparo apenas para novos contatos deste canal'}
+          </p>
         </div>
       );
 
