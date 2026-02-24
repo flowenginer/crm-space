@@ -2558,7 +2558,24 @@ serve(async (req) => {
             console.log(`[Webhook] ⚡ Broadcast sent for new conversation ${newConversation.id}`);
           } catch (broadcastError) {
             console.error(`[Webhook] ⚠️ Failed to send broadcast:`, broadcastError);
-            // Não falhar a requisição por causa do broadcast
+          }
+
+          // 🆕 TRIGGER FIRST_MESSAGE AUTOMATION para nova conversa
+          try {
+            console.log(`[Webhook] 🆕 New conversation detected, triggering first_message automation for channel ${channel.id}...`);
+            await supabase.functions.invoke('process-flow-triggers', {
+              body: {
+                trigger_type: 'first_message',
+                tenant_id: channel.tenant_id,
+                contact_id: contact.id,
+                channel_id: channel.id,
+                conversation_id: newConversation.id,
+                message_content: normalizedMessage.content,
+              }
+            });
+            console.log('[Webhook] ✅ First message automation check completed');
+          } catch (flowError) {
+            console.error('[Webhook] ⚠️ Error triggering first_message automation:', flowError);
           }
         }
       }
