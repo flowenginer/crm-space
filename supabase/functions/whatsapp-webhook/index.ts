@@ -1052,6 +1052,54 @@ serve(async (req) => {
       });
     }
 
+    // =====================================================
+    // AUTO-RECONFIGURE WEBHOOK (fire-and-forget, one-time per channel)
+    // Garante que messagesUpdate: true esteja configurado
+    // =====================================================
+    try {
+      const { data: configCheck } = await supabase
+        .from("whatsapp_channels")
+        .select("webhook_events_configured_at")
+        .eq("id", channel.id)
+        .single();
+
+      if (configCheck && !configCheck.webhook_events_configured_at) {
+        console.log(`[Webhook] 🔧 Channel ${channel.name} needs webhook reconfiguration, triggering in background...`);
+        
+        // Mark immediately to prevent duplicate triggers
+        supabase
+          .from("whatsapp_channels")
+          .update({ webhook_events_configured_at: new Date().toISOString() })
+          .eq("id", channel.id)
+          .then(() => {
+            console.log(`[Webhook] 🔧 Marked channel ${channel.id} as configured`);
+          });
+
+        // Fire-and-forget: reconfigure webhook
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            action: "reconfigureWebhook",
+            channelId: channel.id,
+          }),
+        }).then(async (res) => {
+          const result = await res.json();
+          console.log(`[Webhook] 🔧 Reconfigure result for ${channel.name}:`, result.success ? '✅ OK' : `❌ ${result.error}`);
+        }).catch((err) => {
+          console.error(`[Webhook] 🔧 Reconfigure error for ${channel.name}:`, err);
+        });
+      }
+    } catch (e) {
+      // Non-blocking: don't fail message processing
+      console.error(`[Webhook] 🔧 Auto-reconfigure check failed (non-blocking):`, e);
+    }
+
     // Normalize message
     const normalizedMessage = normalizeMessage(provider, payload);
     if (!normalizedMessage) {
