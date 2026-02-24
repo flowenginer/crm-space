@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { triggerFlowOnTagAdded } from '@/lib/triggerFlowOnTagAdded';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -518,6 +519,16 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
         } as any, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
       
       if (error) throw error;
+
+      // Disparar automações de tag_added
+      try {
+        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+        if (tenantId) {
+          triggerFlowOnTagAdded(tenantId, conversation.contact.id, tagId);
+        }
+      } catch (e) {
+        console.error('[Sidebar] Erro ao disparar automação tag_added:', e);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
