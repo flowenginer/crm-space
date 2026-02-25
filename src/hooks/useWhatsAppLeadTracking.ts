@@ -151,7 +151,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       if (!tenantId) return { leads: [], summary: emptySummary(), creativeBreakdown: [] };
 
       // Source of truth: conversations table (both webhooks always write here)
-      const referralSources = ['meta_ads', 'ctwa_ad', 'redirect', 'linktree'];
+      const referralSources = ['meta_ads', 'ctwa_ad', 'redirect', 'linktree', 'site'];
 
       // 1. Query conversations with contact data joined (paginated to bypass max_rows)
       const conversationsSelect = `
@@ -248,7 +248,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         const leadStatus = (recentConv as any).lead_status || contact.lead_status;
 
         const isCTWA = referralSource === 'meta_ads' || referralSource === 'ctwa_ad';
-        const isLinktree = referralSource === 'linktree';
+        const isLinktree = referralSource === 'linktree' || referralSource === 'site';
         const isRedirect = referralSource === 'redirect';
 
         const buildLead = (sourceType: 'ctwa' | 'redirect' | 'linktree', extras: Partial<TrackedLead> = {}): TrackedLead => ({
@@ -352,9 +352,13 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         const segmentData = contact.segment as any;
         const leadStatus = (conv as any).lead_status || contact.lead_status;
 
-        const sourceType: 'linktree' | 'whatsapp' | 'manual' =
-          contact.origin === 'linktree' ? 'linktree' :
-          contact.origin === 'manual' ? 'manual' : 'whatsapp';
+        const contactOrigin = (contact.origin || '').trim();
+        const sourceType: 'linktree' | 'whatsapp' | 'manual' | 'redirect' | 'ctwa' =
+          contactOrigin === 'linktree' || contactOrigin === 'site' ? 'linktree' :
+          contactOrigin === 'manual' || contactOrigin === 'n8n' ? 'manual' :
+          contactOrigin === 'redirect' ? 'redirect' :
+          contactOrigin === 'meta_ads' || contactOrigin === 'ctwa_ad' ? 'ctwa' :
+          'whatsapp';
 
         const lead: TrackedLead = {
           id: contact.id,
@@ -386,6 +390,10 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
           linktreeLeads.push(lead);
         } else if (sourceType === 'manual') {
           manualLeads.push(lead);
+        } else if (sourceType === 'redirect') {
+          redirectLeads.push(lead);
+        } else if (sourceType === 'ctwa') {
+          ctwaLeads.push(lead);
         } else {
           whatsappLeads.push(lead);
         }
