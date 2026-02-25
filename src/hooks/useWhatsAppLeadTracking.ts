@@ -145,7 +145,8 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         .in('referral_source', referralSources)
         .gte('created_at', filters.dateFrom)
         .lte('created_at', filters.dateTo + 'T23:59:59')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50000);
 
       // 2. Fetch meta_ads with adsets and campaigns for cross-referencing
       const metaAdsQuery = supabase
