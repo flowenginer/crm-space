@@ -112,6 +112,29 @@ function normalizeReferralFields(ref: Record<string, any> | null): NormalizedRef
 }
 
 // =====================================================
+// Paginated fetch — bypasses PostgREST max_rows limit
+// =====================================================
+
+async function fetchAllPages<T = any>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
+  pageSize = 1000,
+): Promise<T[]> {
+  const allData: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await buildQuery(from, from + pageSize - 1);
+    if (error) throw error;
+    const rows = data || [];
+    allData.push(...rows);
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return allData;
+}
+
+// =====================================================
 // Hook: useWhatsAppLeadTracking
 // =====================================================
 
@@ -130,46 +153,44 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       // Source of truth: conversations table (both webhooks always write here)
       const referralSources = ['meta_ads', 'ctwa_ad', 'redirect', 'linktree'];
 
-      // 1. Query conversations with contact data joined (limited to prevent overload)
-      const conversationsQuery = supabase
-        .from('conversations')
-        .select(`
+      // 1. Query conversations with contact data joined (paginated to bypass max_rows)
+      const conversationsSelect = `
           id, referral_source, referral_data, created_at, lead_status,
           contact:contacts!contact_id(
             id, full_name, phone, email, lead_status, origin, origin_campaign,
             assigned_to, custom_fields, profiles:assigned_to(full_name),
             segment:segments!segment_id(name)
           )
-        `)
-        .eq('tenant_id', tenantId)
-        .in('referral_source', referralSources)
-        .gte('created_at', filters.dateFrom)
-        .lte('created_at', filters.dateTo + 'T23:59:59')
-        .order('created_at', { ascending: false })
-        .limit(50000);
+        `;
 
       // 2. Fetch meta_ads with adsets and campaigns for cross-referencing
-      const metaAdsQuery = supabase
-        .from('meta_ads')
-        .select(`
+      const metaAdsSelect = `
           id, ad_id, name, status, creative_id,
           adset:meta_adsets(id, adset_id, name),
           campaign:meta_campaigns(id, campaign_id, name, meta_account_id)
-        `)
-        .eq('tenant_id', tenantId)
-        .limit(2000);
+        `;
 
-      // Execute in parallel
-      const [conversationsResult, metaAdsResult] = await Promise.all([
-        conversationsQuery,
-        metaAdsQuery,
+      // Execute in parallel: paginated conversations + paginated meta_ads
+      const [allConversations, metaAds] = await Promise.all([
+        fetchAllPages((from, to) =>
+          supabase
+            .from('conversations')
+            .select(conversationsSelect)
+            .eq('tenant_id', tenantId)
+            .in('referral_source', referralSources)
+            .gte('created_at', filters.dateFrom)
+            .lte('created_at', filters.dateTo + 'T23:59:59')
+            .order('created_at', { ascending: false })
+            .range(from, to)
+        ),
+        fetchAllPages((from, to) =>
+          supabase
+            .from('meta_ads')
+            .select(metaAdsSelect)
+            .eq('tenant_id', tenantId)
+            .range(from, to)
+        ),
       ]);
-
-      if (conversationsResult.error) throw conversationsResult.error;
-      if (metaAdsResult.error) throw metaAdsResult.error;
-
-      const allConversations = conversationsResult.data || [];
-      const metaAds = metaAdsResult.data || [];
 
       // Build lookup maps for meta_ads
       const adByAdId = new Map<string, typeof metaAds[0]>();
@@ -287,25 +308,25 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         }
       }
 
-      // Query WhatsApp organic leads (origin = 'whatsapp', no referral_source)
-      const whatsappQuery = supabase
-        .from('conversations')
-        .select(`
-          id, referral_source, created_at, lead_status,
-          contact:contacts!contact_id(
-            id, full_name, phone, email, lead_status, origin, origin_campaign,
-            assigned_to, custom_fields, profiles:assigned_to(full_name),
-            segment:segments!segment_id(name)
-          )
-        `)
-        .eq('tenant_id', tenantId)
-        .is('referral_source', null)
-        .gte('created_at', filters.dateFrom)
-        .lte('created_at', filters.dateTo + 'T23:59:59')
-        .order('created_at', { ascending: false });
-
-      const whatsappResult = await whatsappQuery;
-      if (whatsappResult.error) throw whatsappResult.error;
+      // Query WhatsApp organic leads (no referral_source) — paginated
+      const organicData = await fetchAllPages((from, to) =>
+        supabase
+          .from('conversations')
+          .select(`
+            id, referral_source, created_at, lead_status,
+            contact:contacts!contact_id(
+              id, full_name, phone, email, lead_status, origin, origin_campaign,
+              assigned_to, custom_fields, profiles:assigned_to(full_name),
+              segment:segments!segment_id(name)
+            )
+          `)
+          .eq('tenant_id', tenantId)
+          .is('referral_source', null)
+          .gte('created_at', filters.dateFrom)
+          .lte('created_at', filters.dateTo + 'T23:59:59')
+          .order('created_at', { ascending: false })
+          .range(from, to)
+      );
 
       // Separate organic leads by contact.origin
       const whatsappLeads: TrackedLead[] = [];
@@ -318,7 +339,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         ...linktreeLeads.map(l => l.id),
       ]);
 
-      for (const conv of (whatsappResult.data || [])) {
+      for (const conv of organicData) {
         const contact = conv.contact as any;
         if (!contact) continue;
         // Aceitar todos os origins - leads sem referral_source na conversation
@@ -395,16 +416,19 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         });
       };
 
-      // Fetch contacts that have custom_fields with conversions
-      const { data: contactsWithConversions } = await supabase
-        .from('contacts')
-        .select(`
-          id, full_name, phone, email, lead_status, origin, origin_campaign,
-          assigned_to, custom_fields, profiles:assigned_to(full_name),
-          segment:segments!segment_id(name)
-        `)
-        .eq('tenant_id', tenantId)
-        .not('custom_fields', 'is', null);
+      // Fetch contacts that have custom_fields with conversions — paginated
+      const contactsWithConversions = await fetchAllPages((from, to) =>
+        supabase
+          .from('contacts')
+          .select(`
+            id, full_name, phone, email, lead_status, origin, origin_campaign,
+            assigned_to, custom_fields, profiles:assigned_to(full_name),
+            segment:segments!segment_id(name)
+          `)
+          .eq('tenant_id', tenantId)
+          .not('custom_fields', 'is', null)
+          .range(from, to)
+      );
 
       const conversionLeads: TrackedLead[] = [];
 
