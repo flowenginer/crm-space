@@ -376,7 +376,7 @@ export function QuickTemplatesPopover({
       </div>
 
       {/* Content */}
-      <ScrollArea className="h-[380px]" type="always">
+      <ScrollArea className="flex-1 min-h-0 max-h-[min(380px,50vh)]" type="always">
         <div className="p-2 space-y-1">
           {activeCategory === 'flows' ? (
             // Flows list
@@ -625,7 +625,9 @@ export function QuickTemplatesPopover({
         <PopoverContent 
           side="top" 
           align="start" 
-          className="w-[580px] p-0 max-h-[600px] overflow-hidden"
+          className="w-[580px] p-0 max-h-[min(600px,70vh)] overflow-hidden flex flex-col"
+          avoidCollisions
+          collisionPadding={16}
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
