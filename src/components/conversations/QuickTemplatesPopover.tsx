@@ -464,7 +464,7 @@ export function QuickTemplatesPopover({
                       {getTemplateBody(template.components)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     <span className="p-1.5 hover:bg-primary/10 rounded-md transition-colors">
                       <Send size={14} className="text-primary" />
                     </span>
