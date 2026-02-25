@@ -145,8 +145,7 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
         .in('referral_source', referralSources)
         .gte('created_at', filters.dateFrom)
         .lte('created_at', filters.dateTo + 'T23:59:59')
-        .order('created_at', { ascending: false })
-        .limit(5000);
+        .order('created_at', { ascending: false });
 
       // 2. Fetch meta_ads with adsets and campaigns for cross-referencing
       const metaAdsQuery = supabase
@@ -321,8 +320,8 @@ export function useWhatsAppLeadTracking(filters: WhatsAppLeadTrackingFilters) {
       for (const conv of (whatsappResult.data || [])) {
         const contact = conv.contact as any;
         if (!contact) continue;
-        const validOrigins = ['whatsapp', 'linktree', 'manual'];
-        if (!validOrigins.includes(contact.origin)) continue;
+        // Aceitar todos os origins - leads sem referral_source na conversation
+        // são filtrados apenas por trackedContactIds para evitar duplicatas
         if (seenOrganicContacts.has(contact.id)) continue;
         if (trackedContactIds.has(contact.id)) continue;
         seenOrganicContacts.add(contact.id);
