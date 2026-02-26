@@ -625,3 +625,42 @@ export async function logoutChannelInstance(
     return { success: false, error: error.message || 'Erro ao fazer logout da instância' };
   }
 }
+
+// =====================================================
+// FUNÇÃO - MARCAR MENSAGENS COMO LIDAS NO WHATSAPP
+// Envia duplo check azul para o lead (APIs não oficiais)
+// =====================================================
+export async function markMessagesAsReadOnWhatsApp(
+  channelId: string,
+  conversationId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log('[Instance Creator] Marking messages as read on WhatsApp:', { channelId, conversationId });
+
+    // Verificar se é canal não-oficial (só esses precisam do markAsRead)
+    const channelType = await getChannelType(channelId);
+    if (!channelType || channelType === 'cloudapi' || channelType === 'official') {
+      console.log('[Instance Creator] Skipping markAsRead for official API channel');
+      return { success: true };
+    }
+
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'markAsRead',
+        channelId,
+        conversationId,
+      },
+    });
+
+    if (error) {
+      console.error('[Instance Creator] MarkAsRead error:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('[Instance Creator] MarkAsRead response:', data);
+    return data as { success: boolean; error?: string };
+  } catch (error: any) {
+    console.error('[Instance Creator] MarkAsRead Error:', error);
+    return { success: false, error: error.message };
+  }
+}
