@@ -4184,6 +4184,7 @@ function isMessageStatusEvent(provider: WhatsAppProvider, payload: any): boolean
              uazapiEventType === "ack" ||
              uazapiEventType === "messages_ack" ||
              uazapiEventType === "message-ack" ||
+             uazapiEventType === "messages_update" ||
              hasAckInMessage;
       
       if (isStatusEvent) {
@@ -4284,6 +4285,33 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
             console.log(`[Webhook UAZAPI] 📊 messagesUpdate - messageId: ${messageId}, rawStatus: ${rawStatus}, mappedStatus: ${status}`);
             return { messageId, status };
           }).filter((u: any) => u.messageId && u.status);
+        }
+      }
+      
+      // =====================================================
+      // FORMATO UAZAPI V2: EventType "messages_update" com event como OBJETO
+      // payload.event = { MessageIDs: [...], Type: "Delivered"|"Read"|"Played" }
+      // payload.EventType = "messages_update"
+      // =====================================================
+      const uazapiEventType2 = (payload.EventType || payload.body?.EventType || "").toLowerCase();
+      const eventObj = payload.event || payload.body?.event;
+      if (uazapiEventType2 === "messages_update" && eventObj && typeof eventObj === 'object' && !Array.isArray(eventObj)) {
+        const messageIds: string[] = eventObj.MessageIDs || eventObj.messageIds || eventObj.messageIDs || [];
+        const rawType = eventObj.Type || eventObj.type || payload.state || "";
+        const mappedStatus = mapCloudZAPIStatusToNumeric(rawType);
+        console.log(`[Webhook UAZAPI] 📊 V2 messages_update - MessageIDs: ${JSON.stringify(messageIds)}, Type: ${rawType}, mappedStatus: ${mappedStatus}`);
+        
+        if (messageIds.length > 0 && mappedStatus) {
+          return messageIds.map((id: string) => ({
+            messageId: id,
+            status: mappedStatus
+          }));
+        }
+        
+        // Fallback: single message ID in event object
+        const singleId = eventObj.MessageID || eventObj.messageId || eventObj.id || "";
+        if (singleId && mappedStatus) {
+          return [{ messageId: singleId, status: mappedStatus }];
         }
       }
       
