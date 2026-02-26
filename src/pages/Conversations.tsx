@@ -134,7 +134,7 @@ import { ShareEventCard } from '@/components/conversations/ShareEventCard';
 import { ShareCancelledEventCard } from '@/components/conversations/ShareCancelledEventCard';
 import { useRealtimeMessages, useRealtimeConversations, useRealtimeConversationEvents, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
+import { sendWhatsAppMessage, markMessagesAsReadOnWhatsApp } from '@/lib/whatsapp/instance-creator';
 import { formatDistanceToNow, format, isToday, isYesterday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toZonedTime } from 'date-fns-tz';
@@ -2871,6 +2871,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         { replace: true }
       );
       console.log('[DEBUG] ✅ navigate called');
+      
+      // Fire-and-forget: marcar mensagens como lidas no WhatsApp do lead (APIs não oficiais)
+      if (conv.channel_id) {
+        markMessagesAsReadOnWhatsApp(conv.channel_id, conv.id).catch(err => {
+          console.warn('[MarkAsRead] Erro silencioso:', err);
+        });
+      }
     }
     setIsInternalNoteMode(false);
     if (isMobile) {
