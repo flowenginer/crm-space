@@ -450,10 +450,22 @@ export function useBulkAddTag() {
         errors: [],
       };
 
+      // Fetch tenant_id from logged-in user's profile
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user?.id)
+        .single();
+
+      const tenantId = profile?.tenant_id;
+      if (!tenantId) throw new Error('Tenant não encontrado');
+
       // Use upsert to avoid duplicates
       const inserts = contactIds.map(contactId => ({
         contact_id: contactId,
         tag_id: tagId,
+        tenant_id: tenantId,
       }));
 
       const chunks = chunkArray(inserts, 50);
