@@ -1,29 +1,51 @@
 
 
-# Adicionar "Etiquetar em Massa" na barra de selecao de conversas
+# Corrigir "Falha ao processar etiquetas" no Bulk Tag
 
-## Resumo
+## Problema
 
-Adicionar um botao "Etiquetar" na barra flutuante de acoes em massa que aparece ao selecionar conversas na pagina principal. O componente `BulkTagModal` ja existe e esta funcionando na pagina de Relatorios -- basta reutiliza-lo na pagina de Conversas.
+A tabela `contact_tags` tem 4 colunas obrigatorias (NOT NULL):
+- `contact_id`
+- `tag_id`
+- `tenant_id`
+- `created_at` (tem default)
 
-## O que muda para o usuario
+O codigo em `useBulkAddTag` (arquivo `src/hooks/useBulkConversationActions.ts`) insere apenas `contact_id` e `tag_id`, **sem o `tenant_id`**. O banco de dados rejeita a insercao porque `tenant_id` nao pode ser nulo.
 
-Ao ativar o modo de selecao e escolher conversas, a barra flutuante (que hoje mostra: Todas, Nao lidas, Transferir, Devolver, Cancelar) passara a ter tambem o botao **Etiquetar** (com icone de tag). Ao clicar, abre o modal onde o usuario pode adicionar ou remover uma etiqueta de todos os contatos das conversas selecionadas.
+## Solucao
 
-## Risco de impacto
+Buscar o `tenant_id` do usuario logado antes do upsert e inclui-lo nos dados de insercao.
 
-**Nenhum.** O componente `BulkTagModal` ja esta em producao na pagina de Relatorios. Estamos apenas adicionando mais um botao na barra e reutilizando o mesmo componente. Nenhuma logica existente sera alterada.
+## Alteracao
 
-## Detalhes tecnicos
+### Arquivo: `src/hooks/useBulkConversationActions.ts` - funcao `useBulkAddTag` (linhas ~453-457)
 
-### Arquivo alterado: `src/pages/Conversations.tsx`
+Antes do upsert, buscar o `tenant_id` do perfil do usuario logado e incluir no array de insercao:
 
-1. **Novo estado**: `showBulkTagModal` (boolean, inicialmente false)
-2. **Derivar contactIds**: Mapear `selectedConversationIds` para os `contact_id` das conversas usando `filteredConversations` (as conversas ja possuem `contact_id`)
-3. **Novo botao** na barra flutuante (entre "Devolver" e "Cancelar"):
-   - Icone: `Tag` do lucide-react
-   - Texto: "Etiquetar"
-   - Abre o `BulkTagModal`
-4. **Importar** `BulkTagModal` e o icone `Tag`
-5. **Renderizar** o `BulkTagModal` com os `contactIds` derivados, junto ao `BulkTransferModal` ja existente
+```text
+// Antes (atual):
+const inserts = contactIds.map(contactId => ({
+  contact_id: contactId,
+  tag_id: tagId,
+}));
+
+// Depois (corrigido):
+const { data: { user } } = await supabase.auth.getUser();
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('tenant_id')
+  .eq('id', user?.id)
+  .single();
+
+const tenantId = profile?.tenant_id;
+if (!tenantId) throw new Error('Tenant nao encontrado');
+
+const inserts = contactIds.map(contactId => ({
+  contact_id: contactId,
+  tag_id: tagId,
+  tenant_id: tenantId,
+}));
+```
+
+Isso resolve o erro sem alterar nenhuma outra funcionalidade.
 
