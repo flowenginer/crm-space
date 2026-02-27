@@ -164,6 +164,7 @@ import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 import { RescueButton } from '@/components/rescue/RescueButton';
 import { RescueActiveAlert } from '@/components/rescue/RescueActiveAlert';
 import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
+import { BulkTagModal } from '@/components/conversations/BulkTagModal';
 import { useBulkReturnToOriginalAgent } from '@/hooks/useBulkConversationActions';
 import { use24hWindow, formatRemainingTime } from '@/hooks/use24hWindow';
 import type { Profile } from '@/types';
@@ -1473,6 +1474,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [isConversationSelectionMode, setIsConversationSelectionMode] = useState(false);
   const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
   const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
+  const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [isBulkReturning, setIsBulkReturning] = useState(false);
   const [channelChangeDialog, setChannelChangeDialog] = useState<{
     open: boolean;
@@ -4549,6 +4551,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              onClick={() => setShowBulkTagModal(true)}
+              disabled={selectedConversationIds.size === 0}
+              className="h-8"
+            >
+              <Tag size={16} className="mr-1" />
+              Etiquetar
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               onClick={cancelConversationSelection}
               className="h-8"
@@ -4565,6 +4577,23 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           onClose={() => setShowBulkTransferModal(false)}
           onTransferSuccess={handleBulkTransferSuccess}
           conversationIds={Array.from(selectedConversationIds)}
+        />
+
+        {/* Bulk Tag Modal */}
+        <BulkTagModal
+          open={showBulkTagModal}
+          onClose={() => setShowBulkTagModal(false)}
+          contactIds={
+            filteredConversations
+              .filter(c => selectedConversationIds.has(c.id))
+              .map(c => c.contact_id)
+              .filter(Boolean)
+          }
+          onSuccess={() => {
+            setShowBulkTagModal(false);
+            setSelectedConversationIds(new Set());
+            setIsConversationSelectionMode(false);
+          }}
         />
       </div>
 
