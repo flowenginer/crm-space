@@ -19,7 +19,7 @@ function parseCSV(text: string, delimiter = ';'): string[][] {
     if (inQuotes) {
       if (char === '"' && nextChar === '"') {
         currentField += '"'
-        i++ // skip escaped quote
+        i++
       } else if (char === '"') {
         inQuotes = false
       } else {
@@ -38,14 +38,13 @@ function parseCSV(text: string, delimiter = ';'): string[][] {
         }
         currentRow = []
         currentField = ''
-        if (char === '\r') i++ // skip \n after \r
+        if (char === '\r') i++
       } else {
         currentField += char
       }
     }
   }
 
-  // Last field/row
   if (currentField || currentRow.length > 0) {
     currentRow.push(currentField.trim())
     if (currentRow.length > 1) {
@@ -72,13 +71,13 @@ function categorizeOrigin(
   referralData: any | null,
   convReferralData: any | null,
 ): string {
-  // Check Linktree
+  // Check Linktree - PRIORITY: first message containing "linktree" or known linktree patterns
+  if (firstMessage && /linktree|linktr\.ee/i.test(firstMessage)) return 'Linktree'
   if (contactOrigin === 'linktree') return 'Linktree'
-  if (firstMessage && /linktree/i.test(firstMessage)) return 'Linktree'
 
   // Check CTWA Ads (click-to-whatsapp)
-  if (contactOrigin === 'ctwa' || contactOrigin === 'ctwa_ads') return 'CTWA Ads'
-  if (referralSource === 'ctwa' || referralSource === 'ctwa_ads') return 'CTWA Ads'
+  if (contactOrigin === 'ctwa' || contactOrigin === 'ctwa_ads' || contactOrigin === 'ctwa_ad') return 'CTWA Ads'
+  if (referralSource === 'ctwa' || referralSource === 'ctwa_ads' || referralSource === 'ctwa_ad') return 'CTWA Ads'
 
   // Check Redirect (Meta UTM) vs Meta Ads Direto (API)
   if (referralSource === 'redirect' || contactOrigin === 'redirect') return 'Redirect (Meta UTM)'
@@ -95,7 +94,7 @@ function categorizeOrigin(
   // Check manual
   if (contactOrigin === 'manual') return 'Manual'
 
-  // Check if there's any referral data
+  // Check referral data
   if (referralData || convReferralData) {
     const data = referralData || convReferralData
     if (data?.source === 'redirect' || data?.utm_source) return 'Redirect (Meta UTM)'
@@ -126,22 +125,47 @@ Deno.serve(async (req) => {
       })
     }
 
+    // 1. Fetch conversion_status_ids from company_settings
+    const { data: companySettings } = await supabase
+      .from('company_settings')
+      .select('conversion_status_ids')
+      .eq('tenant_id', tenantId)
+      .single()
+
+    const conversionStatusIds: string[] = companySettings?.conversion_status_ids || ['78f16fc9-39f5-47ff-9774-00a0af9fa7da']
+    console.log('Conversion status IDs:', conversionStatusIds)
+
+    // 2. Fetch all lead_statuses for this tenant to know which are conversion statuses (07-10)
+    const { data: allStatuses } = await supabase
+      .from('lead_statuses')
+      .select('id, name, order_position')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('order_position', { ascending: true })
+
+    // Build set of conversion status IDs: configured ones + any with order_position >= 7 (statuses 07-10)
+    const conversionStatusSet = new Set(conversionStatusIds)
+    for (const status of allStatuses || []) {
+      if (status.order_position != null && status.order_position >= 7) {
+        conversionStatusSet.add(status.id)
+      }
+    }
+    console.log('Total conversion status IDs (including 07-10):', conversionStatusSet.size)
+
+    // 3. Parse CSV
     console.log('Parsing CSV...')
     const rows = parseCSV(csvText)
     const header = rows[0]
     const dataRows = rows.slice(1)
-
     console.log(`Parsed ${dataRows.length} data rows, header: ${header?.length} columns`)
 
-    // Column indices (0-based): "Celular Comprador" = 12, "Nome Comprador" = 1, "Total Pedido" = 20, "Número pedido" = 0
     const COL_PEDIDO = 0
     const COL_NOME = 1
     const COL_CELULAR = 12
     const COL_TOTAL = 20
 
-    // Extract unique orders with phone numbers
+    // Extract unique orders
     const ordersMap = new Map<string, { pedido: string; nome: string; celular: string; total: number }>()
-
     for (const row of dataRows) {
       const pedido = row[COL_PEDIDO]?.replace(/"/g, '').trim()
       if (!pedido || ordersMap.has(pedido)) continue
@@ -159,15 +183,10 @@ Deno.serve(async (req) => {
     const orders = Array.from(ordersMap.values())
     console.log(`Extracted ${orders.length} unique orders with phone numbers`)
 
-    // Get unique phones and normalize
-    const uniquePhones = [...new Set(orders.map(o => getLast8Digits(o.celular)))]
-    console.log(`Unique phone suffixes: ${uniquePhones.length}`)
-
-    // Batch query contacts matching by last 8 digits
-    // We'll query all contacts for this tenant and match in code
+    // 4. Fetch all contacts (with lead_status and custom_fields for conversion check)
     const { data: allContacts, error: contactsError } = await supabase
       .from('contacts')
-      .select('id, full_name, phone, origin, referral_data, origin_campaign')
+      .select('id, full_name, phone, origin, referral_data, origin_campaign, lead_status, custom_fields')
       .eq('tenant_id', tenantId)
 
     if (contactsError) {
@@ -186,13 +205,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    // For matched contacts, get their conversations and first messages in batch
+    // 5. Match orders to contacts
     const matchedContactIds: string[] = []
     const orderResults: any[] = []
 
     for (const order of orders) {
       const phoneSuffix = getLast8Digits(order.celular)
       const contact = contactsByPhone.get(phoneSuffix)
+
+      // Check if contact is converted
+      let convertidoCRM = false
+      if (contact) {
+        // Check via lead_status
+        if (contact.lead_status && conversionStatusSet.has(contact.lead_status)) {
+          convertidoCRM = true
+        }
+        // Check via custom_fields.conversoes
+        const cf = contact.custom_fields as any
+        if (cf?.conversoes && Array.isArray(cf.conversoes) && cf.conversoes.length > 0) {
+          convertidoCRM = true
+        }
+      }
 
       orderResults.push({
         pedido: order.pedido,
@@ -205,6 +238,7 @@ Deno.serve(async (req) => {
         contactOrigin: contact?.origin || null,
         referralData: contact?.referral_data || null,
         originCampaign: contact?.origin_campaign || null,
+        convertidoCRM,
       })
 
       if (contact) {
@@ -214,10 +248,9 @@ Deno.serve(async (req) => {
 
     console.log(`Matched ${matchedContactIds.length} orders to CRM contacts`)
 
-    // Fetch conversations for matched contacts
+    // 6. Fetch conversations for matched contacts
     const conversationMap = new Map<string, any>()
     if (matchedContactIds.length > 0) {
-      // Batch in chunks of 50
       for (let i = 0; i < matchedContactIds.length; i += 50) {
         const chunk = matchedContactIds.slice(i, i + 50)
         const { data: conversations } = await supabase
@@ -235,14 +268,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Fetch first messages for conversations
+    // 7. Fetch first messages for conversations
     const firstMessageMap = new Map<string, string>()
     const conversationIds = [...conversationMap.values()].map(c => c.id)
 
     if (conversationIds.length > 0) {
       for (let i = 0; i < conversationIds.length; i += 50) {
         const chunk = conversationIds.slice(i, i + 50)
-        // Get first non-system message per conversation
         const { data: messages } = await supabase
           .from('messages')
           .select('conversation_id, content')
@@ -259,7 +291,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Fetch meta_ads for creative names
+    // 8. Fetch meta_ads for creative names
     const { data: metaAds } = await supabase
       .from('meta_ads')
       .select('id, ad_id, name, campaign_name, adset_name')
@@ -270,7 +302,7 @@ Deno.serve(async (req) => {
       metaAdsMap.set(ad.ad_id, ad)
     }
 
-    // Build final results with origin categorization
+    // 9. Build final results
     const results = orderResults.map(order => {
       const conv = order.contactId ? conversationMap.get(order.contactId) : null
       const firstMessage = conv ? firstMessageMap.get(conv.id) : null
@@ -303,42 +335,43 @@ Deno.serve(async (req) => {
         origem,
         criativo,
         originCampaign: order.originCampaign,
+        convertidoCRM: order.convertidoCRM,
       }
     })
 
-    // Aggregate summary
+    // 10. Aggregate summaries
     const summary: Record<string, { count: number; total: number }> = {}
     for (const r of results) {
-      if (!summary[r.origem]) {
-        summary[r.origem] = { count: 0, total: 0 }
-      }
+      if (!summary[r.origem]) summary[r.origem] = { count: 0, total: 0 }
       summary[r.origem].count++
       summary[r.origem].total += r.totalPedido
     }
 
-    // Creative summary
     const creativeSummary: Record<string, { count: number; total: number; origem: string }> = {}
     for (const r of results) {
       if (r.criativo) {
-        if (!creativeSummary[r.criativo]) {
-          creativeSummary[r.criativo] = { count: 0, total: 0, origem: r.origem }
-        }
+        if (!creativeSummary[r.criativo]) creativeSummary[r.criativo] = { count: 0, total: 0, origem: r.origem }
         creativeSummary[r.criativo].count++
         creativeSummary[r.criativo].total += r.totalPedido
       }
     }
 
+    const convertedCount = results.filter(r => r.convertidoCRM).length
+    const notConvertedInCRM = results.filter(r => r.matchCRM && !r.convertidoCRM).length
+
     const response = {
       totalOrders: results.length,
       matchedOrders: results.filter(r => r.matchCRM).length,
       unmatchedOrders: results.filter(r => !r.matchCRM).length,
+      convertedOrders: convertedCount,
+      notConvertedInCRM,
       totalRevenue: results.reduce((sum, r) => sum + r.totalPedido, 0),
       summary,
       creativeSummary,
       orders: results,
     }
 
-    console.log(`Returning ${results.length} results, ${response.matchedOrders} matched`)
+    console.log(`Results: ${results.length} total, ${response.matchedOrders} matched, ${convertedCount} converted in CRM`)
 
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
