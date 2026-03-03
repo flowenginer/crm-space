@@ -10,6 +10,8 @@ interface SalesResult {
   totalOrders: number;
   matchedOrders: number;
   unmatchedOrders: number;
+  convertedOrders: number;
+  notConvertedInCRM: number;
   totalRevenue: number;
   summary: Record<string, { count: number; total: number }>;
   creativeSummary: Record<string, { count: number; total: number; origem: string }>;
@@ -23,6 +25,7 @@ interface SalesResult {
     origem: string;
     criativo: string | null;
     originCampaign: string | null;
+    convertidoCRM: boolean;
   }>;
 }
 

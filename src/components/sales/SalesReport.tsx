@@ -1,13 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, TrendingUp } from "lucide-react";
+import { CheckCircle, XCircle, TrendingUp, ShieldCheck } from "lucide-react";
 
 interface SalesReportProps {
   data: {
     totalOrders: number;
     matchedOrders: number;
     unmatchedOrders: number;
+    convertedOrders?: number;
+    notConvertedInCRM?: number;
     totalRevenue: number;
     summary: Record<string, { count: number; total: number }>;
     creativeSummary: Record<string, { count: number; total: number; origem: string }>;
@@ -20,6 +22,7 @@ interface SalesReportProps {
       nomeCRM: string | null;
       origem: string;
       criativo: string | null;
+      convertidoCRM?: boolean;
     }>;
   };
 }
@@ -46,7 +49,7 @@ export function SalesReport({ data }: SalesReportProps) {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{data.totalOrders}</div>
@@ -63,6 +66,18 @@ export function SalesReport({ data }: SalesReportProps) {
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-red-600">{data.unmatchedOrders}</div>
             <p className="text-xs text-muted-foreground">Não encontrados</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-2xl font-bold text-emerald-600">{data.convertedOrders ?? '-'}</div>
+            <p className="text-xs text-muted-foreground">Convertidos no CRM</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-2xl font-bold text-amber-600">{data.notConvertedInCRM ?? '-'}</div>
+            <p className="text-xs text-muted-foreground">No CRM sem conversão</p>
           </CardContent>
         </Card>
         <Card>
@@ -165,6 +180,7 @@ export function SalesReport({ data }: SalesReportProps) {
                   <TableHead>Telefone</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead>CRM</TableHead>
+                  <TableHead>Convertido</TableHead>
                   <TableHead>Nome CRM</TableHead>
                   <TableHead>Origem</TableHead>
                   <TableHead>Criativo</TableHead>
@@ -182,6 +198,15 @@ export function SalesReport({ data }: SalesReportProps) {
                         <CheckCircle className="h-4 w-4 text-green-500" />
                       ) : (
                         <XCircle className="h-4 w-4 text-red-500" />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {order.convertidoCRM ? (
+                        <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                      ) : order.matchCRM ? (
+                        <XCircle className="h-4 w-4 text-amber-500" />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </TableCell>
                     <TableCell className="max-w-[120px] truncate text-xs">{order.nomeCRM || "-"}</TableCell>
