@@ -1,47 +1,38 @@
 
 
-## Plano: PROCV da planilha de vendas com o CRM
+## Diagnóstico do Problema
 
-### Contexto
-A planilha CSV contém ~289 pedidos únicos (13688 a 13976) de fevereiro/2026 com 9733 linhas (campos multilinha nas observações). Preciso cruzar o "Celular Comprador" com os contatos do CRM para identificar a origem real de cada comprador.
+Identifiquei a causa raiz: **o CRM tem 21.020 contatos, mas a Edge Function só buscou 6.000** (limite do Supabase). Os outros 15.020 contatos foram ignorados, resultando em 201/214 pedidos como "não encontrado".
 
-### Desafio técnico
-O CSV tem campos com quebra de linha (coluna "Observações"), tornando a leitura linha-a-linha impossível. Preciso de um parser robusto que trate campos entre aspas com line breaks.
+O contato "JAILSON GUERRA" com telefone `5566996791974` (suffix `96791974`) **está no CRM** e deveria ter dado match com o CSV `(66) 99679-1974` — mas ele caiu fora dos 6.000 buscados.
 
-### Solução: Edge Function de cruzamento
+## Solução
 
-Criar uma Edge Function `cross-reference-sales` que:
+Mudar a estratégia de matching: em vez de buscar todos os contatos na memória (impossível com 21k+), fazer a busca diretamente no banco de dados para cada telefone do CSV.
 
-1. **Recebe o CSV** como texto no body da requisição
-2. **Parseia** com tratamento de campos multilinha (respeita aspas duplas como delimitadores)
-3. **Extrai telefones únicos** da coluna "Celular Comprador" (índice 12)
-4. **Normaliza** cada telefone removendo caracteres especiais e pegando os últimos 8 dígitos
-5. **Consulta o CRM** buscando contatos cujo `RIGHT(REGEXP_REPLACE(phone, '[^0-9]', '', 'g'), 8)` bata com cada telefone
-6. **Para cada match**, busca:
-   - `origin` do contato
-   - `referral_source` da conversa
-   - Primeira mensagem (para detectar "Linktree", "Site", etc.)
-   - Nome do criativo (cruzando `meta_ads`)
-7. **Retorna** o relatório completo:
-   - Nome do comprador, telefone, valor do pedido
-   - Match no CRM (sim/não), nome no CRM
-   - Origem categorizada (Linktree / CTWA Ads / Meta Ads Direto / Redirect / WhatsApp Orgânico / Manual / Sem origem)
-   - Nome do criativo (quando aplicável)
-   - Resumo agregado por origem
+### Edge Function `cross-reference-sales/index.ts`
 
-### Front-end
-Criar uma página/componente simples de upload que:
-- Aceita o CSV
-- Chama a Edge Function
-- Exibe os resultados em tabela com totais por origem
-- Separa claramente **Redirect** vs **Meta Ads Direto**
+1. **Extrair todos os telefones únicos do CSV** (214 pedidos)
+2. **Buscar no banco por SQL** usando `RIGHT(REGEXP_REPLACE(phone, '[^0-9]', '', 'g'), 8)` para cada batch de telefones — consulta direta que ignora o limite de 1000 rows porque busca só os que precisamos
+3. **Buscar também com 9 dígitos** (suffix de 9) para cobrir variações com/sem o 9º dígito brasileiro
+4. **Para cada contato encontrado**, buscar conversas, primeira mensagem e meta_ads (como já faz)
+5. Manter toda a lógica de categorização de origem e conversão
 
-### Resultado esperado
-O mesmo relatório de fevereiro que já foi entregue, mas agora baseado nos **compradores reais** da planilha do ERP (não nos status do CRM), com a origem correta de cada um e nenhum dado perdido.
+A query principal será algo como:
+```sql
+SELECT id, full_name, phone, origin, referral_data, origin_campaign, lead_status, custom_fields
+FROM contacts
+WHERE tenant_id = $tenantId
+AND RIGHT(REGEXP_REPLACE(phone, '[^0-9]', '', 'g'), 8) = ANY($suffixes)
+```
 
-### Arquivos envolvidos
-- `supabase/functions/cross-reference-sales/index.ts` (novo)
-- `src/pages/SalesAnalysis.tsx` (novo - página de análise)
-- `src/components/sales/SalesReport.tsx` (novo - componente de relatório)
-- Rota no App.tsx
+Isso busca exatamente os contatos que precisamos, sem limite de rows.
+
+### Build Error Fix
+
+Corrigir o erro de TypeScript em `LeadConversionDashboard.tsx` linha 530 — remover a propriedade `angle` do `tick` do XAxis que não é aceita pelo tipo do Recharts.
+
+### Arquivos alterados
+- `supabase/functions/cross-reference-sales/index.ts` — reescrever matching para usar query SQL direta
+- `src/pages/LeadConversionDashboard.tsx` — fix do build error (linha 530)
 
