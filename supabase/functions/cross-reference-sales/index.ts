@@ -1,0 +1,353 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.86.0'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+}
+
+// Robust CSV parser that handles multiline fields in quotes
+function parseCSV(text: string, delimiter = ';'): string[][] {
+  const rows: string[][] = []
+  let currentRow: string[] = []
+  let currentField = ''
+  let inQuotes = false
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]
+    const nextChar = text[i + 1]
+
+    if (inQuotes) {
+      if (char === '"' && nextChar === '"') {
+        currentField += '"'
+        i++ // skip escaped quote
+      } else if (char === '"') {
+        inQuotes = false
+      } else {
+        currentField += char
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true
+      } else if (char === delimiter) {
+        currentRow.push(currentField.trim())
+        currentField = ''
+      } else if (char === '\n' || (char === '\r' && nextChar === '\n')) {
+        currentRow.push(currentField.trim())
+        if (currentRow.length > 1) {
+          rows.push(currentRow)
+        }
+        currentRow = []
+        currentField = ''
+        if (char === '\r') i++ // skip \n after \r
+      } else {
+        currentField += char
+      }
+    }
+  }
+
+  // Last field/row
+  if (currentField || currentRow.length > 0) {
+    currentRow.push(currentField.trim())
+    if (currentRow.length > 1) {
+      rows.push(currentRow)
+    }
+  }
+
+  return rows
+}
+
+function normalizePhone(phone: string): string {
+  return phone.replace(/[^0-9]/g, '')
+}
+
+function getLast8Digits(phone: string): string {
+  const digits = normalizePhone(phone)
+  return digits.slice(-8)
+}
+
+function categorizeOrigin(
+  contactOrigin: string | null,
+  referralSource: string | null,
+  firstMessage: string | null,
+  referralData: any | null,
+  convReferralData: any | null,
+): string {
+  // Check Linktree
+  if (contactOrigin === 'linktree') return 'Linktree'
+  if (firstMessage && /linktree/i.test(firstMessage)) return 'Linktree'
+
+  // Check CTWA Ads (click-to-whatsapp)
+  if (contactOrigin === 'ctwa' || contactOrigin === 'ctwa_ads') return 'CTWA Ads'
+  if (referralSource === 'ctwa' || referralSource === 'ctwa_ads') return 'CTWA Ads'
+
+  // Check Redirect (Meta UTM) vs Meta Ads Direto (API)
+  if (referralSource === 'redirect' || contactOrigin === 'redirect') return 'Redirect (Meta UTM)'
+  if (contactOrigin === 'meta_ads') return 'Meta Ads Direto (API)'
+
+  // Check WhatsApp organic
+  if (contactOrigin === 'whatsapp' || contactOrigin === 'organic') return 'WhatsApp Orgânico'
+
+  // Check if first message suggests organic
+  if (firstMessage && /^(oi|olá|ola|bom dia|boa tarde|boa noite|hi|hello)/i.test(firstMessage?.trim() || '')) {
+    return 'WhatsApp Orgânico'
+  }
+
+  // Check manual
+  if (contactOrigin === 'manual') return 'Manual'
+
+  // Check if there's any referral data
+  if (referralData || convReferralData) {
+    const data = referralData || convReferralData
+    if (data?.source === 'redirect' || data?.utm_source) return 'Redirect (Meta UTM)'
+    if (data?.sourceType === 'ad' || data?.source_type === 'ad') return 'Meta Ads Direto (API)'
+    if (data?.source === 'ctwa') return 'CTWA Ads'
+  }
+
+  if (contactOrigin) return `Outro (${contactOrigin})`
+  return 'Sem origem definida'
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    const { csvText, tenantId } = await req.json()
+
+    if (!csvText || !tenantId) {
+      return new Response(JSON.stringify({ error: 'csvText and tenantId are required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    console.log('Parsing CSV...')
+    const rows = parseCSV(csvText)
+    const header = rows[0]
+    const dataRows = rows.slice(1)
+
+    console.log(`Parsed ${dataRows.length} data rows, header: ${header?.length} columns`)
+
+    // Column indices (0-based): "Celular Comprador" = 12, "Nome Comprador" = 1, "Total Pedido" = 20, "Número pedido" = 0
+    const COL_PEDIDO = 0
+    const COL_NOME = 1
+    const COL_CELULAR = 12
+    const COL_TOTAL = 20
+
+    // Extract unique orders with phone numbers
+    const ordersMap = new Map<string, { pedido: string; nome: string; celular: string; total: number }>()
+
+    for (const row of dataRows) {
+      const pedido = row[COL_PEDIDO]?.replace(/"/g, '').trim()
+      if (!pedido || ordersMap.has(pedido)) continue
+
+      const celular = row[COL_CELULAR]?.replace(/"/g, '').trim()
+      const nome = row[COL_NOME]?.replace(/"/g, '').trim()
+      const totalStr = row[COL_TOTAL]?.replace(/"/g, '').trim().replace('.', '').replace(',', '.')
+      const total = parseFloat(totalStr) || 0
+
+      if (celular) {
+        ordersMap.set(pedido, { pedido, nome, celular, total })
+      }
+    }
+
+    const orders = Array.from(ordersMap.values())
+    console.log(`Extracted ${orders.length} unique orders with phone numbers`)
+
+    // Get unique phones and normalize
+    const uniquePhones = [...new Set(orders.map(o => getLast8Digits(o.celular)))]
+    console.log(`Unique phone suffixes: ${uniquePhones.length}`)
+
+    // Batch query contacts matching by last 8 digits
+    // We'll query all contacts for this tenant and match in code
+    const { data: allContacts, error: contactsError } = await supabase
+      .from('contacts')
+      .select('id, full_name, phone, origin, referral_data, origin_campaign')
+      .eq('tenant_id', tenantId)
+
+    if (contactsError) {
+      console.error('Error fetching contacts:', contactsError)
+      throw contactsError
+    }
+
+    console.log(`Fetched ${allContacts?.length || 0} contacts from CRM`)
+
+    // Build phone suffix -> contact map
+    const contactsByPhone = new Map<string, typeof allContacts[0]>()
+    for (const contact of allContacts || []) {
+      const suffix = getLast8Digits(contact.phone)
+      if (suffix.length >= 8) {
+        contactsByPhone.set(suffix, contact)
+      }
+    }
+
+    // For matched contacts, get their conversations and first messages in batch
+    const matchedContactIds: string[] = []
+    const orderResults: any[] = []
+
+    for (const order of orders) {
+      const phoneSuffix = getLast8Digits(order.celular)
+      const contact = contactsByPhone.get(phoneSuffix)
+
+      orderResults.push({
+        pedido: order.pedido,
+        nomeComprador: order.nome,
+        telefone: order.celular,
+        totalPedido: order.total,
+        matchCRM: !!contact,
+        contactId: contact?.id || null,
+        nomeCRM: contact?.full_name || null,
+        contactOrigin: contact?.origin || null,
+        referralData: contact?.referral_data || null,
+        originCampaign: contact?.origin_campaign || null,
+      })
+
+      if (contact) {
+        matchedContactIds.push(contact.id)
+      }
+    }
+
+    console.log(`Matched ${matchedContactIds.length} orders to CRM contacts`)
+
+    // Fetch conversations for matched contacts
+    const conversationMap = new Map<string, any>()
+    if (matchedContactIds.length > 0) {
+      // Batch in chunks of 50
+      for (let i = 0; i < matchedContactIds.length; i += 50) {
+        const chunk = matchedContactIds.slice(i, i + 50)
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('id, contact_id, referral_source, referral_data')
+          .eq('tenant_id', tenantId)
+          .in('contact_id', chunk)
+          .order('created_at', { ascending: true })
+
+        for (const conv of conversations || []) {
+          if (!conversationMap.has(conv.contact_id)) {
+            conversationMap.set(conv.contact_id, conv)
+          }
+        }
+      }
+    }
+
+    // Fetch first messages for conversations
+    const firstMessageMap = new Map<string, string>()
+    const conversationIds = [...conversationMap.values()].map(c => c.id)
+
+    if (conversationIds.length > 0) {
+      for (let i = 0; i < conversationIds.length; i += 50) {
+        const chunk = conversationIds.slice(i, i + 50)
+        // Get first non-system message per conversation
+        const { data: messages } = await supabase
+          .from('messages')
+          .select('conversation_id, content')
+          .in('conversation_id', chunk)
+          .eq('is_from_me', false)
+          .order('created_at', { ascending: true })
+          .limit(1)
+
+        for (const msg of messages || []) {
+          if (!firstMessageMap.has(msg.conversation_id)) {
+            firstMessageMap.set(msg.conversation_id, msg.content || '')
+          }
+        }
+      }
+    }
+
+    // Fetch meta_ads for creative names
+    const { data: metaAds } = await supabase
+      .from('meta_ads')
+      .select('id, ad_id, name, campaign_name, adset_name')
+      .eq('tenant_id', tenantId)
+
+    const metaAdsMap = new Map<string, any>()
+    for (const ad of metaAds || []) {
+      metaAdsMap.set(ad.ad_id, ad)
+    }
+
+    // Build final results with origin categorization
+    const results = orderResults.map(order => {
+      const conv = order.contactId ? conversationMap.get(order.contactId) : null
+      const firstMessage = conv ? firstMessageMap.get(conv.id) : null
+      const convReferralData = conv?.referral_data
+
+      const origem = order.matchCRM
+        ? categorizeOrigin(order.contactOrigin, conv?.referral_source, firstMessage || null, order.referralData, convReferralData)
+        : 'Não encontrado no CRM'
+
+      // Try to find creative name
+      let criativo = null
+      const rd = order.referralData || convReferralData
+      if (rd) {
+        const sourceId = rd.sourceId || rd.source_id || rd.utm_term
+        if (sourceId && metaAdsMap.has(sourceId)) {
+          const ad = metaAdsMap.get(sourceId)
+          criativo = ad.name
+        } else if (rd.utm_content) {
+          criativo = rd.utm_content
+        }
+      }
+
+      return {
+        pedido: order.pedido,
+        nomeComprador: order.nomeComprador,
+        telefone: order.telefone,
+        totalPedido: order.totalPedido,
+        matchCRM: order.matchCRM,
+        nomeCRM: order.nomeCRM,
+        origem,
+        criativo,
+        originCampaign: order.originCampaign,
+      }
+    })
+
+    // Aggregate summary
+    const summary: Record<string, { count: number; total: number }> = {}
+    for (const r of results) {
+      if (!summary[r.origem]) {
+        summary[r.origem] = { count: 0, total: 0 }
+      }
+      summary[r.origem].count++
+      summary[r.origem].total += r.totalPedido
+    }
+
+    // Creative summary
+    const creativeSummary: Record<string, { count: number; total: number; origem: string }> = {}
+    for (const r of results) {
+      if (r.criativo) {
+        if (!creativeSummary[r.criativo]) {
+          creativeSummary[r.criativo] = { count: 0, total: 0, origem: r.origem }
+        }
+        creativeSummary[r.criativo].count++
+        creativeSummary[r.criativo].total += r.totalPedido
+      }
+    }
+
+    const response = {
+      totalOrders: results.length,
+      matchedOrders: results.filter(r => r.matchCRM).length,
+      unmatchedOrders: results.filter(r => !r.matchCRM).length,
+      totalRevenue: results.reduce((sum, r) => sum + r.totalPedido, 0),
+      summary,
+      creativeSummary,
+      orders: results,
+    }
+
+    console.log(`Returning ${results.length} results, ${response.matchedOrders} matched`)
+
+    return new Response(JSON.stringify(response), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  } catch (error) {
+    console.error('Error:', error)
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+})
