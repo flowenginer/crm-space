@@ -7288,6 +7288,7 @@ export type Database = {
           max_conversations: number | null
           permissions: Json | null
           phone: string | null
+          preferences: Json | null
           role: string | null
           sales_target_1: number | null
           sales_target_2: number | null
@@ -7325,6 +7326,7 @@ export type Database = {
           max_conversations?: number | null
           permissions?: Json | null
           phone?: string | null
+          preferences?: Json | null
           role?: string | null
           sales_target_1?: number | null
           sales_target_2?: number | null
@@ -7362,6 +7364,7 @@ export type Database = {
           max_conversations?: number | null
           permissions?: Json | null
           phone?: string | null
+          preferences?: Json | null
           role?: string | null
           sales_target_1?: number | null
           sales_target_2?: number | null
@@ -10445,6 +10448,7 @@ export type Database = {
           tenant_id: string
           type: string | null
           updated_at: string
+          webhook_events_configured_at: string | null
           webhook_url: string | null
         }
         Insert: {
@@ -10472,6 +10476,7 @@ export type Database = {
           tenant_id: string
           type?: string | null
           updated_at?: string
+          webhook_events_configured_at?: string | null
           webhook_url?: string | null
         }
         Update: {
@@ -10499,6 +10504,7 @@ export type Database = {
           tenant_id?: string
           type?: string | null
           updated_at?: string
+          webhook_events_configured_at?: string | null
           webhook_url?: string | null
         }
         Relationships: [
@@ -10854,6 +10860,10 @@ export type Database = {
           total_records: number
         }[]
       }
+      batch_update_media_urls: {
+        Args: { p_duplicate_names: string[]; p_new_url: string }
+        Returns: number
+      }
       calculate_variation_price: {
         Args: {
           p_attribute_value_ids: string[]
@@ -10929,6 +10939,15 @@ export type Database = {
       create_tenant_triggers: { Args: never; Returns: undefined }
       current_tenant_id: { Args: never; Returns: string }
       current_user_is_super_admin: { Args: never; Returns: boolean }
+      deduplicate_storage_files: {
+        Args: { p_bucket_id?: string; p_dry_run?: boolean; p_limit?: number }
+        Returns: {
+          action: string
+          details: string
+          files_affected: number
+          space_freed: string
+        }[]
+      }
       delete_contact_permanently: {
         Args: { p_contact_id: string }
         Returns: undefined
@@ -10984,6 +11003,20 @@ export type Database = {
       find_or_create_direct_thread: {
         Args: { p_other_user_id: string; p_user_id: string }
         Returns: string
+      }
+      find_orphaned_storage_files: {
+        Args: {
+          p_bucket_id?: string
+          p_limit?: number
+          p_older_than_days?: number
+        }
+        Returns: {
+          created_at: string
+          file_id: string
+          file_name: string
+          file_size: string
+          mime_type: string
+        }[]
       }
       fix_conversation_last_message_sync: {
         Args: never
@@ -11787,6 +11820,16 @@ export type Database = {
           status_order: number
         }[]
       }
+      get_storage_duplicates: {
+        Args: { p_limit?: number }
+        Returns: {
+          duplicate_names: string[]
+          etag: string
+          file_size: number
+          keep_name: string
+          total_copies: number
+        }[]
+      }
       get_support_dashboard_metrics: {
         Args: { p_date_from?: string; p_date_to?: string }
         Returns: Json
@@ -12155,27 +12198,35 @@ export type Database = {
           p_tag_ids?: string[]
         }
         Returns: {
+          agent_id: string
           agent_name: string
-          assigned_to: string
           channel_id: string
           channel_name: string
           close_reason: string
           closed_at: string
           contact_full_name: string
           contact_id: string
+          contact_lead_score: number
           contact_lead_status: string
           contact_origin: string
           contact_phone: string
           created_at: string
           department_id: string
           department_name: string
-          first_message_content: string
+          first_message: string
+          first_response_at: string
           id: string
-          last_message_at: string
+          internal_notes_text: string
           lead_status: string
+          protocol_number: string
+          received_messages_count: number
           referral_source_app: string
           referral_source_url: string
+          sent_messages_count: number
           status: string
+          tag_ids: string
+          tags: string
+          total_active_time_seconds: number
           total_count: number
         }[]
       }

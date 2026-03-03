@@ -134,7 +134,7 @@ import { ShareEventCard } from '@/components/conversations/ShareEventCard';
 import { ShareCancelledEventCard } from '@/components/conversations/ShareCancelledEventCard';
 import { useRealtimeMessages, useRealtimeConversations, useRealtimeConversationEvents, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
+import { sendWhatsAppMessage, markMessagesAsReadOnWhatsApp } from '@/lib/whatsapp/instance-creator';
 import { formatDistanceToNow, format, isToday, isYesterday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toZonedTime } from 'date-fns-tz';
@@ -164,6 +164,7 @@ import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 import { RescueButton } from '@/components/rescue/RescueButton';
 import { RescueActiveAlert } from '@/components/rescue/RescueActiveAlert';
 import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
+import { BulkTagModal } from '@/components/conversations/BulkTagModal';
 import { useBulkReturnToOriginalAgent } from '@/hooks/useBulkConversationActions';
 import { use24hWindow, formatRemainingTime } from '@/hooks/use24hWindow';
 import type { Profile } from '@/types';
@@ -1473,6 +1474,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [isConversationSelectionMode, setIsConversationSelectionMode] = useState(false);
   const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
   const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
+  const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [isBulkReturning, setIsBulkReturning] = useState(false);
   const [channelChangeDialog, setChannelChangeDialog] = useState<{
     open: boolean;
@@ -1548,16 +1550,38 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Acesso total: admin, supervisor, ou usuários com permissão especial (individual ou do departamento)
   const canAccessAllConversations = canViewAllConversations;
   
-  // Permissão para ver conversas não atribuídas (admins, supervisores ou com permissão específica)
-  const canViewUnassigned = canAccessAllConversations || hasPermission('conversations', 'view_unassigned');
+  // Permissão para ver conversas não atribuídas
+  // Se explicitamente false no perfil individual → negar; caso contrário usa lógica padrão
+  const canViewUnassigned = (() => {
+    if (isAdmin || isSupervisor) return true;
+    if (profile?.permissions?.conversations?.view_unassigned === false) return false;
+    return canAccessAllConversations || hasPermission('conversations', 'view_unassigned');
+  })();
   
   // Permissão para ver conversas pendentes do departamento
-  // Vendedores com permissão básica de ver conversas podem ver pending dos SEUS departamentos
-  const canViewPending = canAccessAllConversations || hasPermission('conversations', 'view_pending') || hasPermission('conversations', 'view');
+  // Se explicitamente false no perfil individual → negar; caso contrário usa lógica padrão
+  const canViewPending = (() => {
+    if (isAdmin || isSupervisor) return true;
+    if (profile?.permissions?.conversations?.view_pending === false) return false;
+    return canAccessAllConversations || hasPermission('conversations', 'view_pending') || hasPermission('conversations', 'view');
+  })();
   
   // Filtros disponíveis baseados nas permissões
+  // Para abas tab_*: se a permissão não está configurada (undefined), mostra por padrão.
+  // Apenas se explicitamente configurada como false a aba é ocultada.
+  // Admins e supervisores sempre veem tudo.
+  const canTabAll = isAdmin || isSupervisor || profile?.permissions?.conversations?.tab_all !== false;
+  const canTabPinned = isAdmin || isSupervisor || profile?.permissions?.conversations?.tab_pinned !== false;
+  const canTabShared = isAdmin || isSupervisor || profile?.permissions?.conversations?.tab_shared !== false;
+  const canTabMine = isAdmin || isSupervisor || profile?.permissions?.conversations?.tab_mine !== false;
+
   const availableQuickFilters = useMemo(() => {
-    const filters: ('all' | 'pinned' | 'shared' | 'mine' | 'pending' | 'unassigned')[] = ['all', 'pinned', 'shared', 'mine'];
+    const filters: ('all' | 'pinned' | 'shared' | 'mine' | 'pending' | 'unassigned')[] = [];
+    
+    if (canTabAll) filters.push('all');
+    if (canTabPinned) filters.push('pinned');
+    if (canTabShared) filters.push('shared');
+    if (canTabMine) filters.push('mine');
     
     if (canViewPending) {
       filters.push('pending');
@@ -1568,7 +1592,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
     
     return filters;
-  }, [canViewPending, canViewUnassigned]);
+  }, [canTabAll, canTabPinned, canTabShared, canTabMine, canViewPending, canViewUnassigned]);
 
   // Configuração dos filtros para exibição responsiva
   const filterConfig: Record<string, { 
@@ -2181,13 +2205,36 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         return;
       }
       
-      // Marcar como lida
-      console.log('[Auto-read] Marcando conversa como lida:', selectedConversationId);
-      updateConversation.mutate({
-        id: selectedConversationId,
-        is_unread: false,
-        unread_count: 0,
-      });
+      // Marcar como lida - atualização OTIMISTA do cache (sem invalidar a lista)
+      console.log('[Auto-read] Marcando conversa como lida (otimista):', selectedConversationId);
+      
+      // 1. Atualizar cache local imediatamente (sem reordenar)
+      queryClient.setQueriesData(
+        { queryKey: ['conversations-paginated'] },
+        (oldData: any) => {
+          if (!oldData?.pages) return oldData;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page: any) => ({
+              ...page,
+              conversations: (page.conversations || []).map((c: any) =>
+                c.id === selectedConversationId
+                  ? { ...c, is_unread: false, unread_count: 0 }
+                  : c
+              ),
+            })),
+          };
+        }
+      );
+      
+      // 2. Enviar update ao servidor silenciosamente (sem trigger de invalidação via mutate)
+      supabase
+        .from('conversations')
+        .update({ is_unread: false, unread_count: 0 })
+        .eq('id', selectedConversationId)
+        .then(() => {
+          console.log('[Auto-read] Servidor atualizado silenciosamente');
+        });
     }, 500);
     
     return () => clearTimeout(timeoutId);
@@ -2796,6 +2843,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
     // ============ FIM DA VERIFICAÇÃO ============
     
+    // Salvar posição do scroll antes de mudar de conversa
+    if (conversationListRef.current) {
+      savedScrollTopRef.current = conversationListRef.current.scrollTop;
+      console.log('[Scroll] Saved scrollTop on conversation click:', savedScrollTopRef.current);
+    }
+    
     // Marcar como clique EXPLÍCITO do usuário (para limpar proteção de "marcar como não lida")
     userClickedConversationRef.current = conv.id;
     console.log('[Auto-read] Usuário clicou explicitamente na conversa:', conv.id);
@@ -2820,6 +2873,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         { replace: true }
       );
       console.log('[DEBUG] ✅ navigate called');
+      
+      // Fire-and-forget: marcar mensagens como lidas no WhatsApp do lead (APIs não oficiais)
+      if (conv.channel_id) {
+        markMessagesAsReadOnWhatsApp(conv.channel_id, conv.id).catch(err => {
+          console.warn('[MarkAsRead] Erro silencioso:', err);
+        });
+      }
     }
     setIsInternalNoteMode(false);
     if (isMobile) {
@@ -4491,6 +4551,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              onClick={() => setShowBulkTagModal(true)}
+              disabled={selectedConversationIds.size === 0}
+              className="h-8"
+            >
+              <Tag size={16} className="mr-1" />
+              Etiquetar
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               onClick={cancelConversationSelection}
               className="h-8"
@@ -4507,6 +4577,23 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           onClose={() => setShowBulkTransferModal(false)}
           onTransferSuccess={handleBulkTransferSuccess}
           conversationIds={Array.from(selectedConversationIds)}
+        />
+
+        {/* Bulk Tag Modal */}
+        <BulkTagModal
+          open={showBulkTagModal}
+          onClose={() => setShowBulkTagModal(false)}
+          contactIds={
+            filteredConversations
+              .filter(c => selectedConversationIds.has(c.id))
+              .map(c => c.contact_id)
+              .filter(Boolean)
+          }
+          onSuccess={() => {
+            setShowBulkTagModal(false);
+            setSelectedConversationIds(new Set());
+            setIsConversationSelectionMode(false);
+          }}
         />
       </div>
 
@@ -4634,7 +4721,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                                     if (selectedConversation?.contact?.id) {
                                       addTagToContact.mutate(
                                         { contactId: selectedConversation.contact.id, tagId: tag.id },
-                                        { onSuccess: () => { refetchContactTags(); setShowHeaderTagPopover(false); setTagSearchQuery(''); } }
+                                        { onSuccess: () => { refetchContactTags(); setTagSearchQuery(''); } }
                                       );
                                     }
                                   }}

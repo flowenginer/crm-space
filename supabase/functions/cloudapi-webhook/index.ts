@@ -366,6 +366,7 @@ async function processMessages(supabase: any, value: any) {
 
     // Find or create conversation - COM MIGRAÇÃO AUTOMÁTICA DE CANAL
     let conversationId: string | undefined;
+    let isNewConversation = false;
     
     // 1. Primeiro, tentar encontrar conversa aberta existente NO MESMO CANAL
     const { data: existingConversation } = await supabase
@@ -465,6 +466,7 @@ async function processMessages(supabase: any, value: any) {
           }
         } else {
           conversationId = newConversation?.id;
+          isNewConversation = true;
         }
       }
     }
@@ -844,6 +846,30 @@ async function processMessages(supabase: any, value: any) {
     } catch (flowError) {
       // Não falhar a mensagem se automação falhar
       console.error('[CloudAPI] ⚠️ Error triggering flow automations:', flowError);
+    }
+
+    // ============================================================
+    // TRIGGER FIRST_MESSAGE AUTOMATIONS (se conversa nova)
+    // ============================================================
+    if (isNewConversation) {
+      try {
+        console.log(`[CloudAPI] 🆕 New conversation detected, triggering first_message automation...`);
+        
+        await supabase.functions.invoke('process-flow-triggers', {
+          body: {
+            trigger_type: 'first_message',
+            tenant_id: config.tenant_id,
+            contact_id: contactId,
+            channel_id: config.channel_id,
+            conversation_id: conversationId,
+            message_content: content,
+          }
+        });
+        
+        console.log('[CloudAPI] ✅ First message automation check completed');
+      } catch (flowError) {
+        console.error('[CloudAPI] ⚠️ Error triggering first_message automation:', flowError);
+      }
     }
   }
 }

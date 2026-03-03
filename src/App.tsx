@@ -37,7 +37,7 @@ import Settings from "@/pages/Settings";
 import ScheduledMessages from "@/pages/ScheduledMessages";
 import LiveMonitor from "@/pages/LiveMonitor";
 import ConversationReport from "@/pages/ConversationReport";
-import CampaignReport from "@/pages/CampaignReport";
+
 import MetaAdsManager from "@/pages/MetaAdsManager";
 import Automations from "@/pages/Automations";
 import FlowEditor from "@/pages/FlowEditor";
@@ -259,23 +259,18 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/relatorios/campanhas" element={
-                <ProtectedRoute permission="marketing.view_campaigns">
-                  <CampaignReport />
+                <ProtectedRoute permission="marketing.view">
+                  <WhatsAppLeadTracking />
                 </ProtectedRoute>
               } />
               <Route path="/relatorio-campanhas" element={
-                <ProtectedRoute permission="marketing.view_campaigns">
-                  <CampaignReport />
+                <ProtectedRoute permission="marketing.view">
+                  <WhatsAppLeadTracking />
                 </ProtectedRoute>
               } />
               <Route path="/meta-ads" element={
                 <ProtectedRoute permission="marketing.view">
                   <MetaAdsManager />
-                </ProtectedRoute>
-              } />
-              <Route path="/whatsapp-lead-tracking" element={
-                <ProtectedRoute permission="marketing.view">
-                  <WhatsAppLeadTracking />
                 </ProtectedRoute>
               } />
               <Route path="/lead-conversion" element={

@@ -388,6 +388,43 @@ export function useRealtimeConversations() {
               refetchType: 'active'
             });
           } else {
+            // Se o UPDATE é APENAS mudança de is_unread/unread_count (sem mudança de status/assigned_to/last_message_at),
+            // NÃO invalidar a lista paginada - já foi atualizado otimisticamente no cliente
+            const oldLastMessageAt = (payload.old as any)?.last_message_at;
+            const newLastMessageAt = (payload.new as any)?.last_message_at;
+            const onlyUnreadChanged = 
+              oldAssignedTo === newAssignedTo && 
+              oldStatus === newStatus &&
+              oldLastMessageAt === newLastMessageAt;
+
+            if (onlyUnreadChanged) {
+              console.log('⏭️ [Realtime] Skipping invalidation - only unread status changed');
+              // Atualizar apenas o cache local sem refetch completo
+              queryClient.setQueriesData(
+                { queryKey: ['conversations-paginated'] },
+                (oldData: any) => {
+                  if (!oldData?.pages) return oldData;
+                  return {
+                    ...oldData,
+                    pages: oldData.pages.map((page: any) => ({
+                      ...page,
+                      conversations: (page.conversations || []).map((c: any) =>
+                        c.id === conversationId
+                          ? { ...c, is_unread: (payload.new as any)?.is_unread, unread_count: (payload.new as any)?.unread_count }
+                          : c
+                      ),
+                    })),
+                  };
+                }
+              );
+              // Atualizar detalhes da conversa (sidebar) sem invalidar a lista
+              queryClient.invalidateQueries({ 
+                queryKey: ['conversation-details', conversationId],
+                refetchType: 'active'
+              });
+              return;
+            }
+
             invalidateConversations();
             queryClient.invalidateQueries({ 
               queryKey: ['conversation-details', conversationId],

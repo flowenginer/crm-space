@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { formatCurrency } from '@/lib/format';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +13,8 @@ import {
   Users, Target, MessageCircle, Calendar as CalendarIcon,
   ChevronUp, ChevronDown, LinkIcon, Megaphone,
   CheckCircle2, AlertCircle, BarChart3, List,
-  Search, SlidersHorizontal, TrendingUp, X
+  Search, SlidersHorizontal, TrendingUp, X,
+  Trophy, Medal, ShoppingBag
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { format, subDays, startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
@@ -91,7 +93,7 @@ function StatCard({ title, value, icon: Icon, description, color }: {
 // Source Badge
 // =====================================================
 
-function SourceBadge({ type }: { type: 'ctwa' | 'redirect' | 'mixed' }) {
+function SourceBadge({ type }: { type: 'ctwa' | 'redirect' | 'linktree' | 'whatsapp' | 'manual' | 'mixed' }) {
   if (type === 'ctwa') {
     return (
       <Badge variant="default" className="bg-blue-600 hover:bg-blue-700 text-xs">
@@ -105,6 +107,30 @@ function SourceBadge({ type }: { type: 'ctwa' | 'redirect' | 'mixed' }) {
       <Badge variant="default" className="bg-amber-600 hover:bg-amber-700 text-xs">
         <LinkIcon className="h-3 w-3 mr-1" />
         Redirect
+      </Badge>
+    );
+  }
+  if (type === 'linktree') {
+    return (
+      <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs">
+        <LinkIcon className="h-3 w-3 mr-1" />
+        Linktree
+      </Badge>
+    );
+  }
+  if (type === 'whatsapp') {
+    return (
+      <Badge variant="default" className="bg-purple-600 hover:bg-purple-700 text-xs">
+        <MessageCircle className="h-3 w-3 mr-1" />
+        WhatsApp
+      </Badge>
+    );
+  }
+  if (type === 'manual') {
+    return (
+      <Badge variant="default" className="bg-pink-600 hover:bg-pink-700 text-xs">
+        <Users className="h-3 w-3 mr-1" />
+        Manual
       </Badge>
     );
   }
@@ -127,6 +153,8 @@ export default function WhatsAppLeadTracking() {
   const [sourceFilter, setSourceFilter] = useState<'all' | 'ctwa' | 'redirect'>('all');
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [convSearchQuery, setConvSearchQuery] = useState('');
+  const [convSortConfig, setConvSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'count', direction: 'desc' });
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
   // Data Cross filters
@@ -151,7 +179,7 @@ export default function WhatsAppLeadTracking() {
   });
 
   const leads = data?.leads || [];
-  const summary = data?.summary || { totalLeads: 0, ctwaLeads: 0, redirectLeads: 0, matchedCreatives: 0, unmatchedCreatives: 0 };
+  const summary = data?.summary || { totalLeads: 0, ctwaLeads: 0, redirectLeads: 0, linktreeLeads: 0, whatsappLeads: 0, manualLeads: 0, matchedCreatives: 0, unmatchedCreatives: 0 };
   const creativeBreakdown = data?.creativeBreakdown || [];
 
   // Filter leads by search
@@ -205,6 +233,15 @@ export default function WhatsAppLeadTracking() {
     if (summary.redirectLeads > 0) {
       result.push({ name: 'Redirect', value: summary.redirectLeads, color: '#f59e0b' });
     }
+    if (summary.linktreeLeads > 0) {
+      result.push({ name: 'Linktree', value: summary.linktreeLeads, color: '#22c55e' });
+    }
+    if (summary.whatsappLeads > 0) {
+      result.push({ name: 'WhatsApp', value: summary.whatsappLeads, color: '#8b5cf6' });
+    }
+    if (summary.manualLeads > 0) {
+      result.push({ name: 'Manual', value: summary.manualLeads, color: '#ec4899' });
+    }
     return result;
   }, [summary]);
 
@@ -228,6 +265,9 @@ export default function WhatsAppLeadTracking() {
       allStatuses.add(l.lead_status || '(Sem status)');
     });
 
+    // Check if any lead has conversion
+    const hasAnyConversion = leads.some(l => l.has_conversion);
+
     // Sort statuses: numeric prefix first, then alphabetically
     const sortedStatuses = Array.from(allStatuses).sort((a, b) => {
       const numA = parseInt(a.match(/^(\d+)/)?.[1] || '999');
@@ -238,6 +278,11 @@ export default function WhatsAppLeadTracking() {
       return a.localeCompare(b);
     });
 
+    // Add "Conversão" as the last status if any lead has conversion
+    if (hasAnyConversion) {
+      sortedStatuses.push('Conversão');
+    }
+
     // Group leads by creative, count per status
     const creativeMap = new Map<string, Record<string, number>>();
     leads.forEach(l => {
@@ -246,13 +291,17 @@ export default function WhatsAppLeadTracking() {
       if (!creativeMap.has(creative)) creativeMap.set(creative, {});
       const counts = creativeMap.get(creative)!;
       counts[status] = (counts[status] || 0) + 1;
+      // Also count conversions independently
+      if (l.has_conversion) {
+        counts['Conversão'] = (counts['Conversão'] || 0) + 1;
+      }
     });
 
     // Top 10 creatives by total leads
     const creativeTotals = Array.from(creativeMap.entries())
       .map(([name, counts]) => ({
         name,
-        total: Object.values(counts).reduce((a, b) => a + b, 0),
+        total: Object.values(counts).reduce((a, b) => a + b, 0) - (counts['Conversão'] || 0),
         counts
       }))
       .sort((a, b) => b.total - a.total)
@@ -265,6 +314,97 @@ export default function WhatsAppLeadTracking() {
     }));
 
     return { barData, statuses: sortedStatuses };
+  }, [leads]);
+
+  // Top 5 criativos por conversão
+  const top5ConversionCreatives = useMemo(() => {
+    const creativeMap = new Map<string, { count: number; total: number }>();
+    leads.forEach(l => {
+      if (!l.has_conversion || !l.creative_name) return;
+      const existing = creativeMap.get(l.creative_name);
+      if (existing) {
+        existing.count += 1;
+        existing.total += l.conversion_total;
+      } else {
+        creativeMap.set(l.creative_name, { count: 1, total: l.conversion_total });
+      }
+    });
+    return Array.from(creativeMap.entries())
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [leads]);
+
+  // All criativos por conversão (for dedicated tab)
+  const allConversionCreatives = useMemo(() => {
+    const sourceTypeLabels: Record<string, string> = {
+      linktree: 'Linktree',
+      whatsapp: 'WhatsApp Orgânico',
+      manual: 'Manual',
+      redirect: 'Redirect',
+      ctwa: 'CTWA (sem criativo)',
+    };
+    const creativeMap = new Map<string, { count: number; total: number; adset_name: string; campaign_name: string; is_organic: boolean }>();
+    leads.forEach(l => {
+      if (!l.has_conversion) return;
+      const key = l.creative_name || sourceTypeLabels[l.source_type] || l.source_type || 'Desconhecido';
+      const isOrganic = !l.creative_name;
+      const existing = creativeMap.get(key);
+      if (existing) {
+        existing.count += 1;
+        existing.total += l.conversion_total;
+        if (!existing.adset_name && l.adset_name) existing.adset_name = l.adset_name;
+        if (!existing.campaign_name && l.campaign_name) existing.campaign_name = l.campaign_name;
+      } else {
+        creativeMap.set(key, {
+          count: 1,
+          total: l.conversion_total,
+          adset_name: isOrganic ? '' : (l.adset_name || ''),
+          campaign_name: isOrganic ? '' : (l.campaign_name || ''),
+          is_organic: isOrganic,
+        });
+      }
+    });
+    let result = Array.from(creativeMap.entries())
+      .map(([name, data]) => ({ name, ...data, ticket: data.count > 0 ? data.total / data.count : 0 }));
+
+    // Filter by search
+    if (convSearchQuery) {
+      const q = convSearchQuery.toLowerCase();
+      result = result.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        c.adset_name.toLowerCase().includes(q) ||
+        c.campaign_name.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      const dir = convSortConfig.direction === 'asc' ? 1 : -1;
+      switch (convSortConfig.key) {
+        case 'name': return a.name.localeCompare(b.name) * dir;
+        case 'adset_name': return a.adset_name.localeCompare(b.adset_name) * dir;
+        case 'campaign_name': return a.campaign_name.localeCompare(b.campaign_name) * dir;
+        case 'count': return (a.count - b.count) * dir;
+        case 'total': return (a.total - b.total) * dir;
+        case 'ticket': return (a.ticket - b.ticket) * dir;
+        default: return (b.count - a.count);
+      }
+    });
+
+    return result;
+  }, [leads, convSearchQuery, convSortConfig]);
+
+  const convTotals = useMemo(() => {
+    const allWithConv = leads.filter(l => l.has_conversion);
+    const totalConversions = allWithConv.length;
+    const totalRevenue = allWithConv.reduce((sum, l) => sum + l.conversion_total, 0);
+    const sourceTypeLabels: Record<string, string> = {
+      linktree: 'Linktree', whatsapp: 'WhatsApp Orgânico', manual: 'Manual', redirect: 'Redirect', ctwa: 'CTWA (sem criativo)',
+    };
+    const uniqueSources = new Set(allWithConv.map(l => l.creative_name || sourceTypeLabels[l.source_type] || l.source_type || 'Desconhecido')).size;
+    const avgTicket = totalConversions > 0 ? totalRevenue / totalConversions : 0;
+    return { totalConversions, totalRevenue, uniqueSources, avgTicket };
   }, [leads]);
 
   // Data Cross: filter options
@@ -352,6 +492,56 @@ export default function WhatsAppLeadTracking() {
 
     return { rows, statuses: sortedStatuses, totalFiltered, overallConvRate, totalNew, uniqueSegments };
   }, [dcFilteredLeads]);
+
+  // Data Cross sort state
+  const [dcSortConfig, setDcSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  const sortedDcRows = useMemo(() => {
+    const rows = dcCrossData.rows;
+    if (!dcSortConfig) return rows;
+    return [...rows].sort((a, b) => {
+      const { key, direction } = dcSortConfig;
+      let valA: number | string, valB: number | string;
+      if (key === 'creative') {
+        valA = a.creative.toLowerCase();
+        valB = b.creative.toLowerCase();
+      } else if (key === 'total') {
+        valA = a.total; valB = b.total;
+      } else if (key === 'convRate') {
+        valA = a.convRate; valB = b.convRate;
+      } else {
+        valA = a.counts[key] || 0; valB = b.counts[key] || 0;
+      }
+      if (valA < valB) return direction === 'asc' ? -1 : 1;
+      if (valA > valB) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [dcCrossData.rows, dcSortConfig]);
+
+  const DcSortableHeader = ({ children, sortKey, className }: {
+    children: React.ReactNode;
+    sortKey: string;
+    className?: string;
+  }) => {
+    const isActive = dcSortConfig?.key === sortKey;
+    const direction = isActive ? dcSortConfig.direction : null;
+    const handleSort = () => {
+      if (!isActive) setDcSortConfig({ key: sortKey, direction: 'desc' });
+      else if (direction === 'desc') setDcSortConfig({ key: sortKey, direction: 'asc' });
+      else setDcSortConfig(null);
+    };
+    return (
+      <TableHead className={cn("cursor-pointer hover:bg-muted/50 select-none", className)} onClick={handleSort}>
+        <div className="flex items-center gap-1">
+          {children}
+          <div className="flex flex-col">
+            <ChevronUp className={cn("h-3 w-3 -mb-1", isActive && direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+            <ChevronDown className={cn("h-3 w-3", isActive && direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+          </div>
+        </div>
+      </TableHead>
+    );
+  };
 
   const dcHasFilters = dcStatus !== 'all' || dcCreative !== 'all' || dcAdset !== 'all' || dcCampaign !== 'all' || dcSegment !== 'all';
 
@@ -499,7 +689,7 @@ export default function WhatsAppLeadTracking() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <Card key={i}>
@@ -530,6 +720,27 @@ export default function WhatsAppLeadTracking() {
               color="text-amber-600"
             />
             <StatCard
+              title="Leads Linktree"
+              value={formatNumber(summary.linktreeLeads)}
+              icon={LinkIcon}
+              description="Via Linktree"
+              color="text-green-600"
+            />
+            <StatCard
+              title="Leads WhatsApp"
+              value={formatNumber(summary.whatsappLeads)}
+              icon={MessageCircle}
+              description="Organicos WhatsApp"
+              color="text-purple-600"
+            />
+            <StatCard
+              title="Leads Manual"
+              value={formatNumber(summary.manualLeads)}
+              icon={Users}
+              description="Cadastro manual"
+              color="text-pink-600"
+            />
+            <StatCard
               title="Com Criativo"
               value={formatNumber(summary.matchedCreatives)}
               icon={CheckCircle2}
@@ -549,7 +760,7 @@ export default function WhatsAppLeadTracking() {
 
       {/* Tabs: Charts / Creative Breakdown / Leads List */}
       <Tabs defaultValue="creatives" className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4">
+        <TabsList className="grid w-full max-w-3xl grid-cols-5">
           <TabsTrigger value="creatives" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             Criativos
@@ -557,6 +768,10 @@ export default function WhatsAppLeadTracking() {
           <TabsTrigger value="charts" className="flex items-center gap-2">
             <Target className="h-4 w-4" />
             Graficos
+          </TabsTrigger>
+          <TabsTrigger value="conversions" className="flex items-center gap-2">
+            <ShoppingBag className="h-4 w-4" />
+            Conversões
           </TabsTrigger>
           <TabsTrigger value="leads" className="flex items-center gap-2">
             <List className="h-4 w-4" />
@@ -762,7 +977,7 @@ export default function WhatsAppLeadTracking() {
                                 key={status}
                                 dataKey={status}
                                 stackId="status"
-                                fill={STATUS_PALETTE[idx % STATUS_PALETTE.length]}
+                                fill={status === 'Conversão' ? '#22c55e' : STATUS_PALETTE[idx % STATUS_PALETTE.length]}
                                 name={status}
                               />
                             ))}
@@ -811,6 +1026,56 @@ export default function WhatsAppLeadTracking() {
                       ) : (
                         <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                           Nenhum dado disponivel
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ),
+              },
+              {
+                id: 'top5-conversions',
+                component: (
+                  <Card className="h-full">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Trophy className="h-5 w-5 text-amber-500" />
+                        Top 5 Criativos por Conversão
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {isLoading ? (
+                        <Skeleton className="h-[300px] w-full" />
+                      ) : top5ConversionCreatives.length > 0 ? (
+                        <div className="space-y-3">
+                          {top5ConversionCreatives.map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-3 py-2 px-3 rounded-md bg-muted/50">
+                              <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+                                style={{
+                                  backgroundColor: idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : 'transparent',
+                                  color: idx < 3 ? 'white' : 'inherit',
+                                }}>
+                                {idx < 3 ? (
+                                  <Trophy className="h-4 w-4" />
+                                ) : (
+                                  <span>{idx + 1}º</span>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate" title={item.name}>{item.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {item.count} {item.count === 1 ? 'conversão' : 'conversões'} · {formatCurrency(item.total)}
+                                </p>
+                              </div>
+                              <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                <ShoppingBag className="h-3 w-3 mr-1" />
+                                {formatCurrency(item.total)}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                          Nenhuma conversão registrada no período
                         </div>
                       )}
                     </CardContent>
@@ -1145,23 +1410,23 @@ export default function WhatsAppLeadTracking() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="sticky left-0 bg-background z-10 min-w-[200px]">Criativo</TableHead>
-                        <TableHead className="text-center font-semibold">Total</TableHead>
+                        <DcSortableHeader sortKey="creative" className="sticky left-0 bg-background z-10 min-w-[200px]">Criativo</DcSortableHeader>
+                        <DcSortableHeader sortKey="total" className="text-center font-semibold">Total</DcSortableHeader>
                         {dcCrossData.statuses.map(status => (
-                          <TableHead key={status} className="text-center min-w-[80px]">
+                          <DcSortableHeader key={status} sortKey={status} className="text-center min-w-[80px]">
                             <span className="text-xs">{status}</span>
-                          </TableHead>
+                          </DcSortableHeader>
                         ))}
-                        <TableHead className="text-center font-semibold min-w-[100px]">
+                        <DcSortableHeader sortKey="convRate" className="text-center font-semibold min-w-[100px]">
                           <span className="flex items-center justify-center gap-1">
                             <TrendingUp className="h-3 w-3" />
                             Avanco
                           </span>
-                        </TableHead>
+                        </DcSortableHeader>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {dcCrossData.rows.map((row, idx) => (
+                      {sortedDcRows.map((row, idx) => (
                         <TableRow key={idx}>
                           <TableCell className="sticky left-0 bg-background z-10 font-medium max-w-[250px]">
                             <span className="truncate block" title={row.creative}>
@@ -1230,6 +1495,212 @@ export default function WhatsAppLeadTracking() {
             </CardContent>
           </Card>
         </TabsContent>
+        {/* Tab: Conversões */}
+        <TabsContent value="conversions" className="mt-6 space-y-6">
+          {/* KPI Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
+            <StatCard
+              title="Total de Conversões"
+              value={formatNumber(convTotals.totalConversions)}
+              icon={ShoppingBag}
+              color="text-green-500"
+              description="Leads com conversão e criativo"
+            />
+            <StatCard
+              title="Faturamento Total"
+              value={formatCurrency(convTotals.totalRevenue)}
+              icon={TrendingUp}
+              color="text-emerald-500"
+              description="Receita total dos criativos"
+            />
+            <StatCard
+              title="Ticket Médio"
+              value={formatCurrency(convTotals.avgTicket)}
+              icon={Target}
+              color="text-blue-500"
+              description="Valor médio por conversão"
+            />
+            <StatCard
+              title="Fontes com Conversão"
+              value={formatNumber(convTotals.uniqueSources)}
+              icon={Megaphone}
+              color="text-purple-500"
+              description="Criativos únicos que converteram"
+            />
+          </div>
+
+          {/* Search */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="h-5 w-5 text-yellow-500" />
+                  Todos os Criativos por Conversão
+                </CardTitle>
+                <div className="relative w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar criativo..."
+                    value={convSearchQuery}
+                    onChange={e => setConvSearchQuery(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {allConversionCreatives.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'name',
+                            direction: prev.key === 'name' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center gap-1">
+                            Criativo
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'name' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'name' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'adset_name',
+                            direction: prev.key === 'adset_name' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center gap-1">
+                            Conjunto
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'adset_name' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'adset_name' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'campaign_name',
+                            direction: prev.key === 'campaign_name' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center gap-1">
+                            Campanha
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'campaign_name' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'campaign_name' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none text-center"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'count',
+                            direction: prev.key === 'count' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            Conversões
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'count' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'count' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none text-right"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'total',
+                            direction: prev.key === 'total' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Faturamento
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'total' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'total' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 select-none text-right"
+                          onClick={() => setConvSortConfig(prev => ({
+                            key: 'ticket',
+                            direction: prev.key === 'ticket' && prev.direction === 'desc' ? 'asc' : 'desc'
+                          }))}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Ticket Médio
+                            <div className="flex flex-col">
+                              <ChevronUp className={cn("h-3 w-3 -mb-1", convSortConfig.key === 'ticket' && convSortConfig.direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                              <ChevronDown className={cn("h-3 w-3", convSortConfig.key === 'ticket' && convSortConfig.direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40')} />
+                            </div>
+                          </div>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {allConversionCreatives.map((creative, index) => {
+                        // Use unsorted index for ranking (find position in original sorted-by-count list)
+                        const rankIcon = index === 0 ? <Trophy className="h-5 w-5 text-yellow-500" /> :
+                          index === 1 ? <Medal className="h-5 w-5 text-gray-400" /> :
+                          index === 2 ? <Medal className="h-5 w-5 text-amber-700" /> : null;
+
+                        return (
+                          <TableRow key={creative.name}>
+                            <TableCell className="font-medium">
+                              {rankIcon || <span className="text-muted-foreground">{index + 1}</span>}
+                            </TableCell>
+                            <TableCell className="font-medium max-w-[250px] truncate" title={creative.name}>
+                              <div className="flex items-center gap-2">
+                                {creative.name}
+                                {creative.is_organic && (
+                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+                                    Orgânico
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground max-w-[180px] truncate" title={creative.adset_name}>
+                              {creative.adset_name || '—'}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground max-w-[180px] truncate" title={creative.campaign_name}>
+                              {creative.campaign_name || '—'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                                {creative.count}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-green-600">
+                              {formatCurrency(creative.total)}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground">
+                              {formatCurrency(creative.ticket)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhuma fonte com conversão encontrada no período selecionado.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
     </div>
   );

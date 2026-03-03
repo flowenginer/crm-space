@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { InternalChatMessage, useDeleteInternalMessage } from '@/hooks/useInternalChat';
+import { Clock } from 'lucide-react';
 
 interface InternalChatMessageItemProps {
   message: InternalChatMessage;
@@ -259,13 +260,14 @@ export function InternalChatMessageItem({
 
           {/* Message bubble */}
           <div className={cn(
-            'rounded-2xl overflow-hidden',
+            'rounded-2xl overflow-hidden transition-opacity',
             ['image', 'video'].includes(message.message_type) && !message.is_deleted
               ? 'p-1' 
               : 'px-4 py-2',
             isFromMe 
               ? 'bg-primary text-primary-foreground rounded-br-md' 
-              : 'bg-muted rounded-bl-md'
+              : 'bg-muted rounded-bl-md',
+            (message as any).isPending && 'opacity-60'
           )}>
             {/* Sender name (apenas para mensagens de outros quando showAvatar) */}
             {!isFromMe && showAvatar && (
@@ -276,12 +278,13 @@ export function InternalChatMessageItem({
 
             {renderContent()}
 
-            {/* Time */}
+            {/* Time + pending indicator */}
             <p className={cn(
-              'text-[10px] mt-1',
-              isFromMe ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground'
+              'text-[10px] mt-1 flex items-center gap-1',
+              isFromMe ? 'text-primary-foreground/70 justify-end' : 'text-muted-foreground'
             )}>
               {format(new Date(message.created_at), 'HH:mm')}
+              {(message as any).isPending && <Clock className="h-3 w-3 animate-pulse" />}
             </p>
           </div>
 

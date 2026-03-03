@@ -1052,6 +1052,54 @@ serve(async (req) => {
       });
     }
 
+    // =====================================================
+    // AUTO-RECONFIGURE WEBHOOK (fire-and-forget, one-time per channel)
+    // Garante que messagesUpdate: true esteja configurado
+    // =====================================================
+    try {
+      const { data: configCheck } = await supabase
+        .from("whatsapp_channels")
+        .select("webhook_events_configured_at")
+        .eq("id", channel.id)
+        .single();
+
+      if (configCheck && !configCheck.webhook_events_configured_at) {
+        console.log(`[Webhook] 🔧 Channel ${channel.name} needs webhook reconfiguration, triggering in background...`);
+        
+        // Mark immediately to prevent duplicate triggers
+        supabase
+          .from("whatsapp_channels")
+          .update({ webhook_events_configured_at: new Date().toISOString() })
+          .eq("id", channel.id)
+          .then(() => {
+            console.log(`[Webhook] 🔧 Marked channel ${channel.id} as configured`);
+          });
+
+        // Fire-and-forget: reconfigure webhook
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            action: "reconfigureWebhook",
+            channelId: channel.id,
+          }),
+        }).then(async (res) => {
+          const result = await res.json();
+          console.log(`[Webhook] 🔧 Reconfigure result for ${channel.name}:`, result.success ? '✅ OK' : `❌ ${result.error}`);
+        }).catch((err) => {
+          console.error(`[Webhook] 🔧 Reconfigure error for ${channel.name}:`, err);
+        });
+      }
+    } catch (e) {
+      // Non-blocking: don't fail message processing
+      console.error(`[Webhook] 🔧 Auto-reconfigure check failed (non-blocking):`, e);
+    }
+
     // Normalize message
     const normalizedMessage = normalizeMessage(provider, payload);
     if (!normalizedMessage) {
@@ -2558,7 +2606,24 @@ serve(async (req) => {
             console.log(`[Webhook] ⚡ Broadcast sent for new conversation ${newConversation.id}`);
           } catch (broadcastError) {
             console.error(`[Webhook] ⚠️ Failed to send broadcast:`, broadcastError);
-            // Não falhar a requisição por causa do broadcast
+          }
+
+          // 🆕 TRIGGER FIRST_MESSAGE AUTOMATION para nova conversa
+          try {
+            console.log(`[Webhook] 🆕 New conversation detected, triggering first_message automation for channel ${channel.id}...`);
+            await supabase.functions.invoke('process-flow-triggers', {
+              body: {
+                trigger_type: 'first_message',
+                tenant_id: channel.tenant_id,
+                contact_id: contact.id,
+                channel_id: channel.id,
+                conversation_id: newConversation.id,
+                message_content: normalizedMessage.content,
+              }
+            });
+            console.log('[Webhook] ✅ First message automation check completed');
+          } catch (flowError) {
+            console.error('[Webhook] ⚠️ Error triggering first_message automation:', flowError);
           }
         }
       }
@@ -4119,6 +4184,7 @@ function isMessageStatusEvent(provider: WhatsAppProvider, payload: any): boolean
              uazapiEventType === "ack" ||
              uazapiEventType === "messages_ack" ||
              uazapiEventType === "message-ack" ||
+             uazapiEventType === "messages_update" ||
              hasAckInMessage;
       
       if (isStatusEvent) {
@@ -4219,6 +4285,33 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
             console.log(`[Webhook UAZAPI] 📊 messagesUpdate - messageId: ${messageId}, rawStatus: ${rawStatus}, mappedStatus: ${status}`);
             return { messageId, status };
           }).filter((u: any) => u.messageId && u.status);
+        }
+      }
+      
+      // =====================================================
+      // FORMATO UAZAPI V2: EventType "messages_update" com event como OBJETO
+      // payload.event = { MessageIDs: [...], Type: "Delivered"|"Read"|"Played" }
+      // payload.EventType = "messages_update"
+      // =====================================================
+      const uazapiEventType2 = (payload.EventType || payload.body?.EventType || "").toLowerCase();
+      const eventObj = payload.event || payload.body?.event;
+      if (uazapiEventType2 === "messages_update" && eventObj && typeof eventObj === 'object' && !Array.isArray(eventObj)) {
+        const messageIds: string[] = eventObj.MessageIDs || eventObj.messageIds || eventObj.messageIDs || [];
+        const rawType = eventObj.Type || eventObj.type || payload.state || "";
+        const mappedStatus = mapCloudZAPIStatusToNumeric(rawType);
+        console.log(`[Webhook UAZAPI] 📊 V2 messages_update - MessageIDs: ${JSON.stringify(messageIds)}, Type: ${rawType}, mappedStatus: ${mappedStatus}`);
+        
+        if (messageIds.length > 0 && mappedStatus) {
+          return messageIds.map((id: string) => ({
+            messageId: id,
+            status: mappedStatus
+          }));
+        }
+        
+        // Fallback: single message ID in event object
+        const singleId = eventObj.MessageID || eventObj.messageId || eventObj.id || "";
+        if (singleId && mappedStatus) {
+          return [{ messageId: singleId, status: mappedStatus }];
         }
       }
       

@@ -148,3 +148,6 @@ verify_jwt = true
 
 [functions.reprocess-missed-triggers]
 verify_jwt = false
+
+[functions.reconfigure-all-webhooks]
+verify_jwt = false

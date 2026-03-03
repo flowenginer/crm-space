@@ -254,50 +254,46 @@ Deno.serve(async (req) => {
         selectedAgent = agentPool[agentIndex];
         currentPosition = (currentPosition + 1) % agentPool.length;
       } else {
-        // Calculate who should receive based on percentage distribution
-        // Find agent with lowest percentage fulfillment
-        const totalLeads = activeConfiguredAgents.reduce((sum, a) => sum + (a.leads_received || 0), 0) || 1;
+      // Weighted random selection based on configured percentages
+        // Normalizes automatically when agents go offline
+        const totalPercentage = activeConfiguredAgents.reduce((sum, a) => sum + (a.percentage || 0), 0);
+        const random = Math.random() * totalPercentage;
         
+        let cumulative = 0;
         let bestAgent: DistributionAgent | null = null;
-        let lowestRatio = Infinity;
-
         for (const agent of activeConfiguredAgents) {
-          const currentRatio = ((agent.leads_received || 0) / totalLeads) * 100;
-          const targetRatio = agent.percentage;
-          const deficit = targetRatio - currentRatio;
-          
-          if (deficit > lowestRatio * -1 || !bestAgent) {
-            if (deficit > 0 || bestAgent === null) {
-              bestAgent = agent;
-              lowestRatio = currentRatio - targetRatio;
-            }
+          cumulative += (agent.percentage || 0);
+          if (random <= cumulative) {
+            bestAgent = agent;
+            break;
           }
         }
+        // Fallback to last agent if rounding issues
+        if (!bestAgent) {
+          bestAgent = activeConfiguredAgents[activeConfiguredAgents.length - 1];
+        }
 
-        if (bestAgent) {
-          const agentData = agentPool.find(a => a.id === bestAgent!.user_id);
-          if (agentData) {
-            selectedAgent = agentData;
-            
-            // Update leads_received counter
-            const updatedAgents = configuredAgents.map(a => {
-              if (a.user_id === bestAgent!.user_id) {
-                return { ...a, leads_received: (a.leads_received || 0) + 1 };
-              }
-              return a;
-            });
-            
-            await supabase
-              .from('company_settings')
-              .update({ lead_distribution_agents: updatedAgents })
-              .eq('id', settings.id);
-          } else {
-            // Fallback
-            selectedAgent = agentPool[0];
-          }
+        const agentData = agentPool.find(a => a.id === bestAgent!.user_id);
+        if (agentData) {
+          selectedAgent = agentData;
+          
+          // Update leads_received counter for monitoring (not used for selection)
+          const updatedAgents = configuredAgents.map(a => {
+            if (a.user_id === bestAgent!.user_id) {
+              return { ...a, leads_received: (a.leads_received || 0) + 1 };
+            }
+            return a;
+          });
+          
+          await supabase
+            .from('company_settings')
+            .update({ lead_distribution_agents: updatedAgents })
+            .eq('id', settings.id);
         } else {
           selectedAgent = agentPool[0];
         }
+
+        console.log(`[distribute-lead] Weighted random: selected ${bestAgent.user_id} (${bestAgent.percentage}%), random=${random.toFixed(2)}, total=${totalPercentage}`);
       }
     } else {
       // Sequential (round-robin) distribution

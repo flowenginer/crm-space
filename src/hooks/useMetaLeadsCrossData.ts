@@ -2,6 +2,17 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserStore } from '@/store/userStore';
 
+// Verificar se utm_source indica que é do Meta Ads
+function isMetaSource(utmSource: string | null | undefined): boolean {
+  if (!utmSource) return false;
+  const source = utmSource.toLowerCase();
+  return source.includes('facebook') ||
+         source.includes('instagram') ||
+         source.includes('meta') ||
+         source === 'fb' ||
+         source === 'ig';
+}
+
 export interface CrossDataRow {
   sourceId: string;
   adName: string;
@@ -13,9 +24,11 @@ export interface CrossDataRow {
   imageUrl: string;
   mediaType: string;
   totalLeads: number;
-  catalogoCount: number;  // 03 - Catálogo
-  layoutCount: number;    // 04 - Layout
+  novoCount: number;          // Leads novos (não catálogo/layout/fechado)
+  catalogoCount: number;      // 03 - Catálogo
+  layoutCount: number;        // 04 - Layout
   pedidoFechadoCount: number; // 07 - Pedido Fechado
+  naoRespondidoCount: number; // Leads sem resposta
   revenue: number;
   // Indicar a fonte do lead
   source: 'meta_ads' | 'redirect';
@@ -23,9 +36,11 @@ export interface CrossDataRow {
 
 export interface CrossDataSummary {
   totalLeads: number;
+  novoCount: number;
   catalogoCount: number;
   layoutCount: number;
   pedidoFechadoCount: number;
+  naoRespondidoCount: number;
   totalRevenue: number;
 }
 
@@ -77,8 +92,17 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
     queryKey: ['meta_leads_cross_data', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), tenantId],
     queryFn: async (): Promise<{ rows: CrossDataRow[]; summary: CrossDataSummary }> => {
       if (!tenantId) {
-        return { rows: [], summary: { totalLeads: 0, catalogoCount: 0, layoutCount: 0, pedidoFechadoCount: 0, totalRevenue: 0 } };
+        return { rows: [], summary: { totalLeads: 0, novoCount: 0, catalogoCount: 0, layoutCount: 0, pedidoFechadoCount: 0, naoRespondidoCount: 0, totalRevenue: 0 } };
       }
+
+      // Buscar status de conversão do company_settings
+      const { data: companySettings } = await supabase
+        .from('company_settings')
+        .select('conversion_status_ids')
+        .eq('tenant_id', tenantId)
+        .single();
+
+      const conversionStatusId = companySettings?.conversion_status_ids?.[0];
 
       // Fetch active segments for matching - FILTRADO POR TENANT
       const { data: segments } = await supabase
@@ -197,9 +221,11 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
             imageUrl: refData?.imageUrl || refData?.thumbnailUrl || '',
             mediaType: refData?.mediaType || 'image',
             totalLeads: 0,
+            novoCount: 0,
             catalogoCount: 0,
             layoutCount: 0,
             pedidoFechadoCount: 0,
+            naoRespondidoCount: 0,
             revenue: 0,
             source: 'meta_ads'
           });
@@ -208,16 +234,24 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         const data = adData.get(creativeKey)!;
         data.totalLeads++;
 
+        // Classificar por status
         const status = contact.lead_status || '';
-        if (status.includes('03 - Catálogo') || status.toLowerCase().includes('catálogo')) {
-          data.catalogoCount++;
-        }
-        if (status.includes('04 - Layout') || status.toLowerCase().includes('layout')) {
-          data.layoutCount++;
-        }
-        if (status.includes('07 - Pedido Fechado') || status.toLowerCase().includes('pedido fechado')) {
+        const statusLower = status.toLowerCase();
+        const isConversion = status === conversionStatusId ||
+                           statusLower.includes('fechado') ||
+                           statusLower.includes('ganho') ||
+                           statusLower.includes('convertido') ||
+                           statusLower.includes('pedido');
+
+        if (isConversion) {
           data.pedidoFechadoCount++;
           data.revenue += contact.negotiated_value || 0;
+        } else if (statusLower.includes('catálogo') || statusLower.includes('catalogo')) {
+          data.catalogoCount++;
+        } else if (statusLower.includes('layout')) {
+          data.layoutCount++;
+        } else {
+          data.novoCount++;
         }
       });
 
@@ -268,8 +302,8 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         }
       }
 
-      // Processar leads do Redirect
-      // Apenas incluir leads que NÃO são do Meta Ads (para evitar duplicatas)
+      // Processar leads do Redirect que vieram do META ADS
+      // Apenas incluir leads cujo utm_source indica Meta (facebook, instagram, etc.)
       allRedirectLogs.forEach((log: any) => {
         const contact = log.contact;
         if (!contact) return;
@@ -280,29 +314,49 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         // Se o contato tem origin = meta_ads, já foi contado acima
         if (contact.origin === 'meta_ads') return;
 
+        // Verificar se veio do Meta via utm_source
+        const utmSource = normalizeUtmContent(log.utm_source);
+        if (!isMetaSource(utmSource)) return;
+
         processedContacts.add(contact.id);
 
         // Usar utm_content como nome do criativo
         const utmContent = normalizeUtmContent(log.utm_content);
         const utmMedium = normalizeUtmContent(log.utm_medium);
         const utmCampaign = normalizeUtmContent(log.utm_campaign);
+        const utmTerm = normalizeUtmContent(log.utm_term);
 
-        // Se não tem utm_content, usar utm_campaign como fallback
-        const creativeName = utmContent || utmCampaign || 'Sem UTM';
+        // Tentar associar ao anúncio Meta via utm_term (que pode conter o ad_id)
+        let creativeKey: string;
+        let adName: string;
+        let campaignName: string = utmCampaign || '';
+        let segmentName: string = 'Sem Segmento';
+        let sourceType: 'meta_ads' | 'redirect' = 'redirect';
 
-        // Criar chave única para o criativo (redirect)
-        const creativeKey = `redirect_${creativeName}`;
-
-        if (!adData.has(creativeKey)) {
+        // Se utm_term contém um ad_id válido, associar ao anúncio Meta
+        if (utmTerm && adInfoMap.has(utmTerm)) {
+          const adInfo = adInfoMap.get(utmTerm)!;
+          creativeKey = `meta_${utmTerm}`;
+          adName = adInfo.adName;
+          campaignName = adInfo.campaignName;
+          segmentName = adInfo.segmentName;
+          sourceType = 'meta_ads';
+        } else {
+          // Se não tem ad_id, usar utm_content como identificador
+          const creativeName = utmContent || utmCampaign || 'Sem UTM';
+          creativeKey = `redirect_meta_${creativeName}`;
+          adName = creativeName;
           // Para redirect, utm_medium é o segmento/público
-          const segmentName = utmMedium
+          segmentName = utmMedium
             ? findSegmentInText(utmMedium, segments || []) || utmMedium
             : 'Sem Segmento';
+        }
 
+        if (!adData.has(creativeKey)) {
           adData.set(creativeKey, {
-            sourceId: creativeKey,
-            adName: creativeName,
-            campaignName: utmCampaign || '',
+            sourceId: utmTerm || creativeKey,
+            adName: adName,
+            campaignName: campaignName,
             segmentName: segmentName,
             sourceUrl: '',
             headline: '',
@@ -310,27 +364,87 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
             imageUrl: '',
             mediaType: 'redirect',
             totalLeads: 0,
+            novoCount: 0,
             catalogoCount: 0,
             layoutCount: 0,
             pedidoFechadoCount: 0,
+            naoRespondidoCount: 0,
             revenue: 0,
-            source: 'redirect'
+            source: sourceType
           });
         }
 
         const data = adData.get(creativeKey)!;
         data.totalLeads++;
 
+        // Classificar por status
         const status = contact.lead_status || '';
-        if (status.includes('03 - Catálogo') || status.toLowerCase().includes('catálogo')) {
-          data.catalogoCount++;
-        }
-        if (status.includes('04 - Layout') || status.toLowerCase().includes('layout')) {
-          data.layoutCount++;
-        }
-        if (status.includes('07 - Pedido Fechado') || status.toLowerCase().includes('pedido fechado')) {
+        const statusLower = status.toLowerCase();
+        const isConversion = status === conversionStatusId ||
+                           statusLower.includes('fechado') ||
+                           statusLower.includes('ganho') ||
+                           statusLower.includes('convertido') ||
+                           statusLower.includes('pedido');
+
+        if (isConversion) {
           data.pedidoFechadoCount++;
           data.revenue += contact.negotiated_value || 0;
+        } else if (statusLower.includes('catálogo') || statusLower.includes('catalogo')) {
+          data.catalogoCount++;
+        } else if (statusLower.includes('layout')) {
+          data.layoutCount++;
+        } else {
+          data.novoCount++;
+        }
+      });
+
+      // ========================================
+      // Buscar dados de conversations para identificar leads não respondidos
+      // ========================================
+      const allContactIds = Array.from(processedContacts);
+      const conversationMap = new Map<string, { hasResponse: boolean }>();
+
+      // Buscar em batches de 500
+      const CONV_BATCH_SIZE = 500;
+      for (let i = 0; i < allContactIds.length; i += CONV_BATCH_SIZE) {
+        const batch = allContactIds.slice(i, i + CONV_BATCH_SIZE);
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('contact_id, first_response_at')
+          .eq('tenant_id', tenantId)
+          .in('contact_id', batch);
+
+        conversations?.forEach((conv: any) => {
+          const existing = conversationMap.get(conv.contact_id);
+          if (!existing || (conv.first_response_at && !existing.hasResponse)) {
+            conversationMap.set(conv.contact_id, {
+              hasResponse: !!conv.first_response_at
+            });
+          }
+        });
+      }
+
+      // Atualizar contagem de não respondidos por criativo
+      // Precisamos processar novamente os contatos para contar não respondidos
+      allContacts.forEach((contact: any) => {
+        const convInfo = conversationMap.get(contact.id);
+        const wasResponded = convInfo?.hasResponse ?? false;
+
+        if (!wasResponded) {
+          const refData = contact.referral_data as any;
+          const sourceId = refData?.source_id || refData?.sourceId || refData?.utm_term;
+
+          let creativeKey: string;
+          if (sourceId && sourceId !== '') {
+            creativeKey = `meta_${sourceId}`;
+          } else {
+            creativeKey = 'meta_unknown';
+          }
+
+          const data = adData.get(creativeKey);
+          if (data) {
+            data.naoRespondidoCount++;
+          }
         }
       });
 
@@ -342,15 +456,17 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
       // Calculate summary
       const summary: CrossDataSummary = {
         totalLeads: rows.reduce((sum, r) => sum + r.totalLeads, 0),
+        novoCount: rows.reduce((sum, r) => sum + r.novoCount, 0),
         catalogoCount: rows.reduce((sum, r) => sum + r.catalogoCount, 0),
         layoutCount: rows.reduce((sum, r) => sum + r.layoutCount, 0),
         pedidoFechadoCount: rows.reduce((sum, r) => sum + r.pedidoFechadoCount, 0),
+        naoRespondidoCount: rows.reduce((sum, r) => sum + r.naoRespondidoCount, 0),
         totalRevenue: rows.reduce((sum, r) => sum + r.revenue, 0)
       };
 
       const metaAdsCount = rows.filter(r => r.source === 'meta_ads').reduce((sum, r) => sum + r.totalLeads, 0);
       const redirectCount = rows.filter(r => r.source === 'redirect').reduce((sum, r) => sum + r.totalLeads, 0);
-      console.log(`[useMetaLeadsCrossData] Total: ${summary.totalLeads} leads (Meta Ads: ${metaAdsCount}, Redirect: ${redirectCount})`);
+      console.log(`[useMetaLeadsCrossData] Total: ${summary.totalLeads} leads (Meta Ads Direto: ${metaAdsCount}, Redirect Meta: ${redirectCount})`);
 
       return { rows, summary };
     },

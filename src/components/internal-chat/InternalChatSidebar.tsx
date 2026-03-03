@@ -61,7 +61,7 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
   };
 
   return (
-    <div className="w-96 border-r border-border flex flex-col bg-card min-h-0">
+    <div className="w-80 lg:w-96 shrink-0 border-r border-border flex flex-col bg-card min-h-0 max-h-full">
       {/* Header */}
       <div className="p-4 border-b border-border shrink-0">
         <h2 className="text-lg font-semibold mb-3">Chat Interno</h2>

@@ -39,6 +39,7 @@ export interface LeadInfo {
   segment?: string;
   negotiatedValue: number;
   createdAt: string;
+  wasResponded?: boolean; // Se o lead recebeu resposta
 }
 
 interface LeadsListModalProps {

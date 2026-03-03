@@ -1,0 +1,1 @@
+UPDATE menu_items SET title = 'WhatsApp Lead Tracking' WHERE href = '/relatorios/campanhas' AND title = 'Relatório Campanhas';

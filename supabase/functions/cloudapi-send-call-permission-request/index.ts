@@ -161,6 +161,32 @@ serve(async (req) => {
     console.log('[CallPermission] Meta response:', JSON.stringify(metaResult, null, 2));
 
     if (!metaResponse.ok) {
+      const metaErrorCode = metaResult.error?.code;
+      
+      // Error 138017 = permanent permission already exists → treat as granted
+      if (metaErrorCode === 138017) {
+        console.log('[CallPermission] ✅ Permanent permission already exists (138017), updating to granted');
+        
+        await supabase
+          .from('contacts')
+          .update({
+            call_permission_status: 'granted',
+            call_permission_requested_at: new Date().toISOString(),
+          })
+          .eq('id', contactId)
+          .eq('tenant_id', tenantId);
+
+        return new Response(JSON.stringify({ 
+          success: true,
+          status: 'granted',
+          already_granted: true,
+          message: 'Permissão permanente já concedida anteriormente'
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       console.error('[CallPermission] Meta API error:', metaResult);
       return new Response(JSON.stringify({ 
         error: metaResult.error?.message || 'Failed to send call permission request',

@@ -65,7 +65,7 @@ export function InternalChatArea({ threadId, otherUserId, onThreadCreated }: Int
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-background min-h-0 overflow-hidden">
+    <div className="flex-1 flex flex-col bg-background min-h-0 min-w-0 overflow-hidden">
       {/* Header */}
       <InternalChatHeader otherUserId={otherUserId} />
 

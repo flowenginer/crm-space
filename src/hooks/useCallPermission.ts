@@ -107,8 +107,12 @@ export function useCallPermission({
 
       return data;
     },
-    onSuccess: () => {
-      toast.success('Solicitação de permissão enviada!');
+    onSuccess: (data) => {
+      if (data.already_granted) {
+        toast.success('Permissão já concedida anteriormente! Você pode ligar.');
+      } else {
+        toast.success('Solicitação de permissão enviada!');
+      }
       queryClient.invalidateQueries({ queryKey: ['call-permission', contactId] });
     },
     onError: (error) => {
@@ -122,11 +126,10 @@ export function useCallPermission({
     ? new Date(permissionData.call_permission_requested_at) 
     : null;
 
-  // Check if we can request again (e.g., after 24 hours if pending)
+  // Allow re-requesting: always when null/denied, or when pending (message may have failed)
   const canRequestAgain = !status || 
     status === 'denied' || 
-    (status === 'pending' && requestedAt && 
-      (Date.now() - requestedAt.getTime()) > 24 * 60 * 60 * 1000);
+    status === 'pending';
 
   return {
     status,

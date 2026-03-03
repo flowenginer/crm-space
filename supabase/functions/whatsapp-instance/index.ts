@@ -10,7 +10,8 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage' | 'sendReaction' | 'reconfigureWebhook' | 'syncStatus' | 'logoutInstance';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage' | 'sendReaction' | 'reconfigureWebhook' | 'syncStatus' | 'logoutInstance' | 'markAsRead';
+  conversationId?: string;
   providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -1718,7 +1719,7 @@ serve(async (req) => {
     const body: CreateInstanceRequest = await req.json();
     console.log('[WhatsApp Instance] Request:', body);
 
-    const { action, providerCode, instanceName, instanceId, instanceToken, webhookUrl, channelId, phone, content, type, mediaUrl, quotedMessageId, filename } = body;
+    const { action, providerCode, instanceName, instanceId, instanceToken, webhookUrl, channelId, phone, content, type, mediaUrl, quotedMessageId, filename, conversationId } = body;
 
     // =====================================================
     // SEND ACTION - Rota especial que busca dados do canal
@@ -1977,6 +1978,184 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+    }
+
+    // =====================================================
+    // =====================================================
+    // MARK AS READ ACTION - Marcar mensagens como lidas na API do provedor
+    // Envia duplo check azul para o WhatsApp do lead
+    // =====================================================
+    if (action === 'markAsRead') {
+      if (!channelId || !conversationId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'channelId e conversationId são obrigatórios' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      console.log('[WhatsApp MarkAsRead] Request:', { channelId, conversationId });
+
+      // Get channel data with provider
+      const { data: channel, error: channelError } = await supabase
+        .from('whatsapp_channels')
+        .select('*, provider:whatsapp_providers(*)')
+        .eq('id', channelId)
+        .single();
+
+      if (channelError || !channel) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+
+      const channelProvider = channel.provider as any;
+      if (!channelProvider) {
+        return new Response(
+          JSON.stringify({ success: true, message: 'Canal sem provedor (API oficial), ignorando' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Buscar mensagens recebidas do lead com whatsapp_message_id
+      const { data: messages, error: messagesError } = await supabase
+        .from('messages')
+        .select('whatsapp_message_id')
+        .eq('conversation_id', conversationId)
+        .eq('is_from_me', false)
+        .not('whatsapp_message_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (messagesError || !messages || messages.length === 0) {
+        console.log('[WhatsApp MarkAsRead] No unread messages found or error:', messagesError);
+        return new Response(
+          JSON.stringify({ success: true, message: 'Nenhuma mensagem para marcar como lida' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const messageIds = messages.map(m => m.whatsapp_message_id).filter(Boolean) as string[];
+      console.log('[WhatsApp MarkAsRead] Message IDs to mark:', messageIds.length);
+
+      let result;
+
+      try {
+        switch (channelProvider.code) {
+          case 'uazapi': {
+            const normalizedUrl = normalizeBaseUrl(channelProvider.base_url);
+            const token = channel.instance_token || channelProvider.admin_token;
+            const endpoint = `${normalizedUrl}/message/markread`;
+            
+            console.log('[WhatsApp MarkAsRead] UAZAPI endpoint:', endpoint, 'IDs:', messageIds.length);
+            
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'token': token,
+              },
+              body: JSON.stringify({ id: messageIds }),
+            });
+
+            const responseText = await response.text();
+            console.log('[WhatsApp MarkAsRead] UAZAPI response:', response.status, responseText.substring(0, 200));
+            
+            result = { success: response.ok, data: responseText.substring(0, 200) };
+            break;
+          }
+          case 'evolution': {
+            // Evolution API: POST /chat/markMessageAsRead/{instance}
+            const normalizedUrl = normalizeBaseUrl(channelProvider.base_url);
+            const endpoint = `${normalizedUrl}/chat/markMessageAsRead/${channel.instance_id}`;
+            
+            // Evolution expects individual calls per message with remoteJid
+            // For simplicity, mark all at once if API supports it
+            console.log('[WhatsApp MarkAsRead] Evolution endpoint:', endpoint);
+            
+            // Get the phone/remoteJid from the conversation's contact
+            const { data: convData } = await supabase
+              .from('conversations')
+              .select('contact:contacts(phone)')
+              .eq('id', conversationId)
+              .single();
+            
+            const contactPhone = (convData?.contact as any)?.phone;
+            if (contactPhone) {
+              const remoteJid = contactPhone.replace(/\D/g, '') + '@s.whatsapp.net';
+              
+              for (const msgId of messageIds.slice(0, 10)) {
+                try {
+                  await fetch(endpoint, {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'apikey': channelProvider.admin_token,
+                    },
+                    body: JSON.stringify({
+                      readMessages: [{ id: msgId, remoteJid }],
+                    }),
+                  });
+                } catch (e) {
+                  console.error('[WhatsApp MarkAsRead] Evolution error for msg:', msgId, e);
+                }
+              }
+            }
+            
+            result = { success: true };
+            break;
+          }
+          case 'zapi': {
+            // Z-API: POST /read-message
+            const zapiBaseUrl = `https://api.z-api.io/instances/${channel.instance_id}/token/${channel.instance_token}`;
+            const endpoint = `${zapiBaseUrl}/read-message`;
+            
+            // Get phone from conversation contact
+            const { data: convData2 } = await supabase
+              .from('conversations')
+              .select('contact:contacts(phone)')
+              .eq('id', conversationId)
+              .single();
+            
+            const contactPhone2 = (convData2?.contact as any)?.phone;
+            if (contactPhone2) {
+              const formattedPhone = contactPhone2.replace(/\D/g, '');
+              
+              try {
+                const response = await fetch(endpoint, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Client-Token': channelProvider.client_token || '',
+                  },
+                  body: JSON.stringify({
+                    phone: formattedPhone,
+                    messageId: messageIds[0], // Z-API marks all up to this message
+                  }),
+                });
+                const responseText = await response.text();
+                console.log('[WhatsApp MarkAsRead] Z-API response:', response.status, responseText.substring(0, 200));
+              } catch (e) {
+                console.error('[WhatsApp MarkAsRead] Z-API error:', e);
+              }
+            }
+            
+            result = { success: true };
+            break;
+          }
+          default:
+            result = { success: false, error: 'Provedor desconhecido para markAsRead' };
+        }
+      } catch (markError: any) {
+        console.error('[WhatsApp MarkAsRead] Error:', markError);
+        result = { success: false, error: markError.message };
+      }
+
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // =====================================================

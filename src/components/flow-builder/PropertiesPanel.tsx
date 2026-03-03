@@ -10,6 +10,7 @@ import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
+import { useChannels } from '@/hooks/useChannels';
 import { FlowNodeData } from '@/types/flow';
 import { WebhookBodyFields, BodyField, bodyFieldsToObject, objectToBodyFields } from './WebhookBodyFields';
 import { MetaTemplateSelector } from '@/components/meta-templates';
@@ -33,6 +34,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
   const { data: departments } = useDepartments();
   const { data: campaigns } = useRedirectCampaigns();
   const { data: leadStatuses } = useLeadStatuses();
+  const { data: channels } = useChannels();
   
   const updateConfig = useCallback((key: string, value: unknown) => {
     if (!node) return;
@@ -75,7 +77,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
         </div>
         
         {/* Campos específicos por tipo */}
-        {renderNodeConfig(node, updateConfig, onUpdate, { tags, team, departments, campaigns, leadStatuses })}
+        {renderNodeConfig(node, updateConfig, onUpdate, { tags, team, departments, campaigns, leadStatuses, channels })}
       </div>
     </div>
   );
@@ -87,6 +89,7 @@ interface DataProps {
   departments: Array<{ id: string; name: string }> | undefined;
   campaigns: Array<{ id: string; name: string }> | undefined;
   leadStatuses: Array<{ id: string; name: string; color: string | null }> | undefined;
+  channels: Array<{ id: string; name: string; phone: string }> | undefined;
 }
 
 function renderNodeConfig(
@@ -1093,6 +1096,90 @@ function renderNodeConfig(
       );
     }
       
+    case 'set_variable':
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Campo do contato</Label>
+            <Select 
+              value={(config?.variable as string) || ''}
+              onValueChange={(v) => updateConfig('variable', v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o campo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="full_name">Nome completo</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="origin">Origem</SelectItem>
+                <SelectItem value="lead_status">Status do Lead</SelectItem>
+                <SelectItem value="notes">Observações</SelectItem>
+                <SelectItem value="city">Cidade</SelectItem>
+                <SelectItem value="state">Estado</SelectItem>
+                <SelectItem value="neighborhood">Bairro</SelectItem>
+                <SelectItem value="street">Rua</SelectItem>
+                <SelectItem value="number">Número</SelectItem>
+                <SelectItem value="complement">Complemento</SelectItem>
+                <SelectItem value="zip_code">CEP</SelectItem>
+                <SelectItem value="country">País</SelectItem>
+                <SelectItem value="cpf_cnpj">CPF/CNPJ</SelectItem>
+                <SelectItem value="person_type">Tipo de Pessoa</SelectItem>
+                <SelectItem value="contact_type">Tipo de Contato</SelectItem>
+                <SelectItem value="negotiated_value">Valor Negociado</SelectItem>
+                <SelectItem value="origin_campaign">Campanha de Origem</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Valor</Label>
+            <Input
+              value={(config?.value as string) || ''}
+              onChange={(e) => updateConfig('value', e.target.value)}
+              placeholder="Ex: WhatsApp, {{nome}}, etc."
+            />
+          </div>
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p className="font-medium">Variáveis disponíveis:</p>
+            <p>{'{{nome}}'} - Nome completo</p>
+            <p>{'{{primeiro_nome}}'} - Primeiro nome</p>
+            <p>{'{{telefone}}'} - Telefone</p>
+            <p>{'{{email}}'} - Email</p>
+            <p>{'{{data}}'} - Data atual (DD/MM/YYYY)</p>
+            <p>{'{{hora}}'} - Hora atual (HH:MM)</p>
+            <p>{'{{dia_semana}}'} - Dia da semana</p>
+          </div>
+        </div>
+      );
+
+    case 'first_message':
+    case 'new_contact':
+      return (
+        <div className="space-y-2">
+          <Label>Canal (opcional)</Label>
+          <Select 
+            value={(config?.channel_id as string) || 'any'}
+            onValueChange={(v) => updateConfig('channel_id', v === 'any' ? null : v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Qualquer canal" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Qualquer canal</SelectItem>
+              {data.channels?.map((channel) => (
+                <SelectItem key={channel.id} value={channel.id}>
+                  {channel.name} ({channel.phone})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {node.nodeSubtype === 'first_message' 
+              ? 'Filtra o disparo apenas para mensagens vindas deste canal'
+              : 'Filtra o disparo apenas para novos contatos deste canal'}
+          </p>
+        </div>
+      );
+
     default:
       return (
         <p className="text-muted-foreground text-sm">

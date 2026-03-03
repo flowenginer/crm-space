@@ -376,7 +376,7 @@ export function QuickTemplatesPopover({
       </div>
 
       {/* Content */}
-      <ScrollArea className="h-[380px]" type="always">
+      <div className="flex-1 min-h-0 max-h-[min(380px,50vh)] overflow-y-auto overflow-x-hidden">
         <div className="p-2 space-y-1">
           {activeCategory === 'flows' ? (
             // Flows list
@@ -464,7 +464,7 @@ export function QuickTemplatesPopover({
                       {getTemplateBody(template.components)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     <span className="p-1.5 hover:bg-primary/10 rounded-md transition-colors">
                       <Send size={14} className="text-primary" />
                     </span>
@@ -541,7 +541,7 @@ export function QuickTemplatesPopover({
                     </p>
                   </div>
                   {/* Action buttons */}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                       onClick={() => handleCopyToInput(template)}
                       className="p-1.5 hover:bg-background rounded-md transition-colors"
@@ -562,8 +562,7 @@ export function QuickTemplatesPopover({
             )
           )}
         </div>
-        <ScrollBar className="w-2.5 bg-muted/30 hover:bg-muted/50" />
-      </ScrollArea>
+      </div>
     </div>
   );
 
@@ -625,7 +624,9 @@ export function QuickTemplatesPopover({
         <PopoverContent 
           side="top" 
           align="start" 
-          className="w-[580px] p-0 max-h-[600px] overflow-hidden"
+          className="w-[580px] max-w-[calc(100vw-32px)] p-0 max-h-[min(600px,70vh)] flex flex-col overflow-x-hidden"
+          avoidCollisions
+          collisionPadding={16}
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
