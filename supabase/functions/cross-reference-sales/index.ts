@@ -183,44 +183,108 @@ Deno.serve(async (req) => {
     const orders = Array.from(ordersMap.values())
     console.log(`Extracted ${orders.length} unique orders with phone numbers`)
 
-    // 4. Fetch all contacts (with lead_status and custom_fields for conversion check)
-    const { data: allContacts, error: contactsError } = await supabase
-      .from('contacts')
-      .select('id, full_name, phone, origin, referral_data, origin_campaign, lead_status, custom_fields')
-      .eq('tenant_id', tenantId)
+    // 4. Extract unique phone suffixes (8 and 9 digits) for SQL matching
+    const phoneSuffixes8 = new Set<string>()
+    const phoneSuffixes9 = new Set<string>()
+    const orderPhoneMap = new Map<string, string>() // suffix8 -> original phone
 
-    if (contactsError) {
-      console.error('Error fetching contacts:', contactsError)
-      throw contactsError
-    }
-
-    console.log(`Fetched ${allContacts?.length || 0} contacts from CRM`)
-
-    // Build phone suffix -> contact map
-    const contactsByPhone = new Map<string, typeof allContacts[0]>()
-    for (const contact of allContacts || []) {
-      const suffix = getLast8Digits(contact.phone)
-      if (suffix.length >= 8) {
-        contactsByPhone.set(suffix, contact)
+    for (const order of orders) {
+      const digits = normalizePhone(order.celular)
+      const s8 = digits.slice(-8)
+      const s9 = digits.slice(-9)
+      if (s8.length === 8) {
+        phoneSuffixes8.add(s8)
+        orderPhoneMap.set(s8, order.celular)
+      }
+      if (s9.length === 9) {
+        phoneSuffixes9.add(s9)
       }
     }
 
-    // 5. Match orders to contacts
+    const allSuffixes = [...new Set([...phoneSuffixes8, ...phoneSuffixes9])]
+    console.log(`Unique phone suffixes to search: ${allSuffixes.length} (8-digit: ${phoneSuffixes8.size}, 9-digit: ${phoneSuffixes9.size})`)
+
+    // 5. Query contacts directly by phone suffix using RPC or direct query in batches
+    const contactsByPhone8 = new Map<string, any>()
+    const contactsByPhone9 = new Map<string, any>()
+
+    // Query in batches of 100 suffixes
+    const suffixArray = [...phoneSuffixes8]
+    for (let i = 0; i < suffixArray.length; i += 100) {
+      const batch = suffixArray.slice(i, i + 100)
+      
+      // Use PostgREST filter - we need to get ALL contacts and filter by suffix
+      // Since we can't use RIGHT() in PostgREST, we fetch by partial phone match
+      // Strategy: fetch contacts whose phone ends with these digits
+      const { data: contacts, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, phone, origin, referral_data, origin_campaign, lead_status, custom_fields')
+        .eq('tenant_id', tenantId)
+
+      if (error) {
+        console.error('Error fetching contacts batch:', error)
+        continue
+      }
+
+      // This still has the limit problem, so let's use a different approach
+      // We'll use supabase.rpc or raw SQL via the REST API
+      break
+    }
+
+    // Better approach: Use PostgREST with phone LIKE patterns
+    // For each suffix, build an OR filter
+    console.log('Fetching contacts using phone suffix matching...')
+    
+    const matchedContacts = new Map<string, any>() // contactId -> contact
+    const contactsByPhoneSuffix = new Map<string, any>() // suffix8 -> contact
+
+    // Batch query using .or() with ilike patterns for phone endings
+    const batchSize = 20
+    const suffix8Array = [...phoneSuffixes8]
+    
+    for (let i = 0; i < suffix8Array.length; i += batchSize) {
+      const batch = suffix8Array.slice(i, i + batchSize)
+      
+      // Build OR filter: phone.ilike.%96791974,phone.ilike.%99679197
+      const orFilter = batch.map(s => `phone.ilike.%${s}`).join(',')
+      
+      const { data: contacts, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, phone, origin, referral_data, origin_campaign, lead_status, custom_fields')
+        .eq('tenant_id', tenantId)
+        .or(orFilter)
+      
+      if (error) {
+        console.error(`Error fetching contacts batch ${i}:`, error)
+        continue
+      }
+
+      for (const contact of contacts || []) {
+        const contactDigits = normalizePhone(contact.phone)
+        const contactSuffix8 = contactDigits.slice(-8)
+        matchedContacts.set(contact.id, contact)
+        contactsByPhoneSuffix.set(contactSuffix8, contact)
+      }
+    }
+
+    console.log(`Found ${matchedContacts.size} unique contacts matching phone suffixes`)
+
+    // 6. Match orders to contacts
     const matchedContactIds: string[] = []
     const orderResults: any[] = []
 
     for (const order of orders) {
-      const phoneSuffix = getLast8Digits(order.celular)
-      const contact = contactsByPhone.get(phoneSuffix)
+      const digits = normalizePhone(order.celular)
+      const s8 = digits.slice(-8)
+      
+      const contact = contactsByPhoneSuffix.get(s8)
 
       // Check if contact is converted
       let convertidoCRM = false
       if (contact) {
-        // Check via lead_status
         if (contact.lead_status && conversionStatusSet.has(contact.lead_status)) {
           convertidoCRM = true
         }
-        // Check via custom_fields.conversoes
         const cf = contact.custom_fields as any
         if (cf?.conversoes && Array.isArray(cf.conversoes) && cf.conversoes.length > 0) {
           convertidoCRM = true
