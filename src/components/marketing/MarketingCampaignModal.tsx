@@ -263,8 +263,13 @@ export function MarketingCampaignModal({
                   className="max-w-full max-h-40 object-cover"
                 />
               ) : step.attachment_type === 'video' ? (
-                <div className="w-full h-32 bg-black/50 flex items-center justify-center">
-                  <Video size={32} className="opacity-70" />
+                <div className="w-full bg-black/50 flex items-center justify-center rounded overflow-hidden">
+                  <video
+                    src={step.attachment_url}
+                    controls
+                    className="max-w-full max-h-48"
+                    preload="metadata"
+                  />
                 </div>
               ) : (
                 <div className="p-3 flex items-center gap-2">
@@ -535,7 +540,7 @@ export function MarketingCampaignModal({
                   />
 
                   {/* Media Controls - Unified in one line */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <AudioRecorderInline
                       audioUrl={currentStep?.audio_url}
                       onAudioChange={(url) => handleStepChange(activeStepIndex, 'audio_url', url)}
@@ -559,6 +564,17 @@ export function MarketingCampaignModal({
                         });
                       }}
                     />
+                    {!currentStep?.attachment_url && (
+                      <VideoUploaderInline
+                        onFileChange={(url, type, name) => {
+                          handleStepMultiChange(activeStepIndex, {
+                            attachment_url: url,
+                            attachment_type: type,
+                            attachment_name: name,
+                          });
+                        }}
+                      />
+                    )}
                   </div>
 
                   {/* Timer */}
@@ -754,13 +770,13 @@ function AudioRecorderInline({
     try {
       const fileName = `marketing_audio_${Date.now()}.webm`;
       const { data, error } = await supabase.storage
-        .from('rescue-media')
+        .from('conversation-attachments')
         .upload(fileName, blob, { contentType: 'audio/webm', upsert: true });
       
       if (error) throw error;
       
       const { data: urlData } = supabase.storage
-        .from('rescue-media')
+        .from('conversation-attachments')
         .getPublicUrl(fileName);
       
       onAudioChange(urlData.publicUrl);
@@ -887,13 +903,13 @@ function FileUploaderInline({
       const fileName = `marketing_${Date.now()}.${fileExt}`;
 
       const { data, error } = await supabase.storage
-        .from('rescue-media')
+        .from('conversation-attachments')
         .upload(fileName, file, { contentType: file.type });
       
       if (error) throw error;
       
       const { data: urlData } = supabase.storage
-        .from('rescue-media')
+        .from('conversation-attachments')
         .getPublicUrl(fileName);
       
       let type = 'document';
@@ -956,6 +972,81 @@ function FileUploaderInline({
           <Paperclip size={14} className="mr-1" />
         )}
         {isUploading ? 'Enviando...' : 'Arquivo'}
+      </Button>
+    </>
+  );
+}
+
+function VideoUploaderInline({
+  onFileChange,
+}: {
+  onFileChange: (url: string, type: string, name: string) => void;
+}) {
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('video/')) {
+      toast.error('Selecione um arquivo de vídeo');
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error('Vídeo deve ter no máximo 50MB');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `marketing_video_${Date.now()}.${fileExt}`;
+
+      const { data, error } = await supabase.storage
+        .from('conversation-attachments')
+        .upload(fileName, file, { contentType: file.type });
+
+      if (error) throw error;
+
+      const { data: urlData } = supabase.storage
+        .from('conversation-attachments')
+        .getPublicUrl(fileName);
+
+      onFileChange(urlData.publicUrl, 'video', file.name);
+      toast.success('Vídeo anexado!');
+    } catch (error: any) {
+      console.error('Erro ao anexar vídeo:', error);
+      toast.error(error?.message || 'Erro ao anexar vídeo');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={handleVideoUpload}
+        accept="video/mp4,video/webm,video/quicktime,video/*"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isUploading}
+      >
+        {isUploading ? (
+          <Loader2 size={14} className="mr-1 animate-spin" />
+        ) : (
+          <Video size={14} className="mr-1" />
+        )}
+        {isUploading ? 'Enviando...' : 'Vídeo'}
       </Button>
     </>
   );

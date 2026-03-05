@@ -974,13 +974,13 @@ function AudioRecorderInline({
     try {
       const fileName = `rescue_audio_${Date.now()}.webm`;
       const { data, error } = await supabase.storage
-        .from('rescue-media')
+        .from('conversation-attachments')
         .upload(fileName, blob, { contentType: 'audio/webm' });
       
       if (error) throw error;
       
       const { data: urlData } = supabase.storage
-        .from('rescue-media')
+        .from('conversation-attachments')
         .getPublicUrl(fileName);
       
       onAudioChange(urlData.publicUrl);
@@ -1129,13 +1129,13 @@ function FileUploaderInline({
       const fileName = `rescue_${Date.now()}.${fileExt}`;
       
       const { data, error } = await supabase.storage
-        .from('rescue-media')
+        .from('conversation-attachments')
         .upload(fileName, file);
       
       if (error) throw error;
       
       const { data: urlData } = supabase.storage
-        .from('rescue-media')
+        .from('conversation-attachments')
         .getPublicUrl(fileName);
       
       let type = 'document';
