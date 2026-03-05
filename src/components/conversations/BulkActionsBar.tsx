@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  ArrowRightLeft, 
-  XCircle, 
-  Tag, 
-  TrendingUp, 
-  RotateCcw, 
+import {
+  ArrowRightLeft,
+  XCircle,
+  Tag,
+  TrendingUp,
+  RotateCcw,
   X,
-  CheckCircle2
+  CheckCircle2,
+  Megaphone
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,7 @@ interface BulkActionsBarProps {
   onAddTag: () => void;
   onChangeLeadStatus: () => void;
   onReopen: () => void;
+  onRescue?: () => void;
   isLoading?: boolean;
   canTransferFreely?: boolean;
 }
@@ -40,6 +42,7 @@ export function BulkActionsBar({
   onAddTag,
   onChangeLeadStatus,
   onReopen,
+  onRescue,
   isLoading = false,
   canTransferFreely = true,
 }: BulkActionsBarProps) {
@@ -110,6 +113,19 @@ export function BulkActionsBar({
                 >
                   <RotateCcw size={14} />
                   <span className="hidden sm:inline">Reabrir</span>
+                </Button>
+              )}
+
+              {onRescue && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onRescue}
+                  disabled={isLoading}
+                  className="gap-1.5 text-muted-foreground hover:text-yellow-600 hover:bg-yellow-600/10"
+                >
+                  <Megaphone size={14} />
+                  <span className="hidden sm:inline">Resgate</span>
                 </Button>
               )}
 

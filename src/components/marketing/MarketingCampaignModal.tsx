@@ -618,6 +618,29 @@ export function MarketingCampaignModal({
                           Se o cliente RESPONDER
                         </Label>
                       </div>
+
+                      {/* Expected Keywords Filter */}
+                      <div className="space-y-1">
+                        <Label className="text-xs text-green-700 dark:text-green-400">
+                          Palavras-chave esperadas (opcional)
+                        </Label>
+                        <Input
+                          placeholder="Ex: sim, quero, interesse (separadas por vírgula)"
+                          value={(currentStep?.expected_keywords || []).join(', ')}
+                          onChange={(e) => {
+                            const keywords = e.target.value
+                              .split(',')
+                              .map(k => k.trim())
+                              .filter(Boolean);
+                            handleStepChange(activeStepIndex, 'expected_keywords', keywords);
+                          }}
+                          className="text-xs h-8 bg-background/50"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Deixe vazio para aceitar qualquer resposta. Ignora maiúsculas, acentos e caracteres especiais.
+                        </p>
+                      </div>
+
                       <ActionBuilder
                         actions={currentStep?.on_reply_actions || []}
                         onChange={(actions) => handleStepChange(activeStepIndex, 'on_reply_actions', actions)}

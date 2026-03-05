@@ -58,6 +58,7 @@ export interface MarketingStep {
   attachment_url?: string | null;
   attachment_type?: string | null;
   attachment_name?: string | null;
+  expected_keywords?: string[];
   on_reply_actions: MarketingAction[];
   on_no_reply_actions: MarketingAction[];
 }
