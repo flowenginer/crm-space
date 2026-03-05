@@ -268,6 +268,7 @@ export default function CampaignReport() {
         'Telefone': lead.phone,
         'Status': lead.status,
         'Segmento': lead.segment || '-',
+        'Etiquetas': lead.tags?.map(t => t.name).join(', ') || '-',
         'Valor Negociado': lead.negotiatedValue,
         'Data': format(new Date(lead.createdAt), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
       }));

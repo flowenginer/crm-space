@@ -132,15 +132,29 @@ async function executeAction(
         }
         return true;
 
-      case 'change_lead_status':
-        if (config?.lead_status) {
+      case 'change_lead_status': {
+        const statusId = config?.lead_status_id || config?.lead_status;
+        if (statusId) {
+          // Resolve status name from ID if it looks like a UUID
+          let statusName = statusId as string;
+          if (statusName.includes('-') && statusName.length > 30) {
+            const { data: statusData } = await supabase
+              .from('lead_statuses')
+              .select('name')
+              .eq('id', statusName)
+              .single();
+            if (statusData?.name) {
+              statusName = statusData.name;
+            }
+          }
           await supabase
             .from('contacts')
-            .update({ lead_status: config.lead_status })
+            .update({ lead_status: statusName })
             .eq('id', contactId);
-          console.log('[process-marketing-messages] Lead status changed to:', config.lead_status);
+          console.log('[process-marketing-messages] Lead status changed to:', statusName);
         }
         return true;
+      }
 
       case 'add_segment':
         if (config?.segment_id) {
@@ -198,6 +212,7 @@ async function executeAction(
                   content: replaceVariables(firstStep.message || '', contactData || {}, ''),
                   audio_url: firstStep.audio_url || null,
                   attachment_url: firstStep.attachment_url || null,
+                  attachment_type: firstStep.attachment_type || null,
                   tenant_id: tenantId,
                 });
               console.log('[process-marketing-messages] Chained to campaign:', config.campaign_id);
@@ -513,8 +528,9 @@ Deno.serve(async (req) => {
         
         // 3. Send ATTACHMENT (if exists)
         if (msg.attachment_url) {
-          console.log('[process-marketing-messages] Sending attachment...');
-          await sendWithInsertFirst('document', '', msg.attachment_url);
+          const attachmentType = msg.attachment_type || currentStepData.attachment_type || 'document';
+          console.log(`[process-marketing-messages] Sending attachment as ${attachmentType}...`);
+          await sendWithInsertFirst(attachmentType, '', msg.attachment_url);
         }
 
         // Mark scheduled message as sent
@@ -575,6 +591,7 @@ Deno.serve(async (req) => {
               content: replaceVariables(nextStepData.message || '', contact, agentName),
               audio_url: nextStepData.audio_url || null,
               attachment_url: nextStepData.attachment_url || null,
+              attachment_type: nextStepData.attachment_type || null,
               tenant_id: activeCampaign.tenant_id,
             });
 

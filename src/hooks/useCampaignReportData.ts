@@ -229,6 +229,23 @@ export function useCampaignReportData(filters: CampaignFilterState) {
         });
       }
 
+      // 5d. Buscar tags dos contatos
+      const contactTagsMap = new Map<string, { name: string; color: string }[]>();
+      for (let i = 0; i < contactIds.length; i += BATCH_SIZE) {
+        const batch = contactIds.slice(i, i + BATCH_SIZE);
+        const { data: contactTags } = await supabase
+          .from('contact_tags')
+          .select('contact_id, tag:tags(name, color)')
+          .in('contact_id', batch);
+
+        contactTags?.forEach((ct: any) => {
+          if (!ct.tag) return;
+          const existing = contactTagsMap.get(ct.contact_id) || [];
+          existing.push({ name: ct.tag.name, color: ct.tag.color });
+          contactTagsMap.set(ct.contact_id, existing);
+        });
+      }
+
       // 6. Processar dados
       const summary: StatusSummary = {
         total: 0,
@@ -362,6 +379,7 @@ export function useCampaignReportData(filters: CampaignFilterState) {
           negotiatedValue: contact.negotiated_value || 0,
           createdAt: contact.created_at,
           wasResponded: wasResponded,
+          tags: contactTagsMap.get(contact.id) || [],
         });
       });
 
