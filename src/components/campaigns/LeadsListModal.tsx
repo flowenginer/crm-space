@@ -39,7 +39,8 @@ export interface LeadInfo {
   segment?: string;
   negotiatedValue: number;
   createdAt: string;
-  wasResponded?: boolean; // Se o lead recebeu resposta
+  wasResponded?: boolean;
+  tags?: { name: string; color: string }[];
 }
 
 interface LeadsListModalProps {
@@ -159,6 +160,7 @@ export function LeadsListModal({
                   <TableHead>Telefone</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Segmento</TableHead>
+                  <TableHead>Etiquetas</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -201,6 +203,28 @@ export function LeadsListModal({
                       <span className="text-sm text-muted-foreground">
                         {lead.segment || '-'}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {lead.tags && lead.tags.length > 0 ? (
+                          lead.tags.map((tag, idx) => (
+                            <Badge
+                              key={idx}
+                              variant="outline"
+                              className="text-xs"
+                              style={{
+                                borderColor: tag.color,
+                                color: tag.color,
+                                backgroundColor: `${tag.color}15`,
+                              }}
+                            >
+                              {tag.name}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={lead.negotiatedValue > 0 ? 'text-emerald-600 font-medium' : 'text-muted-foreground'}>

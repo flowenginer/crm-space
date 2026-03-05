@@ -108,7 +108,8 @@ async function sendMessageDirectly(
   content: string,
   audioUrl?: string | null,
   attachmentUrl?: string | null,
-  tenantId?: string | null // CORREÇÃO: Adicionar tenant_id como parâmetro
+  tenantId?: string | null,
+  attachmentType?: string | null
 ): Promise<void> {
   console.log(`[BulkDispatch] Sending message directly to ${phone}`);
   
@@ -213,6 +214,7 @@ async function sendMessageDirectly(
 
   // Send attachment if exists
   if (attachmentUrl) {
+    const effectiveAttachmentType = attachmentType || 'document';
     const { data: attachMsgData } = await supabase
       .from('messages')
       .insert({
@@ -220,10 +222,10 @@ async function sendMessageDirectly(
         contact_id: contactId,
         content: '',
         is_from_me: true,
-        message_type: 'document',
+        message_type: effectiveAttachmentType,
         media_url: attachmentUrl,
         status: 'pending',
-        tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
+        tenant_id: tenantId,
       })
       .select('id')
       .single();
@@ -239,7 +241,7 @@ async function sendMessageDirectly(
         channelId,
         phone,
         mediaUrl: attachmentUrl,
-        type: 'document',
+        type: effectiveAttachmentType,
       }),
     });
 
@@ -1109,7 +1111,8 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
             messageContent,
             firstStep.audio_url,
             firstStep.attachment_url,
-            dispatch.tenant_id // CORREÇÃO: Passar tenant_id
+            dispatch.tenant_id,
+            firstStep.attachment_type
           );
 
           // Record as already sent in marketing_scheduled_messages
@@ -1124,6 +1127,7 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
               content: messageContent,
               audio_url: firstStep.audio_url || null,
               attachment_url: firstStep.attachment_url || null,
+              attachment_type: firstStep.attachment_type || null,
               tenant_id: dispatch.tenant_id,
             });
 
@@ -1171,7 +1175,8 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
             messageContent,
             firstStep.audio_url,
             firstStep.attachment_url,
-            dispatch.tenant_id // CORREÇÃO: Passar tenant_id
+            dispatch.tenant_id,
+            firstStep.attachment_type
           );
 
           // Record as already sent in rescue_scheduled_messages

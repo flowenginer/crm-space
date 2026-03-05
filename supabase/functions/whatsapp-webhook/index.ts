@@ -3257,15 +3257,29 @@ serve(async (req) => {
                     }
                     break;
 
-                  case 'change_lead_status':
-                    if (config?.lead_status) {
+                  case 'change_lead_status': {
+                    const statusIdOrName = config?.lead_status_id || config?.lead_status;
+                    if (statusIdOrName) {
+                      let resolvedStatusName = statusIdOrName as string;
+                      // If it looks like a UUID, resolve to status name
+                      if (resolvedStatusName.includes('-') && resolvedStatusName.length > 30) {
+                        const { data: statusLookup } = await supabase
+                          .from('lead_statuses')
+                          .select('name')
+                          .eq('id', resolvedStatusName)
+                          .single();
+                        if (statusLookup?.name) {
+                          resolvedStatusName = statusLookup.name;
+                        }
+                      }
                       await supabase
                         .from('contacts')
-                        .update({ lead_status: config.lead_status })
+                        .update({ lead_status: resolvedStatusName })
                         .eq('id', contact.id);
-                      console.log(`[Webhook] Lead status changed to: ${config.lead_status}`);
+                      console.log(`[Webhook] Lead status changed to: ${resolvedStatusName}`);
                     }
                     break;
+                  }
 
                   case 'add_segment':
                     if (config?.segment_id) {
