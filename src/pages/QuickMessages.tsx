@@ -19,6 +19,7 @@ import {
   FileImage,
   File,
   X,
+  Video,
 } from 'lucide-react';
 import {
   Dialog,
@@ -78,7 +79,8 @@ const variableOptions = [
 const getMediaIcon = (mediaType: string | null) => {
   if (!mediaType) return null;
   if (mediaType === 'audio') return <Music size={14} className="text-primary" />;
-  if (mediaType === 'image' || mediaType === 'video') return <FileImage size={14} className="text-primary" />;
+  if (mediaType === 'video') return <Video size={14} className="text-primary" />;
+  if (mediaType === 'image') return <FileImage size={14} className="text-primary" />;
   return <File size={14} className="text-primary" />;
 };
 
@@ -269,17 +271,19 @@ export default function QuickMessages() {
       return;
     }
     
-    // For messages, check if at least one block has content OR audio is attached
+    // For messages, check if at least one block has content OR audio/media is attached
     const textBlocks = contentBlocks.filter(b => b.type === 'text' && b.content?.trim());
     const hasAudioAttachment = !!audioUrl;
-    
-    if (!needsMedia && textBlocks.length === 0 && !hasAudioAttachment) {
-      toast({ title: 'Preencha uma mensagem ou grave um áudio', variant: 'destructive' });
+    const hasMediaAttachment = !!templateMediaUrl;
+
+    if (!needsMedia && textBlocks.length === 0 && !hasAudioAttachment && !hasMediaAttachment) {
+      toast({ title: 'Preencha uma mensagem, grave um áudio ou anexe um arquivo', variant: 'destructive' });
       return;
     }
 
-    // Get first block content for legacy field + search (use title as fallback for audio-only)
-    const firstContent = textBlocks[0]?.content || (hasAudioAttachment ? `🎤 ${templateTitle}` : templateTitle);
+    // Get first block content for legacy field + search (use title as fallback for media/audio-only)
+    const mediaIcon = hasAudioAttachment ? '🎤' : hasMediaAttachment ? '📎' : '';
+    const firstContent = textBlocks[0]?.content || (mediaIcon ? `${mediaIcon} ${templateTitle}` : templateTitle);
     
     // Extract variables from all blocks
     const allContent = contentBlocks
@@ -836,7 +840,7 @@ export default function QuickMessages() {
                   {/* Multiple Content Blocks */}
                   <div className="space-y-3">
                     <label className="block text-sm font-medium text-foreground">
-                      Mensagens <span className="text-destructive">*</span>
+                      {(audioUrl || templateMediaUrl) ? 'Mensagens (opcional - legenda)' : <>Mensagens <span className="text-destructive">*</span></>}
                     </label>
                     
                     {contentBlocks.map((block, index) => (
@@ -900,8 +904,8 @@ export default function QuickMessages() {
                     />
                   </div>
 
-                  {/* Audio Order Selector - only show when both audio and text exist */}
-                  {audioUrl && contentBlocks.some(b => b.content?.trim()) && (
+                  {/* Media Order Selector - show when media/audio + text exist */}
+                  {(audioUrl || templateMediaUrl) && contentBlocks.some(b => b.content?.trim()) && (
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-2">
                         Ordem de envio
@@ -911,8 +915,8 @@ export default function QuickMessages() {
                           type="button"
                           onClick={() => setAudioFirst(false)}
                           className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                            !audioFirst 
-                              ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2' 
+                            !audioFirst
+                              ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2'
                               : 'bg-muted hover:bg-muted/80 text-foreground'
                           }`}
                         >
@@ -923,13 +927,13 @@ export default function QuickMessages() {
                           type="button"
                           onClick={() => setAudioFirst(true)}
                           className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                            audioFirst 
-                              ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2' 
+                            audioFirst
+                              ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2'
                               : 'bg-muted hover:bg-muted/80 text-foreground'
                           }`}
                         >
-                          <Mic size={16} />
-                          Áudio primeiro
+                          {audioUrl ? <Mic size={16} /> : <Video size={16} />}
+                          {audioUrl ? 'Áudio primeiro' : 'Mídia primeiro'}
                         </button>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1.5">
@@ -938,13 +942,13 @@ export default function QuickMessages() {
                     </div>
                   )}
 
-                  {/* Compact File Uploader */}
+                  {/* Compact Video/File Uploader */}
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
-                      Anexar arquivo (opcional)
+                      Anexar vídeo, imagem ou arquivo (opcional)
                     </label>
                     <FileUploader
-                      category="documents"
+                      category="media"
                       onFileUploaded={handleMediaUploaded}
                       existingUrl={templateMediaUrl}
                       existingType={templateMediaType}

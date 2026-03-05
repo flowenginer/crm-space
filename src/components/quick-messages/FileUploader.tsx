@@ -20,7 +20,7 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const MEDIA_TYPES = {
   media: {
     accept: 'image/*,video/*,.pdf',
-    description: 'PNG, JPEG, GIF, MP4, PDF (máx. 50MB)',
+    description: 'Imagem, Vídeo (MP4, MOV), PDF (máx. 50MB)',
     extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.mov', '.pdf'],
   },
   documents: {

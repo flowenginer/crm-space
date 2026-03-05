@@ -29,6 +29,7 @@ import { BulkTransferModal } from '@/components/conversations/BulkTransferModal'
 import { BulkCloseModal } from '@/components/conversations/BulkCloseModal';
 import { BulkTagModal } from '@/components/conversations/BulkTagModal';
 import { BulkLeadStatusModal } from '@/components/conversations/BulkLeadStatusModal';
+import { BulkRescueModal } from '@/components/conversations/BulkRescueModal';
 import { useBulkReopenConversations } from '@/hooks/useBulkConversationActions';
 import {
   DndContext,
@@ -230,6 +231,7 @@ export default function ConversationReportPage() {
   const [bulkCloseModalOpen, setBulkCloseModalOpen] = useState(false);
   const [bulkTagModalOpen, setBulkTagModalOpen] = useState(false);
   const [bulkLeadStatusModalOpen, setBulkLeadStatusModalOpen] = useState(false);
+  const [bulkRescueModalOpen, setBulkRescueModalOpen] = useState(false);
   const [isReopening, setIsReopening] = useState(false);
 
   const bulkReopen = useBulkReopenConversations();
@@ -937,6 +939,7 @@ export default function ConversationReportPage() {
         onAddTag={() => setBulkTagModalOpen(true)}
         onChangeLeadStatus={() => setBulkLeadStatusModalOpen(true)}
         onReopen={handleBulkReopen}
+        onRescue={() => setBulkRescueModalOpen(true)}
         isLoading={isReopening}
       />
 
@@ -945,6 +948,7 @@ export default function ConversationReportPage() {
       <BulkCloseModal open={bulkCloseModalOpen} onClose={() => setBulkCloseModalOpen(false)} conversationIds={Array.from(selectedRows)} onSuccess={handleBulkSuccess} />
       <BulkTagModal open={bulkTagModalOpen} onClose={() => setBulkTagModalOpen(false)} contactIds={selectedContactIds} onSuccess={handleBulkSuccess} />
       <BulkLeadStatusModal open={bulkLeadStatusModalOpen} onClose={() => setBulkLeadStatusModalOpen(false)} contactIds={selectedContactIds} onSuccess={handleBulkSuccess} />
+      <BulkRescueModal open={bulkRescueModalOpen} onClose={() => setBulkRescueModalOpen(false)} conversationIds={Array.from(selectedRows)} onSuccess={handleBulkSuccess} />
 
       {/* Column Settings Dialog */}
       <Dialog open={showColumnSettings} onOpenChange={setShowColumnSettings}>

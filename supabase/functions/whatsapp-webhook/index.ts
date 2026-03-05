@@ -3142,6 +3142,20 @@ serve(async (req) => {
         if (!currentStep) {
           console.log(`[Webhook] No current step found for campaign ${activeCampaign.campaign_id}`);
         } else {
+          // Check expected_keywords filter (if configured)
+          // Normalize: lowercase, remove accents and special characters
+          const normalizeForMatch = (t: string) =>
+            t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+
+          const expectedKeywords = (currentStep.expected_keywords as string[]) || [];
+          const incomingNormalized = normalizeForMatch(normalizedMessage.content || '');
+          const keywordsMatch = expectedKeywords.length === 0 ||
+            expectedKeywords.some(kw => incomingNormalized.includes(normalizeForMatch(kw)));
+
+          if (!keywordsMatch) {
+            console.log(`[Webhook] ⏭️ Marketing campaign ${marketingCampaign?.title}: response "${normalizedMessage.content}" did not match keywords [${expectedKeywords.join(', ')}], skipping`);
+          } else {
+
           const onReplyActions = currentStep.on_reply_actions || [];
           console.log(`[Webhook] Campaign ${marketingCampaign?.title}: Step ${currentStepIndex}, ${onReplyActions.length} on_reply_actions`);
 
@@ -3536,6 +3550,7 @@ serve(async (req) => {
               console.error(`[Webhook] Error updating dispatch stats:`, dispatchError);
             }
           }
+          } // end keywordsMatch else
         }
       }
     } catch (marketingCancelError) {
