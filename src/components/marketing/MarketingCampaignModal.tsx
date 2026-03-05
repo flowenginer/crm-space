@@ -755,7 +755,7 @@ function AudioRecorderInline({
       const fileName = `marketing_audio_${Date.now()}.webm`;
       const { data, error } = await supabase.storage
         .from('rescue-media')
-        .upload(fileName, blob, { contentType: 'audio/webm' });
+        .upload(fileName, blob, { contentType: 'audio/webm', upsert: true });
       
       if (error) throw error;
       
@@ -885,10 +885,10 @@ function FileUploaderInline({
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `marketing_${Date.now()}.${fileExt}`;
-      
+
       const { data, error } = await supabase.storage
         .from('rescue-media')
-        .upload(fileName, file);
+        .upload(fileName, file, { contentType: file.type });
       
       if (error) throw error;
       
@@ -902,8 +902,9 @@ function FileUploaderInline({
       
       onFileChange(urlData.publicUrl, type, file.name);
       toast.success('Arquivo anexado!');
-    } catch (error) {
-      toast.error('Erro ao anexar arquivo');
+    } catch (error: any) {
+      console.error('Erro ao anexar arquivo:', error);
+      toast.error(error?.message || 'Erro ao anexar arquivo');
     } finally {
       setIsUploading(false);
     }
