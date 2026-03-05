@@ -13,7 +13,7 @@ import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { useCurrentUser, useCurrentUserProfile } from '@/hooks/useCurrentUser';
 import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 import { useUserStore } from '@/store/userStore';
+import { useInAppNotifications, useMarkNotificationRead, useMarkAllNotificationsRead, useDeleteNotification, type InAppNotification } from '@/hooks/useInAppNotifications';
 
 interface HeaderProps {
   title: string;
@@ -46,71 +47,6 @@ interface Notification {
   channelEventId?: string; // Para notificações de canal
 }
 
-const DISMISSED_NOTIFICATIONS_KEY = 'dismissed_notifications_v2';
-const EXPIRATION_HOURS = 24;
-
-interface DismissedNotification {
-  id: string;
-  dismissedAt: number; // timestamp
-}
-
-// Get dismissed notifications from localStorage, filtering out expired ones
-const getDismissedNotifications = (): string[] => {
-  try {
-    const stored = localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY);
-    if (!stored) return [];
-    
-    const dismissed: DismissedNotification[] = JSON.parse(stored);
-    const now = Date.now();
-    const expirationMs = EXPIRATION_HOURS * 60 * 60 * 1000;
-    
-    // Filter out expired notifications
-    const validDismissed = dismissed.filter(d => (now - d.dismissedAt) < expirationMs);
-    
-    // Save cleaned up list back to localStorage
-    if (validDismissed.length !== dismissed.length) {
-      localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(validDismissed));
-    }
-    
-    return validDismissed.map(d => d.id);
-  } catch {
-    return [];
-  }
-};
-
-// Save dismissed notifications with timestamps
-const saveDismissedNotification = (existingDismissed: DismissedNotification[], newId: string): DismissedNotification[] => {
-  const now = Date.now();
-  const expirationMs = EXPIRATION_HOURS * 60 * 60 * 1000;
-  
-  // Filter expired and add new
-  const validDismissed = existingDismissed.filter(d => (now - d.dismissedAt) < expirationMs);
-  
-  if (!validDismissed.find(d => d.id === newId)) {
-    validDismissed.push({ id: newId, dismissedAt: now });
-  }
-  
-  localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(validDismissed));
-  return validDismissed;
-};
-
-// Save multiple dismissed notifications
-const saveDismissedNotifications = (ids: string[]) => {
-  const now = Date.now();
-  const dismissed: DismissedNotification[] = ids.map(id => ({ id, dismissedAt: now }));
-  localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(dismissed));
-};
-
-// Get raw dismissed data for updates
-const getRawDismissedNotifications = (): DismissedNotification[] => {
-  try {
-    const stored = localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-};
-
 export function Header({ title, onMenuClick }: HeaderProps) {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,7 +54,6 @@ export function Header({ title, onMenuClick }: HeaderProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [dismissedIds, setDismissedIds] = useState<string[]>(getDismissedNotifications);
   const searchRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -167,177 +102,34 @@ export function Header({ title, onMenuClick }: HeaderProps) {
   const { data: isSuperAdmin } = useCurrentUserIsSuperAdmin();
   const tenant = useUserStore((state) => state.tenant);
 
-  // Fetch useful notifications: assignments, transfers, SLA alerts
-  const { data: notifications = [] } = useQuery({
-    queryKey: ['header-notifications', currentUser?.id, currentUserProfile?.role],
-    staleTime: 60000, // OTIMIZAÇÃO: 1 minuto de cache
-    refetchOnWindowFocus: false,
-    enabled: !!currentUser?.id,
-    queryFn: async () => {
-      if (!currentUser?.id) return [];
-      
-      const userRole = currentUserProfile?.role;
+  // In-app notifications with Realtime + Browser Push
+  const { unreadNotifications, unreadCount } = useInAppNotifications();
+  const markRead = useMarkNotificationRead();
+  const markAllRead = useMarkAllNotificationsRead();
 
-      const allNotifications: Notification[] = [];
+  // Map in-app notifications to legacy format for rendering
+  const visibleNotifications: Notification[] = unreadNotifications.map(n => ({
+    id: n.id,
+    type: n.type as Notification['type'],
+    conversationId: n.conversation_id || '',
+    contactName: n.contact_name || 'Contato',
+    message: n.message,
+    timestamp: n.created_at,
+    channelEventId: (n.metadata as Record<string, string>)?.channelEventId,
+  }));
+  const notificationCount = unreadCount;
 
-      // 1. Conversations assigned to me recently (last 24h)
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { data: assignedConvs } = await supabase
-        .from('conversations')
-        .select(`
-          id,
-          updated_at,
-          contact:contacts(full_name)
-        `)
-        .eq('assigned_to', currentUser.id)
-        .eq('status', 'open')
-        .gte('updated_at', oneDayAgo)
-        .order('updated_at', { ascending: false })
-        .limit(5);
-
-      assignedConvs?.forEach(conv => {
-        allNotifications.push({
-          id: `assign-${conv.id}`,
-          type: 'assignment',
-          conversationId: conv.id,
-          contactName: conv.contact?.full_name || 'Contato',
-          message: 'Conversa atribuída a você',
-          timestamp: conv.updated_at,
-        });
-      });
-
-      // 2. Transferred conversations (last 24h)
-      const { data: transferredConvs } = await supabase
-        .from('conversations')
-        .select(`
-          id,
-          transferred_at,
-          transfer_note,
-          contact:contacts(full_name)
-        `)
-        .eq('assigned_to', currentUser.id)
-        .not('transferred_at', 'is', null)
-        .gte('transferred_at', oneDayAgo)
-        .order('transferred_at', { ascending: false })
-        .limit(5);
-
-      transferredConvs?.forEach(conv => {
-        allNotifications.push({
-          id: `transfer-${conv.id}`,
-          type: 'transfer',
-          conversationId: conv.id,
-          contactName: conv.contact?.full_name || 'Contato',
-          message: conv.transfer_note || 'Conversa transferida para você',
-          timestamp: conv.transferred_at!,
-        });
-      });
-
-      // 3. SLA critical conversations
-      const { data: slaConvs } = await supabase
-        .from('conversations')
-        .select(`
-          id,
-          updated_at,
-          sla_status,
-          contact:contacts(full_name)
-        `)
-        .eq('assigned_to', currentUser.id)
-        .eq('status', 'open')
-        .in('sla_status', ['warning', 'critical'])
-        .order('updated_at', { ascending: false })
-        .limit(5);
-
-      slaConvs?.forEach(conv => {
-        allNotifications.push({
-          id: `sla-${conv.id}`,
-          type: 'sla',
-          conversationId: conv.id,
-          contactName: conv.contact?.full_name || 'Contato',
-          message: conv.sla_status === 'critical' ? 'SLA crítico!' : 'Atenção ao SLA',
-          timestamp: conv.updated_at,
-        });
-      });
-
-      // 4. Canais WhatsApp desconectados (últimas 24h) - apenas para admins
-      const isAdmin = userRole === 'admin' || userRole === 'super_admin';
-      if (isAdmin) {
-        const { data: channelEvents } = await supabase
-          .from('whatsapp_channel_events')
-          .select(`
-            id,
-            created_at,
-            event_type,
-            new_status,
-            channel_id
-          `)
-          .eq('event_type', 'disconnected')
-          .is('acknowledged_at', null)
-          .gte('created_at', oneDayAgo)
-          .order('created_at', { ascending: false })
-          .limit(5);
-        
-        // Buscar nomes dos canais
-        if (channelEvents && channelEvents.length > 0) {
-          const channelIds = channelEvents.map(e => e.channel_id);
-          const { data: channels } = await supabase
-            .from('whatsapp_channels')
-            .select('id, name')
-            .in('id', channelIds);
-          
-          const channelMap = new Map(channels?.map(c => [c.id, c.name]) || []);
-          
-          channelEvents.forEach(event => {
-            allNotifications.push({
-              id: `channel-${event.id}`,
-              type: 'channel_disconnect',
-              conversationId: '',
-              contactName: channelMap.get(event.channel_id) || 'Canal WhatsApp',
-              message: '⚠️ Canal desconectado! Reconecte para continuar recebendo mensagens.',
-              timestamp: event.created_at,
-              channelEventId: event.id,
-            });
-          });
-        }
-      }
-
-      // Sort all by timestamp and limit
-      return allNotifications
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        .slice(0, 15);
-    },
-    refetchInterval: 60000, // Refresh every minute
-  });
-
-  // Filter out dismissed notifications
-  const visibleNotifications = notifications.filter(n => !dismissedIds.includes(n.id));
-  const notificationCount = visibleNotifications.length;
-
-  // Dismiss single notification
+  // Dismiss single notification (mark as read)
   const dismissNotification = (notificationId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const rawDismissed = getRawDismissedNotifications();
-    const updated = saveDismissedNotification(rawDismissed, notificationId);
-    setDismissedIds(updated.map(d => d.id));
+    markRead.mutate(notificationId);
   };
 
   // Dismiss all notifications
   const dismissAllNotifications = () => {
-    const allIds = notifications.map(n => n.id);
-    const now = Date.now();
-    const rawDismissed = getRawDismissedNotifications();
-    const expirationMs = EXPIRATION_HOURS * 60 * 60 * 1000;
-    
-    // Filter expired and add all new
-    const validDismissed = rawDismissed.filter(d => (now - d.dismissedAt) < expirationMs);
-    allIds.forEach(id => {
-      if (!validDismissed.find(d => d.id === id)) {
-        validDismissed.push({ id, dismissedAt: now });
-      }
+    markAllRead.mutate(undefined, {
+      onSuccess: () => toast.success('Todas as notificações foram marcadas como lidas'),
     });
-    
-    localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(validDismissed));
-    setDismissedIds(validDismissed.map(d => d.id));
-    toast.success('Todas as notificações foram marcadas como lidas');
   };
 
   // Search function
@@ -432,7 +224,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
           })
           .eq('id', notification.channelEventId);
         
-        queryClient.invalidateQueries({ queryKey: ['header-notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['in-app-notifications'] });
       } catch (error) {
         console.error('Error acknowledging channel event:', error);
       }
