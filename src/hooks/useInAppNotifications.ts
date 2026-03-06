@@ -94,7 +94,7 @@ export function useInAppNotifications() {
     queryFn: async () => {
       if (!currentUser?.id) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('in_app_notifications')
         .select('*')
         .eq('user_id', currentUser.id)
