@@ -1,47 +1,25 @@
 
 
-## Investigação: Conflito de Status entre Dois Canais (MASTER-LEADS e EMPREGA-MAIS)
+## Diagnóstico: Por que "Fechados" está errado no Redirect
 
-### O que foi encontrado
+### Problemas encontrados
 
-**Dados reais do banco**: Existem ~20 contatos no tenant Master que possuem conversas em AMBOS os canais. Em todos os casos analisados, o `contact.lead_status` e o `conversation.lead_status` estão **consistentes** entre si — não há evidência de regressão causada por dois canais.
+1. **Contatos duplicados inflam os números**: O `redirect_logs` tem múltiplas entradas para o mesmo contato (ex: LUAN ATAIDE aparece 2x no AGRO, A.H.MORAES aparece 2x no ENSOL). O código conta cada log entry como +1 lead e +1 fechado, em vez de contar **contatos únicos**.
 
-**Os 8 contatos reportados** (kel, WhatsApp 4839, Daiene, Nicolas, etc.) possuem conversas apenas no canal MASTER-LEADS — nenhum deles tem conversa no EMPREGA-MAIS. Portanto, o cenário de dois canais **não é a causa** do problema relatado anteriormente.
+2. **Critério de conversão incompleto**: O `isFechadoStatus` só verifica se o status contém "fechado" (07 - Pedido Fechado), mas deveria incluir os status **07 a 10** (07 - Pedido Fechado, 08 - Em andamento, 09 - Cobrança, 10 - Aguardando envio), além de verificar o campo `custom_fields.conversoes`.
 
-### Como o webhook funciona com dois canais
+### Solução
 
-O webhook já possui uma lógica de **migração de canal** (linhas 2206-2254 do `whatsapp-webhook/index.ts`):
+**Arquivo**: `src/hooks/useRedirectDashboardEnhanced.ts`
 
-1. Se o contato manda mensagem pelo canal B e já tem conversa **aberta** no canal A → a conversa é **migrada** para o canal B (preserva atendente, departamento e lead_status)
-2. Se não tem conversa aberta em nenhum canal, busca conversa **fechada** no mesmo canal → reabre
-3. Se não encontra nada → cria conversa **nova** com `lead_status = 'new'` (default do banco)
+1. **Deduplicar contatos por UTM**: Usar um `Set<contact_id>` para cada chave UTM, contando apenas contatos únicos (como já faz com `visitors` para visitas)
 
-### Risco identificado (cenário raro)
+2. **Expandir critério de conversão**: Substituir `isFechadoStatus` por uma função que verifica:
+   - Status que começa com "07", "08", "09" ou "10" (Pedido Fechado até Aguardando envio)
+   - Ou `custom_fields.conversoes` preenchido
 
-Há um cenário onde **pode** haver conflito:
+3. **Buscar `custom_fields` no join**: Alterar o select do `redirect_logs` para incluir `contact:contacts(id, lead_status, custom_fields)` para poder verificar o campo de conversões
 
-1. Contato tem conversa **fechada** no canal MASTER-LEADS (lead_status = "Abordagem")
-2. Contato manda mensagem pelo EMPREGA-MAIS
-3. Webhook busca conversa fechada APENAS no EMPREGA-MAIS (`.eq("channel_id", channel.id)`) → **não encontra**
-4. Cria conversa **nova** com `lead_status = 'new'` (default da tabela conversations)
-5. **Porém**: o `contact.lead_status` NÃO é alterado (continua "Abordagem")
-
-A sidebar lê `contact.lead_status` (fonte de verdade), então **o status mostrado ao atendente não muda**. Mas a conversa nova terá `conversation.lead_status = 'new'` internamente, o que pode causar inconsistência em relatórios.
-
-### Conclusão
-
-**O cenário de dois canais NÃO causa a regressão do status do lead para "new" na UI** — a sidebar sempre lê do `contact.lead_status`. A causa real do problema anterior (status não persistindo) já foi corrigida na alteração atômica do `ConversationSidebar.tsx`.
-
-### Melhoria preventiva recomendada
-
-Para eliminar qualquer inconsistência residual, a nova conversa criada pelo webhook deveria herdar o `lead_status` atual do contato. Isso envolve:
-
-**Alteração no `whatsapp-webhook/index.ts`** (~linha 2468):
-- Antes de criar uma nova conversa, buscar o `lead_status` atual do contato
-- Incluir `lead_status: contact.lead_status || 'new'` no INSERT da conversa
-- Isso garante que mesmo em cenários cross-channel, a conversa nova nasce com o status correto
-
-Também corrigir a busca de conversa fechada (~linha 2268):
-- Quando não encontra conversa fechada no mesmo canal, buscar em **qualquer canal** (similar ao que já faz com conversas abertas)
-- Isso evita criar conversas duplicadas quando o contato manda mensagem por um canal diferente
+### Resultado esperado
+Os números de "Fechados" refletirão contatos únicos realmente convertidos, sem duplicatas e com critério alinhado ao resto do sistema (status 07-10 + campo conversões).
 
