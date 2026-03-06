@@ -820,6 +820,7 @@ export default function ConversationReportPage() {
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">#</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Nome</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Contato</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Origem</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Canal</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Agente</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Departamento</th>
