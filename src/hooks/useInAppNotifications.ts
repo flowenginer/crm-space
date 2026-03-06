@@ -94,7 +94,7 @@ export function useInAppNotifications() {
     queryFn: async () => {
       if (!currentUser?.id) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('in_app_notifications')
         .select('*')
         .eq('user_id', currentUser.id)
@@ -181,7 +181,7 @@ export function useMarkNotificationRead() {
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('in_app_notifications')
         .update({ read: true, read_at: new Date().toISOString() } as Record<string, unknown>)
         .eq('id', notificationId);
@@ -202,7 +202,7 @@ export function useMarkAllNotificationsRead() {
     mutationFn: async () => {
       if (!currentUser?.id) return;
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('in_app_notifications')
         .update({ read: true, read_at: new Date().toISOString() } as Record<string, unknown>)
         .eq('user_id', currentUser.id)
@@ -221,7 +221,7 @@ export function useDeleteNotification() {
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('in_app_notifications')
         .delete()
         .eq('id', notificationId);
