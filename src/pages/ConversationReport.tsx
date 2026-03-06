@@ -861,6 +861,7 @@ export default function ConversationReportPage() {
                         </div>
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">{formatPhone(conv.contact?.phone)}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{formatOrigin(conv.contact?.origin)}</td>
                       <td className="px-3 py-3 text-muted-foreground">{conv.channel?.name || '-'}</td>
                       <td className="px-3 py-3 text-muted-foreground">{conv.assigned_user?.full_name || '-'}</td>
                       <td className="px-3 py-3 text-muted-foreground">{conv.department?.name || '-'}</td>
