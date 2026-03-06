@@ -1,25 +1,32 @@
 
 
-## Diagnóstico: Por que "Fechados" está errado no Redirect
+## Problema Identificado
 
-### Problemas encontrados
+As etiquetas são adicionadas na tabela **`contact_tags`** (vinculadas ao contato), mas o relatório de atendimentos busca da tabela **`conversation_tags`** (vinculadas à conversa). Como ninguém escreve na `conversation_tags`, as etiquetas aparecem vazias no relatório.
 
-1. **Contatos duplicados inflam os números**: O `redirect_logs` tem múltiplas entradas para o mesmo contato (ex: LUAN ATAIDE aparece 2x no AGRO, A.H.MORAES aparece 2x no ENSOL). O código conta cada log entry como +1 lead e +1 fechado, em vez de contar **contatos únicos**.
+## Solução
 
-2. **Critério de conversão incompleto**: O `isFechadoStatus` só verifica se o status contém "fechado" (07 - Pedido Fechado), mas deveria incluir os status **07 a 10** (07 - Pedido Fechado, 08 - Em andamento, 09 - Cobrança, 10 - Aguardando envio), além de verificar o campo `custom_fields.conversoes`.
+Alterar o relatório (`ConversationReport.tsx`) para buscar etiquetas da tabela `contact_tags` usando o `contact_id` de cada conversa, em vez de buscar de `conversation_tags` usando o `conversation_id`.
 
-### Solução
+### Alterações em `src/pages/ConversationReport.tsx`
 
-**Arquivo**: `src/hooks/useRedirectDashboardEnhanced.ts`
+**1. Query principal (linhas ~405-418)** - Trocar `conversation_tags` por `contact_tags`:
+- Buscar de `contact_tags` usando `contact_id` (que já está disponível no resultado)
+- Agrupar por `contact_id` em vez de `conversation_id`
+- Mapear os resultados para cada conversa via `conv.contact_id`
 
-1. **Deduplicar contatos por UTM**: Usar um `Set<contact_id>` para cada chave UTM, contando apenas contatos únicos (como já faz com `visitors` para visitas)
+**2. Query de exportação (linhas ~557-573)** - Mesma mudança:
+- Trocar `conversation_tags` por `contact_tags` usando os `contact_id`s das conversas exportadas
 
-2. **Expandir critério de conversão**: Substituir `isFechadoStatus` por uma função que verifica:
-   - Status que começa com "07", "08", "09" ou "10" (Pedido Fechado até Aguardando envio)
-   - Ou `custom_fields.conversoes` preenchido
+**3. Filtro de tags no RPC `search_conversations_report`** - Verificar se o filtro `p_tag_ids` filtra por `conversation_tags` ou `contact_tags`:
+- Se filtra por `conversation_tags`, precisa ser alterado na function do banco para filtrar por `contact_tags`
 
-3. **Buscar `custom_fields` no join**: Alterar o select do `redirect_logs` para incluir `contact:contacts(id, lead_status, custom_fields)` para poder verificar o campo de conversões
+### Correção dos Build Errors existentes
 
-### Resultado esperado
-Os números de "Fechados" refletirão contatos únicos realmente convertidos, sem duplicatas e com critério alinhado ao resto do sistema (status 07-10 + campo conversões).
+**4. Edge function `cross-reference-sales/index.ts` (linha 445)** - Cast `error` de `unknown`:
+- `(error as Error).message`
+
+**5. `BulkRescueModal.tsx` (linha 151)** - Adicionar `tenant_id` ao insert
+
+**6. `useInAppNotifications.ts`** - Tabela `in_app_notifications` não existe nos types. Usar cast `as any` ou adicionar à tipagem.
 
