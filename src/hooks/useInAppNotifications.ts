@@ -221,7 +221,7 @@ export function useDeleteNotification() {
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('in_app_notifications')
         .delete()
         .eq('id', notificationId);
