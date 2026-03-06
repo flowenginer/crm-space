@@ -2261,11 +2261,13 @@ serve(async (req) => {
       let closedConversation = null;
       
       const findClosedConversation = async () => {
+        // Search closed conversations across ALL channels (not just current)
+        // This prevents creating duplicate conversations when contact messages from a different channel
         const { data } = await supabase
           .from("conversations")
-          .select("id, status, assigned_to, close_reason, closed_at, closed_by, last_message_at, department_id")
+          .select("id, status, assigned_to, close_reason, closed_at, closed_by, last_message_at, department_id, channel_id")
           .eq("contact_id", contact.id)
-          .eq("channel_id", channel.id)
+          .eq("tenant_id", channel.tenant_id)
           .eq("status", "closed")
           .order("closed_at", { ascending: false })
           .limit(1)
