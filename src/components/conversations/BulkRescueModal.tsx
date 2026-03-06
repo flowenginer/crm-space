@@ -63,7 +63,7 @@ export function BulkRescueModal({
         // Get conversation data
         const { data: conv } = await supabase
           .from('conversations')
-          .select('contact_id, contact:contacts(full_name, phone), channel_id')
+          .select('contact_id, tenant_id, contact:contacts(full_name, phone), channel_id')
           .eq('id', conversationId)
           .single();
 
