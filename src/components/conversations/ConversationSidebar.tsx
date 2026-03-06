@@ -323,29 +323,61 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   // Mutation: Update lead status
   const updateLeadStatus = useMutation({
     mutationFn: async (newStatus: string) => {
-      // Handle contact being array or object
-      const contact = Array.isArray(conversation?.contact) 
-        ? conversation?.contact[0] 
+      const contact = Array.isArray(conversation?.contact)
+        ? conversation?.contact[0]
         : conversation?.contact;
-      
-      if (!contact?.id) {
-        console.error('[updateLeadStatus] No contact found:', conversation);
-        throw new Error('No contact');
+
+      if (!contact?.id || !conversation?.id) {
+        console.error('[updateLeadStatus] Missing contact/conversation:', { contact, conversationId });
+        throw new Error('Dados da conversa incompletos');
       }
-      
-      console.log('[updateLeadStatus] Updating contact', contact.id, 'to status:', newStatus);
-      
-      const { error } = await supabase
+
+      const now = new Date().toISOString();
+      const tenantId = (conversation as any)?.tenant_id ?? null;
+
+      const [contactUpdate, conversationUpdate] = await Promise.all([
+        supabase
+          .from('contacts')
+          .update({
+            lead_status: newStatus,
+            updated_at: now,
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          })
+          .eq('id', contact.id),
+        supabase
+          .from('conversations')
+          .update({
+            lead_status: newStatus,
+            updated_at: now,
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          })
+          .eq('id', conversation.id),
+      ]);
+
+      if (contactUpdate.error) {
+        console.error('[updateLeadStatus] Contact update error:', contactUpdate.error);
+        throw contactUpdate.error;
+      }
+
+      if (conversationUpdate.error) {
+        console.error('[updateLeadStatus] Conversation update error:', conversationUpdate.error);
+        throw conversationUpdate.error;
+      }
+
+      // Verificação final para evitar sensação de "salvou e voltou"
+      const { data: persistedContact, error: persistedError } = await supabase
         .from('contacts')
-        .update({ 
-          lead_status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', contact.id);
-      
-      if (error) {
-        console.error('[updateLeadStatus] Error:', error);
-        throw error;
+        .select('lead_status')
+        .eq('id', contact.id)
+        .maybeSingle();
+
+      if (persistedError) {
+        console.error('[updateLeadStatus] Persist check error:', persistedError);
+        throw persistedError;
+      }
+
+      if (persistedContact?.lead_status !== newStatus) {
+        throw new Error('Status não foi persistido corretamente');
       }
     },
     onSuccess: () => {
