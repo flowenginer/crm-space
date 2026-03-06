@@ -387,9 +387,10 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       toast.success('Status atualizado!');
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error('[updateLeadStatus] Mutation error:', error);
-      toast.error('Erro ao atualizar status');
+      const errorMessage = error?.message || 'Erro ao atualizar status';
+      toast.error(`Falha ao salvar status: ${errorMessage}`);
     }
   });
 
