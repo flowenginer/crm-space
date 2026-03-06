@@ -119,7 +119,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
       const { data, error } = await supabase
         .from('conversations')
         .select(`
-          id, contact_id, channel_id, assigned_to, department_id,
+          id, contact_id, channel_id, assigned_to, department_id, tenant_id,
           status, is_unread, unread_count, last_message_at, last_message_preview,
           lead_status, created_at, referral_source, referral_data, last_client_message_at,
           contact:contacts(
