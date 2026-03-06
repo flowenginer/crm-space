@@ -403,18 +403,18 @@ export default function ConversationReportPage() {
       }));
 
       if (conversations.length > 0) {
-        const conversationIds = conversations.map((c: any) => c.id);
+        const contactIds = [...new Set(conversations.map((c: any) => c.contact_id))];
         const { data: tagsData } = await supabase
-          .from('conversation_tags')
-          .select('conversation_id, tag:tags(id, name, color)')
-          .in('conversation_id', conversationIds);
+          .from('contact_tags')
+          .select('contact_id, tag:tags(id, name, color)')
+          .in('contact_id', contactIds);
         if (tagsData) {
-          const tagsByConversation = tagsData.reduce((acc: any, item: any) => {
-            if (!acc[item.conversation_id]) acc[item.conversation_id] = [];
-            acc[item.conversation_id].push({ tag: item.tag });
+          const tagsByContact = tagsData.reduce((acc: any, item: any) => {
+            if (!acc[item.contact_id]) acc[item.contact_id] = [];
+            acc[item.contact_id].push({ tag: item.tag });
             return acc;
           }, {});
-          conversations.forEach((conv: any) => { conv.tags = tagsByConversation[conv.id] || []; });
+          conversations.forEach((conv: any) => { conv.tags = tagsByContact[conv.contact_id] || []; });
         }
       }
       return { conversations, total: Number(total), totalPages: Math.ceil(Number(total) / pageSize) };
