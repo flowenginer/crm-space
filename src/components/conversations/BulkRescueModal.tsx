@@ -148,7 +148,7 @@ export function BulkRescueModal({
           accumulatedMinutes += stepsWithName[j].timer_minutes;
         }
 
-        await supabase.from('rescue_scheduled_messages').insert(scheduledMessages);
+        await supabase.from('rescue_scheduled_messages').insert(scheduledMessages.map(m => ({ ...m, tenant_id: conv.tenant_id })) as any);
       } catch (err) {
         console.error(`Error activating rescue for ${conversationId}:`, err);
         errors++;
