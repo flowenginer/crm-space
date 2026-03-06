@@ -2467,6 +2467,10 @@ serve(async (req) => {
         const conversationDepartmentId = contact.department_id || channel.department_id || null;
         console.log(`[Webhook] 📍 Creating conversation with department_id: ${conversationDepartmentId} (contact: ${contact.department_id}, channel: ${channel.department_id})`);
         
+        // Inherit lead_status from contact to keep consistency across channels
+        const inheritedLeadStatus = contact.lead_status || 'new';
+        console.log(`[Webhook] 📍 Creating conversation with inherited lead_status: ${inheritedLeadStatus} (from contact)`);
+        
         const { data: newConversation, error: convError } = await supabase
           .from("conversations")
           .insert({
@@ -2475,6 +2479,7 @@ serve(async (req) => {
             department_id: conversationDepartmentId,
             tenant_id: channel.tenant_id,
             status: initialStatus,
+            lead_status: inheritedLeadStatus,
             is_unread: true,
             unread_count: 1,
             last_message_at: new Date().toISOString(),
