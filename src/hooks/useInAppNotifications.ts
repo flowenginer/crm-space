@@ -202,7 +202,7 @@ export function useMarkAllNotificationsRead() {
     mutationFn: async () => {
       if (!currentUser?.id) return;
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('in_app_notifications')
         .update({ read: true, read_at: new Date().toISOString() } as Record<string, unknown>)
         .eq('user_id', currentUser.id)
