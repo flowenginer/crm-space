@@ -834,7 +834,7 @@ export default function ConversationReportPage() {
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center">
+                    <td colSpan={13} className="px-4 py-12 text-center">
                       <Loader2 size={24} className="animate-spin mx-auto text-primary" />
                       <p className="mt-2 text-sm text-muted-foreground">Carregando atendimentos...</p>
                     </td>
