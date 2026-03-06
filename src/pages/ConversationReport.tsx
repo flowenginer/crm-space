@@ -841,7 +841,7 @@ export default function ConversationReportPage() {
                   </tr>
                 ) : reportData?.conversations.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-muted-foreground">
+                    <td colSpan={13} className="px-4 py-12 text-center text-muted-foreground">
                       <ClipboardList size={40} className="mx-auto mb-3 opacity-50" />
                       <p>Nenhum atendimento encontrado</p>
                       <p className="text-sm">Ajuste os filtros e clique em GERAR</p>
