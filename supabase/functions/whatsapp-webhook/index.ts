@@ -2321,6 +2321,12 @@ serve(async (req) => {
         // Se não tem atendente atribuído, reabre como "pending", senão como "open"
         const reopenStatus = newAssignedTo ? "open" : "pending";
         
+        // If reopening from a different channel, migrate it
+        const needsChannelMigration = closedConversation.channel_id !== channel.id;
+        if (needsChannelMigration) {
+          console.log(`[Webhook] 🔄 Reopening closed conversation from different channel: ${closedConversation.channel_id} → ${channel.id}`);
+        }
+        
         const { error: reopenError } = await supabase
           .from("conversations")
           .update({
@@ -2339,6 +2345,7 @@ serve(async (req) => {
             closed_by: null,
             close_reason: null,
             updated_at: new Date().toISOString(),
+            ...(needsChannelMigration ? { channel_id: channel.id } : {}),
           })
           .eq("id", closedConversation.id);
 
