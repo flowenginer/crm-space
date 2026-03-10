@@ -89,7 +89,7 @@ export async function blingApi(endpoint: string, accessToken: string, method = '
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`[Bling API] Error ${response.status}: ${errorText}`);
-    throw new Error(`Bling API error: ${response.status}`);
+    throw new Error(`Bling API error: ${response.status} - ${errorText}`);
   }
 
   return response.json();
@@ -538,6 +538,7 @@ export async function createPreOrderInBling(data: {
     },
     observacoes: data.observacoes,
     observacoesInternas: data.observacoesInternas || 'Pré-pedido criado via CRM',
+    itens: [],
   };
 
   const response = await blingApi('/pedidos/vendas', config.access_token, 'POST', blingData);
