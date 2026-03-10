@@ -75,7 +75,7 @@ export async function isBlingEntitySyncEnabled(entityType: 'contacts' | 'orders'
 }
 
 // Helper to make Bling API calls
-async function blingApi(endpoint: string, accessToken: string, method = 'GET', body?: Record<string, unknown>) {
+export async function blingApi(endpoint: string, accessToken: string, method = 'GET', body?: Record<string, unknown>) {
   const response = await fetch(`${BLING_API_URL}${endpoint}`, {
     method,
     headers: {
@@ -498,6 +498,57 @@ export async function syncQuoteToBling(quoteId: string, quoteData: {
     console.error('[Bling Sync] Quote sync error:', message);
     return { success: false, error: message };
   }
+}
+
+// Create a pre-order in Bling (minimal data - seller completes in Bling)
+export async function createPreOrderInBling(data: {
+  contactBlingId: number;
+  endereco: {
+    nome: string;
+    endereco: string;
+    numero: string;
+    complemento?: string;
+    municipio: string;
+    uf: string;
+    cep: string;
+    bairro: string;
+  };
+  observacoes: string;
+  observacoesInternas?: string;
+}): Promise<{ blingId: string; blingNumero: string }> {
+  const config = await getBlingConfig();
+  if (!config?.access_token || !config?.tenant_id) {
+    throw new Error('Bling não configurado');
+  }
+
+  const blingData = {
+    contato: { id: data.contactBlingId },
+    data: new Date().toISOString().split('T')[0],
+    transporte: {
+      etiqueta: {
+        nome: data.endereco.nome,
+        endereco: data.endereco.endereco,
+        numero: data.endereco.numero,
+        complemento: data.endereco.complemento || '',
+        municipio: data.endereco.municipio,
+        uf: data.endereco.uf,
+        cep: data.endereco.cep.replace(/\D/g, ''),
+        bairro: data.endereco.bairro,
+      },
+    },
+    observacoes: data.observacoes,
+    observacoesInternas: data.observacoesInternas || 'Pré-pedido criado via CRM',
+  };
+
+  const response = await blingApi('/pedidos/vendas', config.access_token, 'POST', blingData);
+  const blingId = response.data?.id;
+  const blingNumero = response.data?.numero;
+
+  if (!blingId) {
+    throw new Error('Bling não retornou ID do pedido');
+  }
+
+  return { blingId: String(blingId), blingNumero: blingNumero ? String(blingNumero) : String(blingId) };
 }
 
 // Get Bling mapping for an entity
