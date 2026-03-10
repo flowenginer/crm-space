@@ -91,6 +91,12 @@ export async function blingApi(endpoint: string, _accessToken: string, method = 
     action = 'update_contact';
     const blingId = endpoint.split('/contatos/')[1];
     proxyPayload = { contact_data: body, bling_id: blingId };
+  } else if (method === 'GET' && endpoint === '/vendedores') {
+    action = 'list_vendedores';
+  } else if (method === 'GET' && endpoint.startsWith('/pedidos/vendas/')) {
+    action = 'get_order';
+    const orderId = endpoint.split('/pedidos/vendas/')[1];
+    proxyPayload = { order_id: orderId };
   } else {
     // Fallback: direct call (only works server-side / Edge Functions)
     console.warn(`[Bling API] No proxy action for ${method} ${endpoint}, attempting direct call`);
@@ -558,6 +564,24 @@ export async function syncQuoteToBling(quoteId: string, quoteData: {
   }
 }
 
+// Fetch sellers list from Bling
+export async function listBlingVendedores(): Promise<Array<{ id: number; nome: string }>> {
+  const config = await getBlingConfig();
+  if (!config?.access_token) return [];
+
+  try {
+    const response = await blingApi('/vendedores', config.access_token, 'GET');
+    const vendedores = response.data || [];
+    return vendedores.map((v: any) => ({
+      id: v.id,
+      nome: v.contato?.nome || v.nome || `Vendedor #${v.id}`,
+    }));
+  } catch (e) {
+    console.warn('[Bling] Could not fetch vendedores', e);
+    return [];
+  }
+}
+
 // Create a pre-order in Bling (minimal data - seller completes in Bling)
 export async function createPreOrderInBling(data: {
   contactBlingId: number;
@@ -573,11 +597,18 @@ export async function createPreOrderInBling(data: {
   };
   observacoes: string;
   observacoesInternas?: string;
+  vendedorId?: number;
+  valorUnitario?: number;
+  quantidade?: number;
 }): Promise<{ blingId: string; blingNumero: string }> {
   const config = await getBlingConfig();
   if (!config?.access_token || !config?.tenant_id) {
     throw new Error('Bling não configurado');
   }
+
+  const itemQuantidade = data.quantidade && data.quantidade > 0 ? data.quantidade : 1;
+  const itemValor = data.valorUnitario && data.valorUnitario > 0 ? data.valorUnitario : 0;
+  const descricao = itemValor > 0 ? 'Pré-pedido CRM' : 'Pré-pedido - itens a definir';
 
   const blingData: Record<string, unknown> = {
     contato: { id: data.contactBlingId },
@@ -586,12 +617,16 @@ export async function createPreOrderInBling(data: {
     observacoesInternas: data.observacoesInternas || 'Pré-pedido criado via CRM',
     itens: [
       {
-        descricao: 'Pré-pedido - itens a definir',
-        quantidade: 1,
-        valor: 0,
+        descricao,
+        quantidade: itemQuantidade,
+        valor: itemValor,
       },
     ],
   };
+
+  if (data.vendedorId) {
+    blingData.vendedor = { id: data.vendedorId };
+  }
 
   if (data.endereco) {
     blingData.transporte = {
