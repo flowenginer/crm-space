@@ -610,10 +610,20 @@ export async function createPreOrderInBling(data: {
 
   const response = await blingApi('/pedidos/vendas', config.access_token, 'POST', blingData);
   const blingId = response.data?.id;
-  const blingNumero = response.data?.numero;
 
   if (!blingId) {
     throw new Error('Bling não retornou ID do pedido');
+  }
+
+  // Fetch the created order to get the real "numero"
+  let blingNumero = response.data?.numero;
+  if (!blingNumero) {
+    try {
+      const orderDetails = await blingApi(`/pedidos/vendas/${blingId}`, config.access_token, 'GET');
+      blingNumero = orderDetails.data?.numero;
+    } catch (e) {
+      console.warn('[Bling] Could not fetch order numero, using id as fallback', e);
+    }
   }
 
   return { blingId: String(blingId), blingNumero: blingNumero ? String(blingNumero) : String(blingId) };
