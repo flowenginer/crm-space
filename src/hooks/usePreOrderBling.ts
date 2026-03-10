@@ -20,7 +20,7 @@ interface PreOrderData {
     city?: string | null;
     state?: string | null;
   };
-  endereco: {
+  endereco?: {
     nome: string;
     endereco: string;
     numero: string;

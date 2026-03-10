@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { PreOrderBlingModal } from '../PreOrderBlingModal';
 
 // Mock dependencies
@@ -43,8 +43,8 @@ const baseContact = {
   custom_fields: null,
 };
 
-describe('PreOrderBlingModal - Address Validation', () => {
-  it('should disable submit button when address fields are empty', () => {
+describe('PreOrderBlingModal', () => {
+  it('should enable submit button when only name is filled (address is optional)', () => {
     render(
       <PreOrderBlingModal
         open={true}
@@ -55,68 +55,22 @@ describe('PreOrderBlingModal - Address Validation', () => {
     );
 
     const submitButton = screen.getByText('Criar no Bling').closest('button');
-    expect(submitButton).toBeDisabled();
-  });
-
-  it('should enable submit button when all required fields are filled', () => {
-    const contactWithAddress = {
-      ...baseContact,
-      street: 'Rua A',
-      zip_code: '01001-000',
-      city: 'São Paulo',
-      state: 'SP',
-    };
-
-    render(
-      <PreOrderBlingModal
-        open={true}
-        onOpenChange={vi.fn()}
-        contact={contactWithAddress}
-        conversationId="conv-1"
-      />,
-    );
-
-    const submitButton = screen.getByText('Criar no Bling').closest('button');
+    // Name is pre-filled from contact, so button should be enabled
     expect(submitButton).not.toBeDisabled();
   });
 
-  it('should remain disabled when only some address fields are filled', () => {
-    const contactPartial = {
-      ...baseContact,
-      street: 'Rua A',
-      zip_code: '01001-000',
-      // city and state missing
-    };
+  it('should disable submit button when name is empty', () => {
+    const contactNoName = { ...baseContact, full_name: '' };
 
     render(
       <PreOrderBlingModal
         open={true}
         onOpenChange={vi.fn()}
-        contact={contactPartial}
+        contact={contactNoName}
         conversationId="conv-1"
       />,
     );
 
-    const submitButton = screen.getByText('Criar no Bling').closest('button');
-    expect(submitButton).toBeDisabled();
-  });
-
-  it('should show error toast when submitting without address', async () => {
-    const { toast } = await import('sonner');
-
-    render(
-      <PreOrderBlingModal
-        open={true}
-        onOpenChange={vi.fn()}
-        contact={baseContact}
-        conversationId="conv-1"
-      />,
-    );
-
-    // The button is disabled, but let's verify the validation message exists in handleSubmit
-    // by checking that toast.error would be called with the right message
-    // We'll test this by enabling the button via filling name but not address
-    // The button is disabled so we can't click it - this confirms the validation works at UI level
     const submitButton = screen.getByText('Criar no Bling').closest('button');
     expect(submitButton).toBeDisabled();
   });
@@ -143,5 +97,20 @@ describe('PreOrderBlingModal - Address Validation', () => {
 
     expect(screen.getByText('#1001')).toBeInTheDocument();
     expect(screen.getByText('#1002')).toBeInTheDocument();
+  });
+
+  it('should show address fields section', () => {
+    render(
+      <PreOrderBlingModal
+        open={true}
+        onOpenChange={vi.fn()}
+        contact={baseContact}
+        conversationId="conv-1"
+      />,
+    );
+
+    expect(screen.getByText('Endereço')).toBeInTheDocument();
+    expect(screen.getByText('CEP')).toBeInTheDocument();
+    expect(screen.getByText('Rua')).toBeInTheDocument();
   });
 });

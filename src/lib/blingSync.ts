@@ -74,25 +74,58 @@ export async function isBlingEntitySyncEnabled(entityType: 'contacts' | 'orders'
   }
 }
 
-// Helper to make Bling API calls
-export async function blingApi(endpoint: string, accessToken: string, method = 'GET', body?: Record<string, unknown>) {
-  const response = await fetch(`${BLING_API_URL}${endpoint}`, {
-    method,
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+// Helper to make Bling API calls via Edge Function proxy (avoids CORS)
+export async function blingApi(endpoint: string, _accessToken: string, method = 'GET', body?: Record<string, unknown>) {
+  // Determine action from endpoint+method
+  let action: string;
+  if (method === 'POST' && endpoint === '/contatos') {
+    action = 'create_contact';
+  } else if (method === 'POST' && endpoint === '/pedidos/vendas') {
+    action = 'create_pre_order';
+  } else {
+    // Fallback: direct call (only works server-side / Edge Functions)
+    const response = await fetch(`${BLING_API_URL}${endpoint}`, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${_accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[Bling API] Error ${response.status}: ${errorText}`);
-    throw new Error(`Bling API error: ${response.status} - ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Bling API] Error ${response.status}: ${errorText}`);
+      throw new Error(`Bling API error: ${response.status} - ${errorText}`);
+    }
+
+    return response.json();
   }
 
-  return response.json();
+  // Get tenant_id from config cache or fresh query
+  const config = await getBlingConfig();
+  if (!config?.tenant_id) throw new Error('Bling não configurado');
+
+  const { data, error } = await supabase.functions.invoke('bling-proxy', {
+    body: {
+      action,
+      tenant_id: config.tenant_id,
+      ...(action === 'create_contact' ? { contact_data: body } : { order_data: body }),
+    },
+  });
+
+  if (error) {
+    console.error(`[Bling API Proxy] Error:`, error);
+    throw new Error(`Bling API proxy error: ${error.message}`);
+  }
+
+  if (data?.error) {
+    console.error(`[Bling API Proxy] Error:`, data.error);
+    throw new Error(`Bling API error: ${data.error}`);
+  }
+
+  return data;
 }
 
 // Sync individual contact to Bling
@@ -503,7 +536,7 @@ export async function syncQuoteToBling(quoteId: string, quoteData: {
 // Create a pre-order in Bling (minimal data - seller completes in Bling)
 export async function createPreOrderInBling(data: {
   contactBlingId: number;
-  endereco: {
+  endereco?: {
     nome: string;
     endereco: string;
     numero: string;
@@ -521,10 +554,16 @@ export async function createPreOrderInBling(data: {
     throw new Error('Bling não configurado');
   }
 
-  const blingData = {
+  const blingData: Record<string, unknown> = {
     contato: { id: data.contactBlingId },
     data: new Date().toISOString().split('T')[0],
-    transporte: {
+    observacoes: data.observacoes,
+    observacoesInternas: data.observacoesInternas || 'Pré-pedido criado via CRM',
+    itens: [],
+  };
+
+  if (data.endereco) {
+    blingData.transporte = {
       etiqueta: {
         nome: data.endereco.nome,
         endereco: data.endereco.endereco,
@@ -535,11 +574,8 @@ export async function createPreOrderInBling(data: {
         cep: data.endereco.cep.replace(/\D/g, ''),
         bairro: data.endereco.bairro,
       },
-    },
-    observacoes: data.observacoes,
-    observacoesInternas: data.observacoesInternas || 'Pré-pedido criado via CRM',
-    itens: [],
-  };
+    };
+  }
 
   const response = await blingApi('/pedidos/vendas', config.access_token, 'POST', blingData);
   const blingId = response.data?.id;
