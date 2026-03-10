@@ -584,6 +584,13 @@ export async function createPreOrderInBling(data: {
     data: new Date().toISOString().split('T')[0],
     observacoes: data.observacoes,
     observacoesInternas: data.observacoesInternas || 'Pré-pedido criado via CRM',
+    itens: [
+      {
+        descricao: 'Pré-pedido - itens a definir',
+        quantidade: 1,
+        valor: 0,
+      },
+    ],
   };
 
   if (data.endereco) {
