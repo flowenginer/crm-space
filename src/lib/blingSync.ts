@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { formatPhoneForDisplay } from '@/utils/phone';
 
 const BLING_API_URL = 'https://www.bling.com.br/Api/v3';
 
@@ -171,11 +172,9 @@ export async function syncContactToBling(contactId: string, contactData: {
       .eq('local_id', contactId)
       .maybeSingle();
 
-    // Format phone: Bling expects digits only with DDD (e.g. "5511999998888")
-    const phoneDigits = contactData.phone?.replace(/\D/g, '') || '';
-    // Ensure country code prefix
-    const celular = phoneDigits.length > 0
-      ? (phoneDigits.length <= 11 ? `55${phoneDigits}` : phoneDigits)
+    // Format phone: Bling expects formatted phone like "(DD) NNNNN-NNNN"
+    const celular = contactData.phone
+      ? formatPhoneForDisplay(contactData.phone)
       : undefined;
     const cpfCnpjClean = contactData.cpf_cnpj?.replace(/\D/g, '') || undefined;
 

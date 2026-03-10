@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { syncContactToBling, createPreOrderInBling, getBlingConfig, blingApi } from '@/lib/blingSync';
+import { formatPhoneForDisplay } from '@/utils/phone';
 import { toast } from 'sonner';
 
 interface PreOrderData {
@@ -85,9 +86,8 @@ export function useCreatePreOrderBling() {
         } else {
           // Force-create contact in Bling (even if sync_contacts is disabled)
           const cpfCnpjClean = data.contactData.cpf_cnpj?.replace(/\D/g, '') || undefined;
-          const phoneDigits = data.contactData.phone?.replace(/\D/g, '') || '';
-          const celularClean = phoneDigits.length > 0
-            ? (phoneDigits.length <= 11 ? `55${phoneDigits}` : phoneDigits)
+          const celularClean = data.contactData.phone
+            ? formatPhoneForDisplay(data.contactData.phone)
             : undefined;
           const blingData: Record<string, unknown> = {
             nome: data.contactData.full_name,
