@@ -194,10 +194,7 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
       toast.error('Contato não encontrado');
       return;
     }
-    if (!cep.replace(/\D/g, '') || !rua.trim() || !cidade.trim() || !estado.trim()) {
-      toast.error('Endereço incompleto: CEP, Rua, Cidade e Estado são obrigatórios');
-      return;
-    }
+    const hasAddress = cep.replace(/\D/g, '') && rua.trim() && cidade.trim() && estado.trim();
 
     await createPreOrder.mutateAsync({
       contactId: contact.id,
@@ -216,7 +213,7 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
         city: cidade || null,
         state: estado || null,
       },
-      endereco: {
+      endereco: hasAddress ? {
         nome,
         endereco: rua,
         numero: numero || 'S/N',
@@ -225,7 +222,7 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
         uf: estado,
         cep: cep.replace(/\D/g, ''),
         bairro,
-      },
+      } : undefined,
       observacoes: buildObservacoes(),
       observacoesInternas: 'Pré-pedido criado via CRM',
     });
@@ -458,7 +455,7 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={createPreOrder.isPending || !nome.trim() || !cep.replace(/\D/g, '') || !rua.trim() || !cidade.trim() || !estado.trim()}
+            disabled={createPreOrder.isPending || !nome.trim()}
             className="bg-green-600 hover:bg-green-700 text-white"
           >
             {createPreOrder.isPending ? (
