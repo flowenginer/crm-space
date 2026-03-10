@@ -171,13 +171,18 @@ export async function syncContactToBling(contactId: string, contactData: {
       .eq('local_id', contactId)
       .maybeSingle();
 
-    // Format phone: remove non-digits
-    const celular = contactData.phone?.replace(/\D/g, '') || undefined;
+    // Format phone: Bling expects digits only with DDD (e.g. "5511999998888")
+    const phoneDigits = contactData.phone?.replace(/\D/g, '') || '';
+    // Ensure country code prefix
+    const celular = phoneDigits.length > 0
+      ? (phoneDigits.length <= 11 ? `55${phoneDigits}` : phoneDigits)
+      : undefined;
     const cpfCnpjClean = contactData.cpf_cnpj?.replace(/\D/g, '') || undefined;
 
     const blingData: Record<string, unknown> = {
       nome: contactData.full_name,
       tipo: contactData.person_type === 'company' ? 'J' : 'F',
+      situacao: 'A', // A=ativo, I=inativo, E=excluído, S=sem movimento
       contribuinte: 9, // 9 = Não contribuinte (default)
     };
 

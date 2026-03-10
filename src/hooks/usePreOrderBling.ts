@@ -85,10 +85,14 @@ export function useCreatePreOrderBling() {
         } else {
           // Force-create contact in Bling (even if sync_contacts is disabled)
           const cpfCnpjClean = data.contactData.cpf_cnpj?.replace(/\D/g, '') || undefined;
-          const celularClean = data.contactData.phone?.replace(/\D/g, '') || undefined;
+          const phoneDigits = data.contactData.phone?.replace(/\D/g, '') || '';
+          const celularClean = phoneDigits.length > 0
+            ? (phoneDigits.length <= 11 ? `55${phoneDigits}` : phoneDigits)
+            : undefined;
           const blingData: Record<string, unknown> = {
             nome: data.contactData.full_name,
             tipo: data.contactData.person_type === 'company' ? 'J' : 'F',
+            situacao: 'A',
             contribuinte: 9,
           };
           if (cpfCnpjClean) blingData.numeroDocumento = cpfCnpjClean;
