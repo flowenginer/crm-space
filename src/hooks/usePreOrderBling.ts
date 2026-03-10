@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { syncContactToBling, createPreOrderInBling, getBlingConfig } from '@/lib/blingSync';
+import { syncContactToBling, createPreOrderInBling, getBlingConfig, blingApi } from '@/lib/blingSync';
 import { toast } from 'sonner';
 
 interface PreOrderData {
@@ -70,7 +70,7 @@ export function useCreatePreOrderBling() {
       } else {
         // Try to get existing mapping
         const config = await getBlingConfig();
-        if (!config?.tenant_id) throw new Error('Bling não configurado');
+        if (!config?.access_token || !config?.tenant_id) throw new Error('Bling não configurado');
 
         const { data: mapping } = await supabase
           .from('bling_id_mappings')
@@ -80,10 +80,38 @@ export function useCreatePreOrderBling() {
           .eq('local_id', data.contactId)
           .maybeSingle();
 
-        if (!mapping?.bling_id) {
-          throw new Error('Não foi possível criar/encontrar contato no Bling');
+        if (mapping?.bling_id) {
+          contactBlingId = parseInt(mapping.bling_id);
+        } else {
+          // Force-create contact in Bling (even if sync_contacts is disabled)
+          const blingData = {
+            nome: data.contactData.full_name,
+            tipo: data.contactData.person_type === 'company' ? 'J' : 'F',
+            cpfCnpj: data.contactData.cpf_cnpj || undefined,
+            email: data.contactData.email || undefined,
+            celular: data.contactData.phone,
+          };
+
+          const response = await blingApi('/contatos', config.access_token, 'POST', blingData);
+          const newBlingId = response.data?.id;
+
+          if (!newBlingId) {
+            throw new Error('Não foi possível criar contato no Bling');
+          }
+
+          // Save mapping
+          await supabase
+            .from('bling_id_mappings')
+            .insert({
+              tenant_id: config.tenant_id,
+              entity_type: 'contact',
+              local_id: data.contactId,
+              bling_id: String(newBlingId),
+              sync_direction: 'local_to_bling',
+            });
+
+          contactBlingId = newBlingId;
         }
-        contactBlingId = parseInt(mapping.bling_id);
       }
 
       // 3. Create pre-order in Bling
