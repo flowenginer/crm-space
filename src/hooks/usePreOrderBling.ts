@@ -36,6 +36,7 @@ interface PreOrderData {
   vendedorId?: number;
   valorUnitario?: number;
   quantidade?: number;
+  valorTotal?: number;
 }
 
 export function useCreatePreOrderBling() {
@@ -145,7 +146,7 @@ export function useCreatePreOrderBling() {
       const currentFields = (currentContact?.custom_fields as Record<string, unknown>) || {};
       const pedidosBling = (currentFields.pedidos_bling as Array<{ numero: string; data: string; valor: number | null }>) || [];
 
-      const totalPedido = (data.valorUnitario || 0) * (data.quantidade || 1);
+      const totalPedido = data.valorTotal || ((data.valorUnitario || 0) * (data.quantidade || 1));
       pedidosBling.push({
         numero: blingNumero,
         data: new Date().toISOString(),
