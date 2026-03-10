@@ -6,6 +6,56 @@ const corsHeaders = {
 };
 
 const BLING_API_URL = "https://www.bling.com.br/Api/v3";
+const BLING_TOKEN_URL = "https://www.bling.com.br/Api/v3/oauth/token";
+
+async function refreshBlingToken(supabase: ReturnType<typeof createClient>, config: Record<string, unknown>): Promise<string | null> {
+  console.log(`[bling-proxy] Token expirado, tentando refresh para tenant ${config.tenant_id}...`);
+
+  try {
+    const tokenResponse = await fetch(BLING_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `Basic ${btoa(`${config.client_id}:${config.client_secret}`)}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: config.refresh_token as string,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error(`[bling-proxy] Falha no refresh token: ${errorText}`);
+
+      await supabase
+        .from("bling_integration_config")
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq("id", config.id);
+
+      return null;
+    }
+
+    const tokens = await tokenResponse.json();
+    const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+
+    await supabase
+      .from("bling_integration_config")
+      .update({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_expires_at: tokenExpiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", config.id);
+
+    console.log(`[bling-proxy] Token renovado com sucesso, expira em: ${tokenExpiresAt}`);
+    return tokens.access_token;
+  } catch (err) {
+    console.error(`[bling-proxy] Erro ao renovar token:`, err);
+    return null;
+  }
+}
 
 async function blingApiFetch(endpoint: string, accessToken: string, method = "GET", body?: Record<string, unknown>) {
   const response = await fetch(`${BLING_API_URL}${endpoint}`, {
@@ -28,7 +78,6 @@ async function blingApiFetch(endpoint: string, accessToken: string, method = "GE
 
   if (!response.ok) {
     console.error(`[bling-proxy] Bling API error ${response.status}: ${responseText}`);
-    // Extract meaningful error message from Bling's response
     let errorMessage = `Bling API ${response.status}`;
     if (responseData?.error?.message) {
       errorMessage = responseData.error.message;
@@ -45,6 +94,36 @@ async function blingApiFetch(endpoint: string, accessToken: string, method = "GE
   }
 
   return responseData;
+}
+
+function isTokenError(result: Record<string, unknown>): boolean {
+  return result?.status === 401 ||
+    result?.error === "invalid_token" ||
+    (typeof result?.error === "string" && (result.error as string).toLowerCase().includes("invalid_token")) ||
+    (typeof result?.error === "string" && (result.error as string).toLowerCase().includes("token")) && result?.status === 401;
+}
+
+async function blingApiFetchWithRetry(
+  endpoint: string,
+  accessToken: string,
+  method: string,
+  body: Record<string, unknown> | undefined,
+  supabase: ReturnType<typeof createClient>,
+  config: Record<string, unknown>
+) {
+  let result = await blingApiFetch(endpoint, accessToken, method, body);
+
+  if (result?.error && isTokenError(result)) {
+    const newToken = await refreshBlingToken(supabase, config);
+    if (newToken) {
+      console.log(`[bling-proxy] Retentando chamada com novo token...`);
+      result = await blingApiFetch(endpoint, newToken, method, body);
+    } else {
+      return { error: "Token expirado e não foi possível renovar. Reconecte o Bling nas configurações.", status: 401 };
+    }
+  }
+
+  return result;
 }
 
 Deno.serve(async (req) => {
@@ -66,7 +145,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get Bling config
+    // Get Bling config (incluindo client_id, client_secret e refresh_token para poder renovar)
     const { data: config, error: configError } = await supabase
       .from("bling_integration_config")
       .select("*")
@@ -85,7 +164,7 @@ Deno.serve(async (req) => {
     if (action === "create_contact") {
       const { contact_data } = payload;
       console.log(`[bling-proxy] Creating contact:`, JSON.stringify(contact_data));
-      const result = await blingApiFetch("/contatos", accessToken, "POST", contact_data);
+      const result = await blingApiFetchWithRetry("/contatos", accessToken, "POST", contact_data, supabase, config);
       return new Response(
         JSON.stringify(result),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -95,7 +174,7 @@ Deno.serve(async (req) => {
     if (action === "create_pre_order") {
       const { order_data } = payload;
       console.log(`[bling-proxy] Creating pre-order:`, JSON.stringify(order_data));
-      const result = await blingApiFetch("/pedidos/vendas", accessToken, "POST", order_data);
+      const result = await blingApiFetchWithRetry("/pedidos/vendas", accessToken, "POST", order_data, supabase, config);
       return new Response(
         JSON.stringify(result),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -105,7 +184,7 @@ Deno.serve(async (req) => {
     if (action === "update_contact") {
       const { contact_data, bling_id } = payload;
       console.log(`[bling-proxy] Updating contact ${bling_id}:`, JSON.stringify(contact_data));
-      const result = await blingApiFetch(`/contatos/${bling_id}`, accessToken, "PUT", contact_data);
+      const result = await blingApiFetchWithRetry(`/contatos/${bling_id}`, accessToken, "PUT", contact_data, supabase, config);
       return new Response(
         JSON.stringify(result),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
