@@ -128,7 +128,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
             id, full_name, phone, email, avatar_url, is_online, is_typing,
             street, number, complement, neighborhood, city, state, zip_code,
             cpf_cnpj, notes, birth_date, first_contact_at, last_interaction_at, created_at,
-            origin, origin_campaign, referral_data, lead_status, assigned_to, negotiated_value, segment_id, shirt_quantity,
+            origin, origin_campaign, referral_data, lead_status, assigned_to, negotiated_value, segment_id, shirt_quantity, custom_fields,
             segment:segments(id, name, color),
             owner_agent:profiles!contacts_assigned_to_fkey(
               id, full_name, avatar_url
@@ -2052,6 +2052,33 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
             )}
           </div>
         </div>
+
+        {/* Pedidos Bling */}
+        {(() => {
+          const pedidosBling = Array.isArray((contact.custom_fields as any)?.pedidos_bling)
+            ? (contact.custom_fields as any).pedidos_bling
+            : [];
+          if (pedidosBling.length === 0) return null;
+          return (
+            <div className="p-3 border-b border-border">
+              <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Package size={12} /> Pedidos Bling ({pedidosBling.length})
+              </label>
+              <div className="space-y-1.5">
+                {pedidosBling.map((pedido: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between bg-muted/50 rounded-md px-2.5 py-1.5">
+                    <span className="text-xs font-mono font-medium text-foreground">
+                      #{pedido.numero}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {pedido.data ? new Date(pedido.data).toLocaleDateString('pt-BR') : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Meta Ads / Referral Data */}
         {(contact.origin === 'meta_ads' || contact.referral_data || conversation.referral_data || contactReferralData || conversation.referral_source) && (() => {
