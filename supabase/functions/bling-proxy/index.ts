@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const BLING_API_URL = "https://www.bling.com.br/Api/v3";
 
-async function blingApi(endpoint: string, accessToken: string, method = "GET", body?: Record<string, unknown>) {
+async function blingApiFetch(endpoint: string, accessToken: string, method = "GET", body?: Record<string, unknown>) {
   const response = await fetch(`${BLING_API_URL}${endpoint}`, {
     method,
     headers: {
@@ -18,13 +18,33 @@ async function blingApi(endpoint: string, accessToken: string, method = "GET", b
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[bling-proxy] Bling API error ${response.status}: ${errorText}`);
-    throw new Error(`Bling API error: ${response.status} - ${errorText}`);
+  const responseText = await response.text();
+  let responseData;
+  try {
+    responseData = JSON.parse(responseText);
+  } catch {
+    responseData = { raw: responseText };
   }
 
-  return response.json();
+  if (!response.ok) {
+    console.error(`[bling-proxy] Bling API error ${response.status}: ${responseText}`);
+    // Extract meaningful error message from Bling's response
+    let errorMessage = `Bling API ${response.status}`;
+    if (responseData?.error?.message) {
+      errorMessage = responseData.error.message;
+    } else if (responseData?.error?.description) {
+      errorMessage = responseData.error.description;
+    } else if (responseData?.error?.type) {
+      errorMessage = `${responseData.error.type}: ${JSON.stringify(responseData.error.fields || responseData.error)}`;
+    } else if (typeof responseData?.error === 'string') {
+      errorMessage = responseData.error;
+    } else {
+      errorMessage = `Bling API erro ${response.status}: ${responseText.substring(0, 200)}`;
+    }
+    return { error: errorMessage, status: response.status, details: responseData };
+  }
+
+  return responseData;
 }
 
 Deno.serve(async (req) => {
@@ -64,7 +84,8 @@ Deno.serve(async (req) => {
 
     if (action === "create_contact") {
       const { contact_data } = payload;
-      const result = await blingApi("/contatos", accessToken, "POST", contact_data);
+      console.log(`[bling-proxy] Creating contact:`, JSON.stringify(contact_data));
+      const result = await blingApiFetch("/contatos", accessToken, "POST", contact_data);
       return new Response(
         JSON.stringify(result),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -73,7 +94,18 @@ Deno.serve(async (req) => {
 
     if (action === "create_pre_order") {
       const { order_data } = payload;
-      const result = await blingApi("/pedidos/vendas", accessToken, "POST", order_data);
+      console.log(`[bling-proxy] Creating pre-order:`, JSON.stringify(order_data));
+      const result = await blingApiFetch("/pedidos/vendas", accessToken, "POST", order_data);
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "update_contact") {
+      const { contact_data, bling_id } = payload;
+      console.log(`[bling-proxy] Updating contact ${bling_id}:`, JSON.stringify(contact_data));
+      const result = await blingApiFetch(`/contatos/${bling_id}`, accessToken, "PUT", contact_data);
       return new Response(
         JSON.stringify(result),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }

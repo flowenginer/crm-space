@@ -76,14 +76,23 @@ export async function isBlingEntitySyncEnabled(entityType: 'contacts' | 'orders'
 
 // Helper to make Bling API calls via Edge Function proxy (avoids CORS)
 export async function blingApi(endpoint: string, _accessToken: string, method = 'GET', body?: Record<string, unknown>) {
-  // Determine action from endpoint+method
+  // Determine action and payload from endpoint+method
   let action: string;
+  let proxyPayload: Record<string, unknown> = {};
+
   if (method === 'POST' && endpoint === '/contatos') {
     action = 'create_contact';
+    proxyPayload = { contact_data: body };
   } else if (method === 'POST' && endpoint === '/pedidos/vendas') {
     action = 'create_pre_order';
+    proxyPayload = { order_data: body };
+  } else if (method === 'PUT' && endpoint.startsWith('/contatos/')) {
+    action = 'update_contact';
+    const blingId = endpoint.split('/contatos/')[1];
+    proxyPayload = { contact_data: body, bling_id: blingId };
   } else {
     // Fallback: direct call (only works server-side / Edge Functions)
+    console.warn(`[Bling API] No proxy action for ${method} ${endpoint}, attempting direct call`);
     const response = await fetch(`${BLING_API_URL}${endpoint}`, {
       method,
       headers: {
@@ -111,18 +120,18 @@ export async function blingApi(endpoint: string, _accessToken: string, method = 
     body: {
       action,
       tenant_id: config.tenant_id,
-      ...(action === 'create_contact' ? { contact_data: body } : { order_data: body }),
+      ...proxyPayload,
     },
   });
 
   if (error) {
-    console.error(`[Bling API Proxy] Error:`, error);
-    throw new Error(`Bling API proxy error: ${error.message}`);
+    console.error(`[Bling API Proxy] Invoke error:`, error);
+    throw new Error(`Erro de conexão com Bling: ${error.message}`);
   }
 
   if (data?.error) {
-    console.error(`[Bling API Proxy] Error:`, data.error);
-    throw new Error(`Bling API error: ${data.error}`);
+    console.error(`[Bling API Proxy] Bling error:`, data.error, data.details);
+    throw new Error(data.error);
   }
 
   return data;
@@ -559,7 +568,6 @@ export async function createPreOrderInBling(data: {
     data: new Date().toISOString().split('T')[0],
     observacoes: data.observacoes,
     observacoesInternas: data.observacoesInternas || 'Pré-pedido criado via CRM',
-    itens: [],
   };
 
   if (data.endereco) {
