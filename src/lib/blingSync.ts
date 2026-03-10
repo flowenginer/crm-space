@@ -567,17 +567,22 @@ export async function syncQuoteToBling(quoteId: string, quoteData: {
 // Fetch sellers list from Bling
 export async function listBlingVendedores(): Promise<Array<{ id: number; nome: string }>> {
   const config = await getBlingConfig();
-  if (!config?.access_token) return [];
+  if (!config?.access_token) {
+    console.warn('[Bling] No access_token, cannot fetch vendedores');
+    return [];
+  }
 
   try {
     const response = await blingApi('/vendedores', config.access_token, 'GET');
-    const vendedores = response.data || [];
+    console.log('[Bling] Vendedores response:', JSON.stringify(response));
+    // Bling v3 returns { data: [...] } - handle both direct array and nested
+    const vendedores = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
     return vendedores.map((v: any) => ({
       id: v.id,
-      nome: v.contato?.nome || v.nome || `Vendedor #${v.id}`,
+      nome: v.contato?.nome || v.nome || v.despistarao || `Vendedor #${v.id}`,
     }));
   } catch (e) {
-    console.warn('[Bling] Could not fetch vendedores', e);
+    console.error('[Bling] Error fetching vendedores:', e);
     return [];
   }
 }

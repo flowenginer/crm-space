@@ -95,7 +95,7 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
 
   // Vendedor / Valor / Quantidade
   const [vendedorId, setVendedorId] = useState<number | null>(null);
-  const [valorUnitario, setValorUnitario] = useState<number>(0);
+  const [valorTotal, setValorTotal] = useState<number>(0);
   const [quantidade, setQuantidade] = useState<number>(0);
 
   // Notes
@@ -128,7 +128,7 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
       setTamanhos({ PP: 0, P: 0, M: 0, G: 0, GG: 0, XG: 0 });
       setObservacoes('');
       setVendedorId(null);
-      setValorUnitario(negotiatedValue || 0);
+      setValorTotal(negotiatedValue || 0);
       setQuantidade(shirtQuantity || 0);
     }
   }, [open, contact, negotiatedValue, shirtQuantity]);
@@ -246,8 +246,9 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
       observacoes: buildObservacoes(),
       observacoesInternas: 'Pré-pedido criado via CRM',
       vendedorId: vendedorId || undefined,
-      valorUnitario: valorUnitario || undefined,
+      valorUnitario: quantidade > 0 ? valorTotal / quantidade : valorTotal || undefined,
       quantidade: quantidade || undefined,
+      valorTotal: valorTotal || undefined,
     });
 
     onOpenChange(false);
@@ -428,13 +429,13 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Valor Unitário (R$)</Label>
+                  <Label className="text-xs">Valor Total (R$)</Label>
                   <Input
                     type="number"
                     min={0}
                     step="0.01"
-                    value={valorUnitario || ''}
-                    onChange={(e) => setValorUnitario(parseFloat(e.target.value) || 0)}
+                    value={valorTotal || ''}
+                    onChange={(e) => setValorTotal(parseFloat(e.target.value) || 0)}
                     className="h-8 text-sm"
                     placeholder="0,00"
                   />
@@ -451,9 +452,12 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
                   />
                 </div>
               </div>
-              {valorUnitario > 0 && quantidade > 0 && (
+              {valorTotal > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Total: <span className="font-semibold text-foreground">R$ {(valorUnitario * quantidade).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  Total: <span className="font-semibold text-foreground">R$ {valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  {quantidade > 1 && (
+                    <span> (R$ {(valorTotal / quantidade).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} por unidade)</span>
+                  )}
                 </p>
               )}
             </div>
