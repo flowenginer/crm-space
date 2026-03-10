@@ -62,11 +62,12 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
   const createPreOrder = useCreatePreOrderBling();
 
   // Vendedores from Bling
-  const { data: vendedores = [], isLoading: vendedoresLoading } = useQuery({
+  const { data: vendedores = [], isLoading: vendedoresLoading, isError: vendedoresError } = useQuery({
     queryKey: ['bling-vendedores'],
     queryFn: listBlingVendedores,
     enabled: open,
     staleTime: 5 * 60 * 1000,
+    retry: 2,
   });
 
   // WhatsApp paste
@@ -422,7 +423,9 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
                     className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     disabled={vendedoresLoading}
                   >
-                    <option value="">{vendedoresLoading ? 'Carregando...' : 'Selecionar vendedor'}</option>
+                    <option value="">
+                      {vendedoresLoading ? 'Carregando vendedores...' : vendedoresError ? 'Erro ao carregar vendedores' : vendedores.length === 0 ? 'Nenhum vendedor encontrado' : 'Selecionar vendedor'}
+                    </option>
                     {vendedores.map((v) => (
                       <option key={v.id} value={v.id}>{v.nome}</option>
                     ))}
