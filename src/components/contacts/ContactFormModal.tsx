@@ -769,6 +769,37 @@ export function ContactFormModal({
                   </div>
                 );
               })()}
+
+              {/* Pedidos Bling - só aparece no modo edit se tiver dados */}
+              {mode === 'edit' && (() => {
+                const pedidosBling = Array.isArray((initialData?.custom_fields as any)?.pedidos_bling)
+                  ? (initialData?.custom_fields as any).pedidos_bling
+                  : [];
+                if (pedidosBling.length === 0) return null;
+                return (
+                  <div className="border rounded-lg p-4 space-y-3 bg-muted/50">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-4 h-4 text-primary" />
+                      <Label className="font-semibold">Pedidos Bling ({pedidosBling.length})</Label>
+                    </div>
+                    <div className="space-y-2">
+                      {pedidosBling.map((pedido: any, idx: number) => (
+                        <div key={idx} className="border rounded-md p-3 bg-background flex items-center justify-between">
+                          <span className="flex items-center gap-1 font-mono font-medium text-sm">
+                            <Hash className="w-3 h-3 text-muted-foreground" />
+                            {pedido.numero}
+                          </span>
+                          {pedido.data && (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(pedido.data).toLocaleDateString('pt-BR')}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </TabsContent>
 
             {/* History Tab - Always visible in edit mode */}
