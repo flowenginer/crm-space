@@ -84,13 +84,16 @@ export function useCreatePreOrderBling() {
           contactBlingId = parseInt(mapping.bling_id);
         } else {
           // Force-create contact in Bling (even if sync_contacts is disabled)
-          const blingData = {
+          const cpfCnpjClean = data.contactData.cpf_cnpj?.replace(/\D/g, '') || undefined;
+          const celularClean = data.contactData.phone?.replace(/\D/g, '') || undefined;
+          const blingData: Record<string, unknown> = {
             nome: data.contactData.full_name,
             tipo: data.contactData.person_type === 'company' ? 'J' : 'F',
-            numeroDocumento: data.contactData.cpf_cnpj?.replace(/\D/g, '') || '',
-            email: data.contactData.email || '',
-            celular: data.contactData.phone?.replace(/\D/g, '') || '',
+            contribuinte: 9,
           };
+          if (cpfCnpjClean) blingData.numeroDocumento = cpfCnpjClean;
+          if (data.contactData.email) blingData.email = data.contactData.email;
+          if (celularClean) blingData.celular = celularClean;
 
           const response = await blingApi('/contatos', config.access_token, 'POST', blingData);
           const newBlingId = response.data?.id;

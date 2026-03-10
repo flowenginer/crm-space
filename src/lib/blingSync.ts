@@ -172,15 +172,19 @@ export async function syncContactToBling(contactId: string, contactData: {
       .maybeSingle();
 
     // Format phone: remove non-digits
-    const celular = contactData.phone?.replace(/\D/g, '') || '';
+    const celular = contactData.phone?.replace(/\D/g, '') || undefined;
+    const cpfCnpjClean = contactData.cpf_cnpj?.replace(/\D/g, '') || undefined;
 
     const blingData: Record<string, unknown> = {
       nome: contactData.full_name,
       tipo: contactData.person_type === 'company' ? 'J' : 'F',
-      numeroDocumento: contactData.cpf_cnpj?.replace(/\D/g, '') || '',
-      email: contactData.email || '',
-      celular,
+      contribuinte: 9, // 9 = Não contribuinte (default)
     };
+
+    // Only send optional fields if they have values
+    if (cpfCnpjClean) blingData.numeroDocumento = cpfCnpjClean;
+    if (contactData.email) blingData.email = contactData.email;
+    if (celular) blingData.celular = celular;
 
     if (contactData.street) {
       blingData.enderecos = {
