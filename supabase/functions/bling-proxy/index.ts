@@ -84,11 +84,20 @@ async function blingApiFetch(endpoint: string, accessToken: string, method = "GE
     const blingError = responseData?.error;
     if (blingError?.message) {
       errorMessage = blingError.message;
-      // Append field-level details if available
+      // Bling v3 error format: fields[] with { code, msg, element, namespace, collection[] }
       if (Array.isArray(blingError.fields) && blingError.fields.length > 0) {
-        const fieldDetails = blingError.fields.map((f: { field?: string; message?: string }) =>
-          `${f.field || '?'}: ${f.message || 'inválido'}`
-        ).join('; ');
+        const fieldDetails = blingError.fields.map((f: { code?: number; msg?: string; element?: string; field?: string; message?: string; collection?: Array<{ msg?: string; element?: string }> }) => {
+          const fieldName = f.element || f.field || '?';
+          const fieldMsg = f.msg || f.message || 'inválido';
+          // If there's a nested collection with more details, include them
+          if (Array.isArray(f.collection) && f.collection.length > 0) {
+            const collectionDetails = f.collection.map((c: { msg?: string; element?: string }) =>
+              `${c.element || '?'}: ${c.msg || 'inválido'}`
+            ).join(', ');
+            return `${fieldName}: ${fieldMsg} [${collectionDetails}]`;
+          }
+          return `${fieldName}: ${fieldMsg}`;
+        }).join('; ');
         errorMessage = `${errorMessage} (${fieldDetails})`;
       }
     } else if (blingError?.description) {
@@ -173,7 +182,7 @@ Deno.serve(async (req) => {
 
     if (action === "create_contact") {
       const { contact_data } = payload;
-      console.log(`[bling-proxy] Creating contact:`, JSON.stringify(contact_data));
+      console.log(`[bling-proxy] Creating contact - FULL PAYLOAD:`, JSON.stringify(contact_data, null, 2));
       const result = await blingApiFetchWithRetry("/contatos", accessToken, "POST", contact_data, supabase, config);
       return new Response(
         JSON.stringify(result),
