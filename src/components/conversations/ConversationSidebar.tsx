@@ -36,6 +36,7 @@ import { QuoteSelectionModal } from './QuoteSelectionModal';
 import { QuoteDetailsInlineModal } from './QuoteDetailsInlineModal';
 import { OrderSelectionModal } from './OrderSelectionModal';
 import { OrderDetailsInlineModal } from './OrderDetailsInlineModal';
+import { PreOrderBlingModal } from './PreOrderBlingModal';
 import { QuotePendingAlert } from './QuotePendingAlert';
 import { useContactHistory, ContactQuote, ContactOrder } from '@/hooks/useContactHistory';
 import { useUpdateQuoteStatus } from '@/hooks/useQuotes';
@@ -80,6 +81,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   const [showOrderSelectionModal, setShowOrderSelectionModal] = useState(false);
   const [showOrderDetailsModal, setShowOrderDetailsModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [showPreOrderBlingModal, setShowPreOrderBlingModal] = useState(false);
   
   // Check if ERP module is enabled
   const isERPEnabled = useERPEnabled();
@@ -1209,7 +1211,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
                           if (contactOrders.length > 0) {
                             setShowOrderSelectionModal(true);
                           } else {
-                            setShowOrderModal(true);
+                            setShowPreOrderBlingModal(true);
                           }
                         }}
                       >
@@ -1504,11 +1506,11 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
           
           <Button
             onClick={() => {
-              // If contact has orders, show selection modal, otherwise create new
+              // If contact has orders, show selection modal, otherwise create pre-order
               if (contactOrders.length > 0) {
                 setShowOrderSelectionModal(true);
               } else {
-                setShowOrderModal(true);
+                setShowPreOrderBlingModal(true);
               }
             }}
             variant="outline"
@@ -2310,7 +2312,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
               setSelectedOrderId(order.id);
               setShowOrderDetailsModal(true);
             }}
-            onCreateNew={() => setShowOrderModal(true)}
+            onCreateNew={() => setShowPreOrderBlingModal(true)}
             onReopenOrder={async (order) => {
               await updateOrderStatus.mutateAsync({ orderId: order.id, status: 'pending' });
               setSelectedOrderId(order.id);
@@ -2338,6 +2340,12 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
               setShowOrderDetailsModal(false);
               setShowOrderSelectionModal(true);
             }}
+          />
+          <PreOrderBlingModal
+            open={showPreOrderBlingModal}
+            onOpenChange={setShowPreOrderBlingModal}
+            contact={contact}
+            conversationId={conversationId}
           />
         </>
       )}
