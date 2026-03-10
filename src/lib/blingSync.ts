@@ -650,18 +650,41 @@ export async function createPreOrderInBling(data: {
     throw new Error('Bling não retornou ID do pedido');
   }
 
-  // Fetch the created order to get the real "numero"
-  let blingNumero = response.data?.numero;
-  if (!blingNumero) {
+  console.log('[Bling] POST response data:', JSON.stringify(response.data));
+
+  // The POST response usually only returns the internal "id" (large number like 2528085681110).
+  // The real user-facing "numero" (sequential like 12345) must be fetched via GET.
+  // We also need to ignore numero=0 or numero equal to the id (not the real order number).
+  let blingNumero: string | number | null = response.data?.numero;
+  const idStr = String(blingId);
+
+  // Check if numero from POST is actually useful (not 0, not same as id, not id/0 format)
+  const isNumeroUseful = blingNumero &&
+    String(blingNumero) !== '0' &&
+    String(blingNumero) !== idStr &&
+    !String(blingNumero).startsWith(idStr + '/');
+
+  if (!isNumeroUseful) {
+    console.log(`[Bling] POST numero "${blingNumero}" is not useful, fetching order details...`);
     try {
+      // Small delay to allow Bling to process the order and assign the real numero
+      await new Promise(resolve => setTimeout(resolve, 1500));
       const orderDetails = await blingApi(`/pedidos/vendas/${blingId}`, config.access_token, 'GET');
-      blingNumero = orderDetails.data?.numero;
+      console.log('[Bling] GET order response data:', JSON.stringify(orderDetails.data));
+      const fetchedNumero = orderDetails.data?.numero;
+      if (fetchedNumero && String(fetchedNumero) !== '0' && String(fetchedNumero) !== idStr && !String(fetchedNumero).startsWith(idStr + '/')) {
+        blingNumero = fetchedNumero;
+      } else {
+        console.warn(`[Bling] GET order numero "${fetchedNumero}" still not useful, using id as fallback`);
+        blingNumero = null;
+      }
     } catch (e) {
       console.warn('[Bling] Could not fetch order numero, using id as fallback', e);
+      blingNumero = null;
     }
   }
 
-  return { blingId: String(blingId), blingNumero: blingNumero ? String(blingNumero) : String(blingId) };
+  return { blingId: idStr, blingNumero: blingNumero ? String(blingNumero) : idStr };
 }
 
 // Get Bling mapping for an entity
