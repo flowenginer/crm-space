@@ -79,14 +79,24 @@ async function blingApiFetch(endpoint: string, accessToken: string, method = "GE
   if (!response.ok) {
     console.error(`[bling-proxy] Bling API error ${response.status}: ${responseText}`);
     let errorMessage = `Bling API ${response.status}`;
-    if (responseData?.error?.message) {
-      errorMessage = responseData.error.message;
-    } else if (responseData?.error?.description) {
-      errorMessage = responseData.error.description;
-    } else if (responseData?.error?.type) {
-      errorMessage = `${responseData.error.type}: ${JSON.stringify(responseData.error.fields || responseData.error)}`;
-    } else if (typeof responseData?.error === 'string') {
-      errorMessage = responseData.error;
+
+    // Bling v3 error format: { error: { type, message, fields: [{ field, message }] } }
+    const blingError = responseData?.error;
+    if (blingError?.message) {
+      errorMessage = blingError.message;
+      // Append field-level details if available
+      if (Array.isArray(blingError.fields) && blingError.fields.length > 0) {
+        const fieldDetails = blingError.fields.map((f: { field?: string; message?: string }) =>
+          `${f.field || '?'}: ${f.message || 'inválido'}`
+        ).join('; ');
+        errorMessage = `${errorMessage} (${fieldDetails})`;
+      }
+    } else if (blingError?.description) {
+      errorMessage = blingError.description;
+    } else if (blingError?.type) {
+      errorMessage = `${blingError.type}: ${JSON.stringify(blingError.fields || blingError)}`;
+    } else if (typeof blingError === 'string') {
+      errorMessage = blingError;
     } else {
       errorMessage = `Bling API erro ${response.status}: ${responseText.substring(0, 200)}`;
     }
