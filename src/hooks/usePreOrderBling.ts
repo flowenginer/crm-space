@@ -87,9 +87,9 @@ export function useCreatePreOrderBling() {
           const blingData = {
             nome: data.contactData.full_name,
             tipo: data.contactData.person_type === 'company' ? 'J' : 'F',
-            cpfCnpj: data.contactData.cpf_cnpj || undefined,
-            email: data.contactData.email || undefined,
-            celular: data.contactData.phone,
+            numeroDocumento: data.contactData.cpf_cnpj?.replace(/\D/g, '') || '',
+            email: data.contactData.email || '',
+            celular: data.contactData.phone?.replace(/\D/g, '') || '',
           };
 
           const response = await blingApi('/contatos', config.access_token, 'POST', blingData);

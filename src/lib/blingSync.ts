@@ -171,22 +171,30 @@ export async function syncContactToBling(contactId: string, contactData: {
       .eq('local_id', contactId)
       .maybeSingle();
 
-    const blingData = {
+    // Format phone: remove non-digits
+    const celular = contactData.phone?.replace(/\D/g, '') || '';
+
+    const blingData: Record<string, unknown> = {
       nome: contactData.full_name,
       tipo: contactData.person_type === 'company' ? 'J' : 'F',
-      cpfCnpj: contactData.cpf_cnpj || undefined,
-      email: contactData.email || undefined,
-      celular: contactData.phone,
-      endereco: contactData.street ? {
-        endereco: contactData.street,
-        numero: contactData.number || 'S/N',
-        complemento: contactData.complement,
-        bairro: contactData.neighborhood,
-        cep: contactData.zip_code?.replace(/\D/g, ''),
-        municipio: contactData.city,
-        uf: contactData.state,
-      } : undefined,
+      numeroDocumento: contactData.cpf_cnpj?.replace(/\D/g, '') || '',
+      email: contactData.email || '',
+      celular,
     };
+
+    if (contactData.street) {
+      blingData.enderecos = {
+        geral: {
+          endereco: contactData.street,
+          numero: contactData.number || 'S/N',
+          complemento: contactData.complement || '',
+          bairro: contactData.neighborhood || '',
+          cep: contactData.zip_code?.replace(/\D/g, '') || '',
+          municipio: contactData.city || '',
+          uf: contactData.state || '',
+        },
+      };
+    }
 
     if (existingMapping?.bling_id) {
       // Update existing
