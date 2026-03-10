@@ -210,6 +210,25 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "list_vendedores") {
+      console.log(`[bling-proxy] Listing vendedores`);
+      const result = await blingApiFetchWithRetry("/vendedores", accessToken, "GET", undefined, supabase, config);
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "get_order") {
+      const { order_id } = payload;
+      console.log(`[bling-proxy] Getting order ${order_id}`);
+      const result = await blingApiFetchWithRetry(`/pedidos/vendas/${order_id}`, accessToken, "GET", undefined, supabase, config);
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ error: `Unknown action: ${action}` }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }

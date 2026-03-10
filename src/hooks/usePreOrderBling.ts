@@ -33,6 +33,9 @@ interface PreOrderData {
   };
   observacoes: string;
   observacoesInternas?: string;
+  vendedorId?: number;
+  valorUnitario?: number;
+  quantidade?: number;
 }
 
 export function useCreatePreOrderBling() {
@@ -127,6 +130,9 @@ export function useCreatePreOrderBling() {
         endereco: data.endereco,
         observacoes: data.observacoes,
         observacoesInternas: data.observacoesInternas,
+        vendedorId: data.vendedorId,
+        valorUnitario: data.valorUnitario,
+        quantidade: data.quantidade,
       });
 
       // 4. Save order number to contact's custom_fields (accumulate)
@@ -139,10 +145,11 @@ export function useCreatePreOrderBling() {
       const currentFields = (currentContact?.custom_fields as Record<string, unknown>) || {};
       const pedidosBling = (currentFields.pedidos_bling as Array<{ numero: string; data: string; valor: number | null }>) || [];
 
+      const totalPedido = (data.valorUnitario || 0) * (data.quantidade || 1);
       pedidosBling.push({
         numero: blingNumero,
         data: new Date().toISOString(),
-        valor: null,
+        valor: totalPedido > 0 ? totalPedido : null,
       });
 
       await supabase

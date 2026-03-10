@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,7 @@ import {
 import { parseWhatsAppResponse, ParsedWhatsAppData } from '@/lib/parseWhatsAppResponse';
 import { fetchAddressByCep } from '@/lib/viaCep';
 import { useCreatePreOrderBling } from '@/hooks/usePreOrderBling';
+import { listBlingVendedores } from '@/lib/blingSync';
 import { toast } from 'sonner';
 
 interface ContactData {
@@ -47,6 +49,8 @@ interface PreOrderBlingModalProps {
   onOpenChange: (open: boolean) => void;
   contact: ContactData | null;
   conversationId: string;
+  negotiatedValue?: number;
+  shirtQuantity?: number;
 }
 
 const ESTADOS_BR = [
@@ -54,8 +58,16 @@ const ESTADOS_BR = [
   'PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'
 ];
 
-export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId }: PreOrderBlingModalProps) {
+export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId, negotiatedValue = 0, shirtQuantity = 0 }: PreOrderBlingModalProps) {
   const createPreOrder = useCreatePreOrderBling();
+
+  // Vendedores from Bling
+  const { data: vendedores = [], isLoading: vendedoresLoading } = useQuery({
+    queryKey: ['bling-vendedores'],
+    queryFn: listBlingVendedores,
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
 
   // WhatsApp paste
   const [whatsappText, setWhatsappText] = useState('');
@@ -80,6 +92,11 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
   // Sizes
   const [genero, setGenero] = useState<'M' | 'F' | ''>('');
   const [tamanhos, setTamanhos] = useState({ PP: 0, P: 0, M: 0, G: 0, GG: 0, XG: 0 });
+
+  // Vendedor / Valor / Quantidade
+  const [vendedorId, setVendedorId] = useState<number | null>(null);
+  const [valorUnitario, setValorUnitario] = useState<number>(0);
+  const [quantidade, setQuantidade] = useState<number>(0);
 
   // Notes
   const [observacoes, setObservacoes] = useState('');
@@ -110,8 +127,11 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
       setGenero('');
       setTamanhos({ PP: 0, P: 0, M: 0, G: 0, GG: 0, XG: 0 });
       setObservacoes('');
+      setVendedorId(null);
+      setValorUnitario(negotiatedValue || 0);
+      setQuantidade(shirtQuantity || 0);
     }
-  }, [open, contact]);
+  }, [open, contact, negotiatedValue, shirtQuantity]);
 
   const totalUnidades = Object.values(tamanhos).reduce((sum, v) => sum + v, 0);
 
@@ -225,6 +245,9 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
       } : undefined,
       observacoes: buildObservacoes(),
       observacoesInternas: 'Pré-pedido criado via CRM',
+      vendedorId: vendedorId || undefined,
+      valorUnitario: valorUnitario || undefined,
+      quantidade: quantidade || undefined,
     });
 
     onOpenChange(false);
@@ -384,6 +407,55 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
                   </select>
                 </div>
               </div>
+            </div>
+
+            {/* Vendedor / Valor / Quantidade */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Pedido</h4>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Vendedor</Label>
+                  <select
+                    value={vendedorId || ''}
+                    onChange={(e) => setVendedorId(e.target.value ? Number(e.target.value) : null)}
+                    className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    disabled={vendedoresLoading}
+                  >
+                    <option value="">{vendedoresLoading ? 'Carregando...' : 'Selecionar vendedor'}</option>
+                    {vendedores.map((v) => (
+                      <option key={v.id} value={v.id}>{v.nome}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Valor Unitário (R$)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={valorUnitario || ''}
+                    onChange={(e) => setValorUnitario(parseFloat(e.target.value) || 0)}
+                    className="h-8 text-sm"
+                    placeholder="0,00"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Quantidade</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={quantidade || ''}
+                    onChange={(e) => setQuantidade(parseInt(e.target.value) || 0)}
+                    className="h-8 text-sm"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              {valorUnitario > 0 && quantidade > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Total: <span className="font-semibold text-foreground">R$ {(valorUnitario * quantidade).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                </p>
+              )}
             </div>
 
             {/* Sizes */}

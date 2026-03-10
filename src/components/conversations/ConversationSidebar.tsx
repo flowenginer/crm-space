@@ -2373,6 +2373,8 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
             onOpenChange={setShowPreOrderBlingModal}
             contact={contact}
             conversationId={conversationId}
+            negotiatedValue={contact?.negotiated_value || 0}
+            shirtQuantity={(contact as any)?.shirt_quantity || 0}
           />
         </>
       )}
