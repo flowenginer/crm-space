@@ -564,53 +564,37 @@ export async function syncQuoteToBling(quoteId: string, quoteData: {
   }
 }
 
-// Fetch sellers list from Bling
+// Fetch sellers list from Bling - throws on error so react-query can show error state
 export async function listBlingVendedores(): Promise<Array<{ id: number; nome: string }>> {
   const config = await getBlingConfig();
   if (!config?.access_token) {
-    console.warn('[Bling] No access_token, cannot fetch vendedores');
-    return [];
+    throw new Error('Bling sem access_token configurado');
   }
 
-  try {
-    // Call via proxy - blingApi throws on error, so we need to catch
-    const response = await blingApi('/vendedores', config.access_token, 'GET');
-    console.log('[Bling] Vendedores raw response:', JSON.stringify(response).substring(0, 500));
+  // Call via proxy - let errors propagate to react-query
+  const response = await blingApi('/vendedores', config.access_token, 'GET');
+  console.log('[Bling] Vendedores raw response:', JSON.stringify(response).substring(0, 500));
 
-    // Bling v3 returns { data: [...] } - handle multiple response structures
-    let vendedores: any[] = [];
-    if (Array.isArray(response?.data)) {
-      vendedores = response.data;
-    } else if (Array.isArray(response)) {
-      vendedores = response;
-    } else if (response?.data?.data && Array.isArray(response.data.data)) {
-      // Double-wrapped response
-      vendedores = response.data.data;
-    }
-
-    console.log(`[Bling] Found ${vendedores.length} vendedores`);
-
-    if (vendedores.length === 0) {
-      console.warn('[Bling] No vendedores returned. Full response:', JSON.stringify(response));
-    }
-
-    return vendedores.map((v: any) => ({
-      id: v.id,
-      nome: v.contato?.nome || v.nome || `Vendedor #${v.id}`,
-    }));
-  } catch (e) {
-    // This is the key issue - blingApi throws when proxy returns an error
-    // Instead of silently returning [], log the actual error
-    const errorMsg = e instanceof Error ? e.message : String(e);
-    console.error('[Bling] Error fetching vendedores:', errorMsg);
-
-    // If it's a token/auth error, don't retry silently
-    if (errorMsg.includes('401') || errorMsg.includes('token') || errorMsg.includes('Token')) {
-      console.error('[Bling] Auth error on vendedores - token may need refresh');
-    }
-
-    return [];
+  // Bling v3 returns { data: [...] } - handle multiple response structures
+  let vendedores: any[] = [];
+  if (Array.isArray(response?.data)) {
+    vendedores = response.data;
+  } else if (Array.isArray(response)) {
+    vendedores = response;
+  } else if (response?.data?.data && Array.isArray(response.data.data)) {
+    vendedores = response.data.data;
   }
+
+  console.log(`[Bling] Found ${vendedores.length} vendedores, raw keys:`, response ? Object.keys(response) : 'null');
+
+  if (vendedores.length === 0) {
+    console.warn('[Bling] Zero vendedores. Full response:', JSON.stringify(response));
+  }
+
+  return vendedores.map((v: any) => ({
+    id: v.id,
+    nome: v.contato?.nome || v.nome || `Vendedor #${v.id}`,
+  }));
 }
 
 // Create a pre-order in Bling (minimal data - seller completes in Bling)
