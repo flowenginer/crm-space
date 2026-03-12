@@ -24,6 +24,7 @@ import { parseWhatsAppResponse, ParsedWhatsAppData } from '@/lib/parseWhatsAppRe
 import { fetchAddressByCep } from '@/lib/viaCep';
 import { useCreatePreOrderBling } from '@/hooks/usePreOrderBling';
 import { listBlingVendedores } from '@/lib/blingSync';
+import { useForceRefreshBlingToken } from '@/hooks/useBlingIntegration';
 import { toast } from 'sonner';
 
 interface ContactData {
@@ -60,6 +61,7 @@ const ESTADOS_BR = [
 
 export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId, negotiatedValue = 0, shirtQuantity = 0 }: PreOrderBlingModalProps) {
   const createPreOrder = useCreatePreOrderBling();
+  const forceRefresh = useForceRefreshBlingToken();
 
   // Vendedores from Bling
   const { data: vendedores = [], isLoading: vendedoresLoading, isError: vendedoresError, error: vendedoresErrorObj, refetch: refetchVendedores } = useQuery({
@@ -69,6 +71,11 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
+
+  // Check if error is token-related
+  const isTokenError = vendedoresError && vendedoresErrorObj instanceof Error &&
+    (vendedoresErrorObj.message.includes('Token') || vendedoresErrorObj.message.includes('token') ||
+     vendedoresErrorObj.message.includes('401') || vendedoresErrorObj.message.includes('Reconecte'));
 
   // Show toast with actual error when vendedores fail
   useEffect(() => {
@@ -455,9 +462,27 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
                     )}
                   </div>
                   {vendedoresError && vendedoresErrorObj && (
-                    <p className="text-xs text-red-500 mt-0.5">
-                      {vendedoresErrorObj instanceof Error ? vendedoresErrorObj.message : 'Erro desconhecido'}
-                    </p>
+                    <div className="mt-0.5">
+                      <p className="text-xs text-red-500">
+                        {vendedoresErrorObj instanceof Error ? vendedoresErrorObj.message : 'Erro desconhecido'}
+                      </p>
+                      {isTokenError && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-1 h-6 text-xs"
+                          onClick={async () => {
+                            await forceRefresh.mutateAsync();
+                            refetchVendedores();
+                          }}
+                          disabled={forceRefresh.isPending}
+                        >
+                          {forceRefresh.isPending ? <Loader2 size={12} className="animate-spin mr-1" /> : null}
+                          Renovar Token e Tentar Novamente
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="space-y-1">

@@ -64,19 +64,13 @@ Deno.serve(async (req) => {
 
         if (!tokenResponse.ok) {
           const errorText = await tokenResponse.text();
-          console.error(`[bling-token-refresh] Falha no refresh para tenant ${config.tenant_id}: ${errorText}`);
-          
-          // Marcar como inativo se o refresh falhar
-          await supabase
-            .from("bling_integration_config")
-            .update({
-              is_active: false,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", config.id);
+          console.error(`[bling-token-refresh] Falha no refresh para tenant ${config.tenant_id} (${tokenResponse.status}): ${errorText}`);
+
+          // NÃO marcar is_active=false - manter ativo para que o proxy possa tentar de novo
+          // Só loggar o erro para diagnóstico
 
           failCount++;
-          results.push({ tenant_id: config.tenant_id, status: "failed", error: errorText });
+          results.push({ tenant_id: config.tenant_id, status: "failed", error: `HTTP ${tokenResponse.status}: ${errorText.substring(0, 200)}` });
           continue;
         }
 
