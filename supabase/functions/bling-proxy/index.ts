@@ -213,7 +213,7 @@ Deno.serve(async (req) => {
     if (action === "list_vendedores") {
       console.log(`[bling-proxy] Listing vendedores`);
       // Bling v3 requires pagination params for list endpoints
-      const result = await blingApiFetchWithRetry("/vendedores?pagina=1&limite=100", accessToken, "GET", undefined, supabase, config);
+      const result = await blingApiFetchWithRetry("/vendedores?pagina=1&limite=100&situacaoContato=A", accessToken, "GET", undefined, supabase, config);
       console.log(`[bling-proxy] Vendedores result:`, JSON.stringify(result).substring(0, 500));
       return new Response(
         JSON.stringify(result),

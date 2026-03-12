@@ -62,13 +62,22 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
   const createPreOrder = useCreatePreOrderBling();
 
   // Vendedores from Bling
-  const { data: vendedores = [], isLoading: vendedoresLoading, isError: vendedoresError } = useQuery({
+  const { data: vendedores = [], isLoading: vendedoresLoading, isError: vendedoresError, error: vendedoresErrorObj, refetch: refetchVendedores } = useQuery({
     queryKey: ['bling-vendedores'],
     queryFn: listBlingVendedores,
     enabled: open,
     staleTime: 5 * 60 * 1000,
-    retry: 2,
+    retry: 1,
   });
+
+  // Show toast with actual error when vendedores fail
+  useEffect(() => {
+    if (vendedoresError && vendedoresErrorObj) {
+      const msg = vendedoresErrorObj instanceof Error ? vendedoresErrorObj.message : 'Erro desconhecido';
+      console.error('[PreOrder] Vendedores error:', msg);
+      toast.error(`Erro ao buscar vendedores: ${msg}`);
+    }
+  }, [vendedoresError, vendedoresErrorObj]);
 
   // WhatsApp paste
   const [whatsappText, setWhatsappText] = useState('');
@@ -417,19 +426,39 @@ export function PreOrderBlingModal({ open, onOpenChange, contact, conversationId
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Vendedor</Label>
-                  <select
-                    value={vendedorId || ''}
-                    onChange={(e) => setVendedorId(e.target.value ? Number(e.target.value) : null)}
-                    className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    disabled={vendedoresLoading}
-                  >
-                    <option value="">
-                      {vendedoresLoading ? 'Carregando vendedores...' : vendedoresError ? 'Erro ao carregar vendedores' : vendedores.length === 0 ? 'Nenhum vendedor encontrado' : 'Selecionar vendedor'}
-                    </option>
-                    {vendedores.map((v) => (
-                      <option key={v.id} value={v.id}>{v.nome}</option>
-                    ))}
-                  </select>
+                  <div className="flex gap-1">
+                    <select
+                      value={vendedorId || ''}
+                      onChange={(e) => setVendedorId(e.target.value ? Number(e.target.value) : null)}
+                      className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      disabled={vendedoresLoading}
+                    >
+                      <option value="">
+                        {vendedoresLoading ? 'Carregando...' : vendedoresError ? 'ERRO - clique ↻' : vendedores.length === 0 ? 'Nenhum vendedor' : 'Selecionar vendedor'}
+                      </option>
+                      {vendedores.map((v) => (
+                        <option key={v.id} value={v.id}>{v.nome}</option>
+                      ))}
+                    </select>
+                    {(vendedoresError || (!vendedoresLoading && vendedores.length === 0)) && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-8 w-8 shrink-0"
+                        onClick={() => refetchVendedores()}
+                        disabled={vendedoresLoading}
+                        title="Tentar novamente"
+                      >
+                        {vendedoresLoading ? <Loader2 size={14} className="animate-spin" /> : <span className="text-xs">↻</span>}
+                      </Button>
+                    )}
+                  </div>
+                  {vendedoresError && vendedoresErrorObj && (
+                    <p className="text-xs text-red-500 mt-0.5">
+                      {vendedoresErrorObj instanceof Error ? vendedoresErrorObj.message : 'Erro desconhecido'}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Valor Total (R$)</Label>
