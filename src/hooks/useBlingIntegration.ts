@@ -112,15 +112,19 @@ export function useBlingConfig() {
 export function useBlingStatus() {
   const { data: config, isLoading } = useBlingConfig();
 
-  const isConnected = config?.is_active && config?.is_configured && 
-    (config.token_expires_at ? new Date(config.token_expires_at) > new Date() : false);
+  // Considerar conectado se tem access_token OU refresh_token (proxy pode renovar)
+  const hasTokens = !!(config?.access_token || config?.refresh_token);
+  const isConnected = config?.is_configured && hasTokens;
+  const isTokenExpired = config?.token_expires_at
+    ? new Date(config.token_expires_at) < new Date()
+    : !config?.access_token;
 
   return {
     isLoading,
     isConnected,
     isConfigured: config?.is_configured || false,
-    needsRefresh: config?.is_configured && config.token_expires_at && 
-      new Date(config.token_expires_at) < new Date(),
+    needsRefresh: config?.is_configured && isTokenExpired && !!config?.refresh_token,
+    isFullyExpired: config?.is_configured && isTokenExpired && !config?.refresh_token,
   };
 }
 
@@ -144,6 +148,70 @@ export function useRefreshBlingToken() {
     onError: (error: Error) => {
       console.error('Error refreshing token:', error);
       toast.error('Erro ao renovar token: ' + error.message);
+    },
+  });
+}
+
+// Hook to diagnose Bling integration - checks config state via proxy
+export function useBlingDiagnose() {
+  return useMutation({
+    mutationFn: async () => {
+      const { data: config } = await supabase
+        .from('bling_integration_config')
+        .select('tenant_id')
+        .maybeSingle();
+
+      if (!config?.tenant_id) {
+        throw new Error('Bling não configurado');
+      }
+
+      const { data, error } = await supabase.functions.invoke('bling-proxy', {
+        body: { action: 'diagnose', tenant_id: config.tenant_id },
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      console.log('[Bling Diagnose]', data);
+      if (data.token_expired) {
+        toast.error(`Token expirado desde ${data.token_expires_at}. ${data.has_refresh_token ? 'Tentando renovar...' : 'Reconecte o Bling.'}`);
+      } else if (!data.has_access_token) {
+        toast.error('Sem access_token. Reconecte o Bling nas configurações.');
+      } else {
+        toast.success(`Bling OK. Token expira em: ${data.token_expires_at}`);
+      }
+    },
+    onError: (error: Error) => {
+      toast.error('Erro no diagnóstico: ' + error.message);
+    },
+  });
+}
+
+// Hook to force token refresh via proxy (tries refresh_token → new access_token)
+export function useForceRefreshBlingToken() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      // First try the dedicated refresh function
+      const { data, error } = await supabase.functions.invoke('bling-token-refresh');
+
+      if (error) throw error;
+      if (data?.failed > 0 && data?.success === 0) {
+        const failReason = data?.results?.[0]?.error || 'Motivo desconhecido';
+        throw new Error(`Refresh falhou: ${failReason}`);
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bling-config'] });
+      queryClient.invalidateQueries({ queryKey: ['bling-vendedores'] });
+      toast.success('Token renovado com sucesso!');
+    },
+    onError: (error: Error) => {
+      toast.error('Não foi possível renovar: ' + error.message);
     },
   });
 }
