@@ -214,11 +214,28 @@ export function useAuth() {
   }, [setSession, setUser, setIsLoading, setProfile, setTenant, setTenantId, setRoles, loadUserData, reset]);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { error };
+    // Timeout de 15s para evitar loading infinito em redes lentas
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      clearTimeout(timeoutId);
+      return { error };
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err?.name === 'AbortError' || controller.signal.aborted) {
+        return { error: { message: 'network_timeout', status: 0 } as any };
+      }
+      // Detectar erros de rede (fetch failed, network error, etc)
+      if (err?.message?.includes('fetch') || err?.message?.includes('network') || err?.message?.includes('Failed to fetch')) {
+        return { error: { message: 'network_error', status: 0 } as any };
+      }
+      return { error: err };
+    }
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {

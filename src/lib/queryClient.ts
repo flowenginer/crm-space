@@ -6,7 +6,7 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes - prevents excessive refetching
       refetchOnWindowFocus: false, // Disable refetch on tab focus
-      refetchOnReconnect: false, // Disable refetch on network reconnect
+      refetchOnReconnect: true, // Refetch quando a rede voltar
       refetchOnMount: false, // Disable refetch when component mounts if data exists
       retry: 1, // Reduce retry attempts
     },

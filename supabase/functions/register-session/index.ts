@@ -143,30 +143,6 @@ Deno.serve(async (req) => {
       || req.headers.get('x-real-ip')
       || 'unknown';
 
-    // Try to get geolocation from IP (optional, don't fail if it doesn't work)
-    let geoData: GeoData = {};
-    try {
-      // Using ipapi.co for geolocation (free tier allows 1000 requests/day)
-      if (clientIp !== 'unknown' && clientIp !== '127.0.0.1' && clientIp !== '::1') {
-        const geoResponse = await fetch(`https://ipapi.co/${clientIp}/json/`, {
-          signal: AbortSignal.timeout(3000) // 3 second timeout
-        });
-        if (geoResponse.ok) {
-          const geo = await geoResponse.json();
-          if (!geo.error) {
-            geoData = {
-              city: geo.city || undefined,
-              region: geo.region || undefined,
-              country: geo.country_name || undefined,
-            };
-          }
-        }
-      }
-    } catch (geoError) {
-      console.log('Geolocation lookup failed (non-critical):', geoError);
-      // Continue without geolocation data
-    }
-
     // Generate unique session token
     const sessionToken = generateSessionToken();
 
@@ -177,7 +153,7 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .is('ended_at', null);
 
-    // Insert new session
+    // Insert session immediately WITHOUT waiting for geolocation
     const { data: session, error: insertError } = await supabase
       .from('user_sessions')
       .insert({
@@ -187,9 +163,9 @@ Deno.serve(async (req) => {
         browser,
         os,
         ip_address: clientIp !== 'unknown' ? clientIp : null,
-        city: geoData.city || null,
-        region: geoData.region || null,
-        country: geoData.country || null,
+        city: null,
+        region: null,
+        country: null,
         session_token: sessionToken,
         is_current: true,
         user_agent: userAgent,
@@ -208,28 +184,55 @@ Deno.serve(async (req) => {
 
     console.log('Session registered:', {
       userId: user.id,
+      sessionId: session.id,
       browser,
       os,
       deviceType,
-      city: geoData.city,
-      country: geoData.country,
     });
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
+    // Respond immediately - geolocation will be updated in background
+    const response = new Response(
+      JSON.stringify({
+        success: true,
         sessionToken,
         session: {
           id: session.id,
           browser,
           os,
           deviceType,
-          city: geoData.city,
-          country: geoData.country,
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
+    // Fire-and-forget: update geolocation in background (non-blocking)
+    if (clientIp !== 'unknown' && clientIp !== '127.0.0.1' && clientIp !== '::1') {
+      (async () => {
+        try {
+          const geoResponse = await fetch(`https://ipapi.co/${clientIp}/json/`, {
+            signal: AbortSignal.timeout(3000)
+          });
+          if (geoResponse.ok) {
+            const geo = await geoResponse.json();
+            if (!geo.error && (geo.city || geo.region || geo.country_name)) {
+              await supabase
+                .from('user_sessions')
+                .update({
+                  city: geo.city || null,
+                  region: geo.region || null,
+                  country: geo.country_name || null,
+                })
+                .eq('id', session.id);
+              console.log('Geolocation updated for session:', session.id, geo.city, geo.country_name);
+            }
+          }
+        } catch (geoError) {
+          console.log('Geolocation lookup failed (non-critical):', geoError);
+        }
+      })();
+    }
+
+    return response;
 
   } catch (error) {
     console.error('Error registering session:', error);

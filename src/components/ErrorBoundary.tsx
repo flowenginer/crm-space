@@ -48,7 +48,12 @@ export class ErrorBoundary extends Component<Props, State> {
   private handleSignOut = async () => {
     // Clear all local storage and reload
     localStorage.removeItem('user-storage');
-    localStorage.removeItem('sb-akebxmyjxngfopajjjpm-auth-token');
+    // Limpar todos os tokens do Supabase (qualquer projeto)
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+        localStorage.removeItem(key);
+      }
+    }
     window.location.href = '/auth';
   };
 
