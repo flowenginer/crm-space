@@ -92,11 +92,8 @@ export function useAuth() {
         supabase
           .from('profiles')
           .update({
-            is_available: true,
             is_online: true,
-            availability_locked_by: null,
-            unavailable_until: null,
-            unavailability_reason: null,
+            // NÃO resetar is_available/lock/timer aqui - preservar pausa manual do admin/vendedor
           })
           .eq('id', userId),
       ]);
