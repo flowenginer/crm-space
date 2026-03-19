@@ -2912,33 +2912,100 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   ) => {
     const channelId = selectedConversation?.channel_id;
     const contactPhone = selectedConversation?.contact?.phone;
-    
+
     if (!channelId || !contactPhone || !selectedConversationId) {
       toast.error('Dados insuficientes para enviar template');
       return;
     }
-    
+
     try {
+      // Buscar template completo do banco para ter os components originais (header format, etc)
+      const { data: fullTemplate, error: templateError } = await supabase
+        .from('meta_message_templates')
+        .select('components')
+        .eq('id', templateId)
+        .single();
+
+      if (templateError) {
+        console.error('Erro ao buscar template:', templateError);
+      }
+
+      const templateComponents = (fullTemplate?.components as any[]) || [];
+
       // Montar os componentes do template com as variáveis
-      const components: Array<{type: string; parameters: Array<{type: string; text: string}>}> = [];
-      const variableEntries = Object.entries(variables);
-      
-      if (variableEntries.length > 0) {
-        components.push({
-          type: 'body',
-          parameters: variableEntries.map(([_, value]) => ({
-            type: 'text',
-            text: value
-          }))
+      const components: any[] = [];
+
+      // Detectar formato do header (IMAGE, VIDEO, DOCUMENT, TEXT)
+      const headerComp = templateComponents.find((c: any) => c.type === 'HEADER');
+      const headerFormat = headerComp?.format?.toUpperCase();
+
+      if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
+        // Header de mídia: usar URL do example do template
+        let mediaUrl: string | null = null;
+        if (headerComp?.example?.header_handle?.[0]) {
+          mediaUrl = headerComp.example.header_handle[0];
+        }
+        if (mediaUrl) {
+          const mediaType = headerFormat.toLowerCase();
+          components.push({
+            type: 'header',
+            parameters: [{
+              type: mediaType,
+              [mediaType]: { link: mediaUrl },
+            }],
+          });
+        }
+      } else if (headerFormat === 'TEXT' && headerComp?.text) {
+        // Header de texto com variáveis
+        const headerMatches = headerComp.text.match(/\{\{\d+\}\}/g);
+        if (headerMatches && headerMatches.length > 0) {
+          components.push({
+            type: 'header',
+            parameters: headerMatches.map((_: string, i: number) => ({
+              type: 'text',
+              text: variables[String(i + 1)] || '',
+            })),
+          });
+        }
+      }
+
+      // Body variables
+      const bodyComp = templateComponents.find((c: any) => c.type === 'BODY');
+      if (bodyComp?.text) {
+        const bodyMatches = bodyComp.text.match(/\{\{\d+\}\}/g);
+        if (bodyMatches && bodyMatches.length > 0) {
+          components.push({
+            type: 'body',
+            parameters: bodyMatches.map((match: string) => {
+              const num = match.replace(/[{}]/g, '');
+              return { type: 'text', text: variables[num] || '' };
+            }),
+          });
+        }
+      }
+
+      // Button variables (URL com sufixo dinâmico)
+      const buttonsComp = templateComponents.find((c: any) => c.type === 'BUTTONS');
+      if (buttonsComp?.buttons) {
+        buttonsComp.buttons.forEach((btn: any, idx: number) => {
+          if (btn.type === 'URL' && btn.url?.includes('{{')) {
+            components.push({
+              type: 'button',
+              sub_type: 'url',
+              index: idx,
+              parameters: [{ type: 'text', text: variables[`button_${idx}`] || '' }],
+            });
+          }
         });
       }
-      
+
       // Enviar via Cloud API
       const { data, error } = await supabase.functions.invoke('cloudapi-send-message', {
         body: {
           channelId,
           phone: contactPhone,
           type: 'template',
+          conversationId: selectedConversationId,
           template: {
             name: templateName,
             language: language,
@@ -2946,9 +3013,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           }
         }
       });
-      
+
       if (error) throw error;
-      
+      if (data?.success === false) throw new Error(data?.error || 'Erro ao enviar template');
+
       // Salvar no banco com o conteúdo real do template
       sendMessage.mutate({
         conversation_id: selectedConversationId,
@@ -2957,11 +3025,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         message_type: 'template',
         whatsapp_message_id: data?.messageId
       });
-      
+
       toast.success('Template enviado com sucesso!');
     } catch (error) {
       console.error('Erro ao enviar template Meta:', error);
-      toast.error('Erro ao enviar template');
+      toast.error(`Erro ao enviar template: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   }, [selectedConversation, selectedConversationId, sendMessage]);
 

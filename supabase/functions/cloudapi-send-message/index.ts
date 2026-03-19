@@ -330,11 +330,11 @@ serve(async (req) => {
           language: { code: languageCode },
           components: template.components || []
         };
-        console.log('[CloudAPI Send] Template payload:', {
+        console.log('[CloudAPI Send] Template payload:', JSON.stringify({
           name: template.name,
           languageCode,
-          componentsCount: template.components?.length || 0
-        });
+          components: template.components || [],
+        }));
         break;
 
       default:
@@ -363,8 +363,10 @@ serve(async (req) => {
     const result = await response.json();
 
     if (!response.ok) {
-      console.error('[CloudAPI Send] Error response:', result);
-      throw new Error(result.error?.message || 'Failed to send message');
+      console.error('[CloudAPI Send] Error response:', JSON.stringify(result));
+      console.error('[CloudAPI Send] Full payload sent:', JSON.stringify(messagePayload));
+      const metaError = result.error?.message || result.error?.error_data?.details || 'Failed to send message';
+      throw new Error(metaError);
     }
 
     console.log('[CloudAPI Send] Message sent successfully:', result);
