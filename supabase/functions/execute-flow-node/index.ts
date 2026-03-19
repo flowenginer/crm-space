@@ -980,15 +980,34 @@ async function executeAction(
       
       // Processar variáveis do template
       const variables = config.variables as Record<string, string> || {};
-      const templateComponents: { type: string; parameters: { type: string; text: string }[] }[] = [];
-      
+      const templateComponents: any[] = [];
+
+      // Detectar header format (IMAGE, VIDEO, DOCUMENT, TEXT)
+      const origComponents = (template.components as any[]) || [];
+      const headerComp = origComponents.find((c: any) => c.type === 'HEADER');
+      const headerFormat = headerComp?.format?.toUpperCase();
+
+      if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
+        let mediaUrl: string | null = null;
+        if (headerComp?.example?.header_handle?.[0]) {
+          mediaUrl = headerComp.example.header_handle[0];
+        }
+        if (mediaUrl) {
+          const mediaType = headerFormat.toLowerCase();
+          templateComponents.push({
+            type: 'header',
+            parameters: [{ type: mediaType, [mediaType]: { link: mediaUrl } }],
+          });
+        }
+      }
+
       // Se houver variáveis, montar os components para o body
       if (Object.keys(variables).length > 0) {
         const bodyParams = Object.entries(variables).map(([_key, value]) => ({
           type: 'text',
           text: replaceVariables(value as string, execution)
         }));
-        
+
         if (bodyParams.length > 0) {
           templateComponents.push({
             type: 'body',
