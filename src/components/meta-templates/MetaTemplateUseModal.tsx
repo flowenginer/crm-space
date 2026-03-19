@@ -13,6 +13,7 @@ import { Copy, Send, MessageSquare, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
   MetaMessageTemplate,
+  MetaTemplateComponent,
   extractTemplateVariables,
   getTemplateBody,
   getTemplateHeader,
@@ -23,7 +24,7 @@ interface MetaTemplateUseModalProps {
   template: MetaMessageTemplate | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSend?: (templateId: string, templateName: string, variables: Record<string, string>, previewContent: string) => void;
+  onSend?: (templateId: string, templateName: string, variables: Record<string, string>, previewContent: string, components: MetaTemplateComponent[]) => void;
   onCopyToInput?: (content: string) => void;
   contactName?: string;
 }
@@ -112,7 +113,7 @@ export function MetaTemplateUseModal({
     fullPreviewContent += previewContent;
     if (footerText) fullPreviewContent += '\n\n' + footerText;
     
-    onSend?.(template.id, template.name, variables, fullPreviewContent);
+    onSend?.(template.id, template.name, variables, fullPreviewContent, template.components);
     onOpenChange(false);
   };
 
