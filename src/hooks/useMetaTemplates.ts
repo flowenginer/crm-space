@@ -298,3 +298,38 @@ export function getTemplateFooter(components: MetaTemplateComponent[]): string |
   const footerComponent = components.find(c => c.type === 'FOOTER');
   return footerComponent?.text || null;
 }
+
+// Upload media to Meta for template header
+export function useUploadMetaMedia() {
+  return useMutation({
+    mutationFn: async (file: File): Promise<string> => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(
+        'https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/meta-upload-media',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: formData,
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to upload media');
+      }
+
+      return result.handle;
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Erro ao fazer upload da imagem');
+    },
+  });
+}
