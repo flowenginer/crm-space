@@ -169,14 +169,14 @@ export function MetaTemplateSelector({
         </Button>
       </div>
 
-      {/* Media header URL input (optional — Meta uses uploaded image as default) */}
+      {/* Media header URL input — REQUIRED for templates with media headers */}
       {selectedTemplate && detailedVars?.hasMediaHeader && (
         <div className="space-y-2 rounded-lg border p-4 bg-muted/30">
           <Label className="text-sm font-medium flex items-center gap-2">
             {getMediaIcon(detailedVars.headerFormat!)}
             Mídia do Cabeçalho
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              Opcional
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-destructive text-destructive">
+              Obrigatório
             </Badge>
           </Label>
           <div className="space-y-1">
@@ -184,13 +184,13 @@ export function MetaTemplateSelector({
               {getMediaLabel(detailedVars.headerFormat!)}
             </Label>
             <Input
-              placeholder="Deixe vazio para usar a imagem do template"
+              placeholder="https://exemplo.com/imagem.jpg"
               value={localVariables['header_media_url'] || ''}
               onChange={(e) => handleVariableChange('header_media_url', e.target.value)}
               className="bg-background"
             />
             <p className="text-xs text-muted-foreground">
-              Se você já subiu a mídia no template da Meta, pode deixar em branco — a imagem cadastrada será usada automaticamente.
+              Informe a URL pública da mídia que será enviada no cabeçalho do template.
             </p>
           </div>
         </div>

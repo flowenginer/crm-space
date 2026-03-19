@@ -2938,9 +2938,32 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           headerVarCount = matches ? matches.length : 0;
         }
         
-        // For media headers with no variables: skip header component (Meta uses pre-uploaded media)
-        // For text headers with variables: send header component with text params
-        if (!isMediaHeader && headerVarCount > 0) {
+        // For media headers: always send header component with media link
+        if (isMediaHeader) {
+          const mediaUrl = variables['header_media_url'];
+          if (mediaUrl) {
+            const mediaType = headerFormat.toLowerCase(); // 'image', 'video', 'document'
+            components.push({
+              type: 'header',
+              parameters: [{
+                type: mediaType,
+                [mediaType]: { link: mediaUrl }
+              }]
+            });
+            // Remove from variableEntries so it's not sent as body var
+            const filteredEntries = variableEntries.filter(([k]) => k !== 'header_media_url');
+            if (filteredEntries.length > 0) {
+              components.push({
+                type: 'body',
+                parameters: filteredEntries.map(([_, value]) => ({
+                  type: 'text',
+                  text: value
+                }))
+              });
+            }
+          }
+        } else if (headerVarCount > 0) {
+          // Text header with variables
           const headerParams = variableEntries.slice(0, headerVarCount).map(([_, value]) => ({
             type: 'text',
             text: value
@@ -2948,18 +2971,29 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           if (headerParams.length > 0) {
             components.push({ type: 'header', parameters: headerParams });
           }
-        }
-        
-        // Body variables (offset by headerVarCount)
-        const bodyVars = variableEntries.slice(headerVarCount);
-        if (bodyVars.length > 0) {
-          components.push({
-            type: 'body',
-            parameters: bodyVars.map(([_, value]) => ({
-              type: 'text',
-              text: value
-            }))
-          });
+          // Body variables (offset by headerVarCount)
+          const bodyVars = variableEntries.filter(([k]) => k !== 'header_media_url').slice(headerVarCount);
+          if (bodyVars.length > 0) {
+            components.push({
+              type: 'body',
+              parameters: bodyVars.map(([_, value]) => ({
+                type: 'text',
+                text: value
+              }))
+            });
+          }
+        } else {
+          // No header vars, no media — just body
+          const bodyVars = variableEntries.filter(([k]) => k !== 'header_media_url');
+          if (bodyVars.length > 0) {
+            components.push({
+              type: 'body',
+              parameters: bodyVars.map(([_, value]) => ({
+                type: 'text',
+                text: value
+              }))
+            });
+          }
         }
       } else {
         // Fallback: all variables as body (legacy behavior)

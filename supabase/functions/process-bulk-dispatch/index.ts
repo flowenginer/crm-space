@@ -409,9 +409,10 @@ async function sendMetaTemplateMessage(
       });
       console.log(`[BulkDispatch] Header media (${mediaType}): ${mediaUrl.substring(0, 80)}...`);
     } else if (headerVarCount === 0) {
-      // No media URL provided AND no header variables → static pre-uploaded media
-      // Meta automatically uses the template's pre-uploaded media, no component needed
-      console.log(`[BulkDispatch] Static media header - skipping component (Meta uses pre-uploaded media)`);
+      // No media URL provided AND no header variables → ERROR
+      // Meta ALWAYS requires the header component for media templates
+      console.log(`[BulkDispatch] ERROR: Media header template requires header_media_url but none provided`);
+      throw new Error(`Template com cabeçalho de mídia requer header_media_url`);
     } else {
       console.log(`[BulkDispatch] WARNING: Media header has ${headerVarCount} variables but no media URL provided`);
     }
