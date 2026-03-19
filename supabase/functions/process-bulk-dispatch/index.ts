@@ -1000,6 +1000,51 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
     console.log(`[BulkDispatch] Processing contact: ${contact.full_name} (${contact.phone})`);
 
     try {
+      // === DEDUPLICATION: Skip if same template was sent to this number recently ===
+      if (isMetaTemplateCampaign && metaTemplate) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data: recentlySent } = await supabase
+          .from('bulk_dispatch_contacts')
+          .select('id')
+          .neq('dispatch_id', dispatch.id)
+          .eq('contact_id', contact.id)
+          .eq('status', 'sent')
+          .gte('sent_at', oneHourAgo)
+          .limit(1);
+
+        // Check if the recent dispatch used the same meta_template_id
+        if (recentlySent && recentlySent.length > 0) {
+          const { data: recentDispatch } = await supabase
+            .from('bulk_dispatch_contacts')
+            .select('dispatch:bulk_dispatches!bulk_dispatch_contacts_dispatch_id_fkey(meta_template_id)')
+            .eq('id', recentlySent[0].id)
+            .single();
+
+          const recentMetaTemplateId = (recentDispatch as any)?.dispatch?.meta_template_id;
+          if (recentMetaTemplateId === dispatch.meta_template_id) {
+            console.log(`[BulkDispatch] SKIPPING contact ${contact.full_name} - same template sent within last hour`);
+            await supabase
+              .from('bulk_dispatch_contacts')
+              .update({ status: 'skipped', error_message: 'Template já enviado recentemente para este contato' })
+              .eq('id', dispatchContact.id);
+
+            await supabase
+              .from('bulk_dispatches')
+              .update({
+                processed_count: dispatch.processed_count + 1,
+                skipped_count: (dispatch.skipped_count || 0) + 1,
+              })
+              .eq('id', dispatch.id);
+
+            dispatch.processed_count++;
+            dispatch.skipped_count = (dispatch.skipped_count || 0) + 1;
+            processedCount++;
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
+        }
+      }
+
       // Mark as sending
       await supabase
         .from('bulk_dispatch_contacts')

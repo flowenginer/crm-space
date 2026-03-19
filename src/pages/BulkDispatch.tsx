@@ -578,11 +578,11 @@ export default function BulkDispatch() {
                 <Button 
                   className="w-full" 
                   size="lg" 
-                  disabled={!name || (campaignType !== 'template_meta' && !templateId) || (campaignType === 'template_meta' && !metaTemplateId) || !channelId || totalContacts === 0 || createDispatch.isPending || countLoading} 
-                  onClick={handleCreateAndStart}
-                >
-                  {createDispatch.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-                  Iniciar Disparo ({totalContacts.toLocaleString('pt-BR')} contatos)
+                   disabled={!name || (campaignType !== 'template_meta' && !templateId) || (campaignType === 'template_meta' && !metaTemplateId) || !channelId || totalContacts === 0 || isStarting || createDispatch.isPending || countLoading} 
+                   onClick={handleCreateAndStart}
+                 >
+                   {(isStarting || createDispatch.isPending) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                   {isStarting ? 'Iniciando...' : `Iniciar Disparo (${totalContacts.toLocaleString('pt-BR')} contatos)`}
                 </Button>
               </CardContent>
             </Card>
