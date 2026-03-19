@@ -1,59 +1,43 @@
 
 
-# Adicionar suporte a imagem no cabeçalho ao criar template
+# Fix: Enviar componente header com imagem para templates Meta
 
-## Resumo
+## Problema confirmado pelos logs
 
-Atualmente o modal de criação de template (`MetaTemplateModal`) só permite cabeçalho de texto. Vamos adicionar a opção de escolher entre **Texto** ou **Imagem** no header, com upload de imagem via Meta Resumable Upload API.
+A Meta **sempre** exige o componente `header` com `type: "image"` + `link` ou `id` para templates com header IMAGE. Omitir o componente causa `Format mismatch, expected IMAGE, received UNKNOWN` (#132012).
 
-## Mudanças
+A correção anterior (omitir header para "imagem estática") estava incorreta.
 
-### 1. `src/components/meta-templates/MetaTemplateModal.tsx`
+## Solução
 
-- Adicionar um seletor de **tipo de cabeçalho**: `Nenhum`, `Texto`, `Imagem`
-- Quando "Imagem" selecionado:
-  - Mostrar input de upload de arquivo (aceitar `.jpg`, `.png`)
-  - Mostrar estado de upload (loading, sucesso)
-  - Armazenar o `header_handle` retornado pela Meta após upload
-- Quando "Texto" selecionado: manter o comportamento atual (input de texto)
-- No `handleSubmit`: montar o componente HEADER com `format: 'IMAGE'` e `example.header_handle: [handle]` quando imagem selecionada
-- Adicionar estado: `headerType` (`none` | `text` | `image`), `headerImageFile`, `headerImageHandle`, `isUploadingImage`
+Para templates com header IMAGE/VIDEO/DOCUMENT sem `header_media_url` fornecida pelo usuário, o sistema precisa:
+1. Extrair a URL de exemplo do template (`example.header_handle` no campo `components` do template salvo no banco)
+2. Se não houver URL de exemplo disponível, **exigir que o usuário forneça** a URL da mídia antes de enviar
 
-### 2. `supabase/functions/meta-create-template/index.ts`
+### Abordagem: Exigir URL de mídia na UI
 
-- Nenhuma mudança necessária — a edge function já repassa os `components` diretamente para a Meta API, incluindo `format: 'IMAGE'` e `example.header_handle`
+Como os `header_handle` são temporários e expiram, a solução correta é:
 
-### 3. Nova edge function: `supabase/functions/meta-upload-media/index.ts`
+1. **Na UI de envio de template** (`Conversations.tsx` e `BulkDispatch`): quando o template tem header IMAGE e não há variáveis de texto no header, mostrar um campo obrigatório para URL da imagem (ou upload)
+2. **No backend**: remover a lógica de "skip" e sempre enviar o componente header com a mídia fornecida
 
-- Endpoint para fazer upload de imagem via **Meta Resumable Upload API**:
-  1. Criar sessão de upload: `POST /{app-id}/uploads` com `file_length`, `file_type`, `access_token`
-  2. Enviar arquivo: `POST` para a URL da sessão com o binário
-  3. Retornar o `h:` handle para uso no template
-- Autenticação: validar JWT do Supabase, buscar `access_token` e `app_id` da `cloudapi_configs`
+### Arquivos modificados
 
-### 4. `src/hooks/useMetaTemplates.ts`
+| Arquivo | Mudança |
+|---|---|
+| `supabase/functions/process-bulk-dispatch/index.ts` | Remover lógica de skip; lançar erro se template IMAGE não tiver `header_media_url` |
+| `supabase/functions/cloudapi-send-message/index.ts` | Sem mudança (já envia o que recebe) |
+| `src/pages/Conversations.tsx` | Quando template tem header IMAGE sem variáveis, exigir URL da imagem no modal |
+| `src/components/meta-templates/MetaTemplateUseModal.tsx` | Adicionar campo de upload/URL para mídia do header quando tipo é IMAGE |
+| `src/components/meta-templates/MetaTemplateSelector.tsx` | Garantir que campo `header_media_url` aparece para templates com header estático IMAGE |
 
-- Adicionar hook `useUploadMetaMedia` que chama a nova edge function com o arquivo e retorna o handle
-
-## Fluxo do usuário
+### Fluxo corrigido
 
 ```text
-Tipo de Cabeçalho: [Nenhum ▼] [Texto ▼] [Imagem ▼]
-
-Se "Imagem":
-  ┌─────────────────────────────────┐
-  │  📎 Selecionar imagem           │
-  │  Formatos: JPG, PNG (máx 5MB)  │
-  │  [Fazendo upload... ⏳]         │
-  │  ✅ Imagem carregada            │
-  └─────────────────────────────────┘
+Template com header IMAGE (sem variáveis de texto):
+  UI → campo obrigatório "URL da imagem" ou upload
+  → envia header_media_url no payload
+  → backend monta: { type: "header", parameters: [{ type: "image", image: { link: url } }] }
+  → Meta aceita ✅
 ```
-
-## Arquivos modificados/criados
-
-| Arquivo | Ação |
-|---|---|
-| `src/components/meta-templates/MetaTemplateModal.tsx` | Modificar — adicionar seletor de tipo de header e upload de imagem |
-| `src/hooks/useMetaTemplates.ts` | Modificar — adicionar hook `useUploadMetaMedia` |
-| `supabase/functions/meta-upload-media/index.ts` | Criar — edge function para upload via Meta Resumable Upload API |
 
