@@ -21,6 +21,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Loader2, Info, AlertTriangle, Upload, CheckCircle2, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import { useCreateMetaTemplate, useUploadMetaMedia, type MetaTemplateComponent } from '@/hooks/useMetaTemplates';
 
 interface MetaTemplateModalProps {
