@@ -1,37 +1,59 @@
 
 
-# Fix: Template com imagem pré-carregada na Meta não precisa de header component
+# Adicionar suporte a imagem no cabeçalho ao criar template
 
-## Problema
+## Resumo
 
-O log mostra:
-```
-Header media (image): https://scontent.whatsapp.net/v/t61.29466-34/651465729...
-```
+Atualmente o modal de criação de template (`MetaTemplateModal`) só permite cabeçalho de texto. Vamos adicionar a opção de escolher entre **Texto** ou **Imagem** no header, com upload de imagem via Meta Resumable Upload API.
 
-O sistema está extraindo a URL do `example.header_handle` do template e enviando como `link` no componente header. Essa URL é **temporária** (CDN interno da Meta) e expira — gerando o erro **"Erro ao carregar a mídia"** (11 eventos no painel da Meta).
+## Mudanças
 
-Para templates com **imagem estática pré-carregada** (sem variáveis no header), a Meta **já usa a imagem automaticamente** — não é necessário enviar o componente header. Enviar uma URL expirada causa rejeição.
+### 1. `src/components/meta-templates/MetaTemplateModal.tsx`
 
-## Correção
+- Adicionar um seletor de **tipo de cabeçalho**: `Nenhum`, `Texto`, `Imagem`
+- Quando "Imagem" selecionado:
+  - Mostrar input de upload de arquivo (aceitar `.jpg`, `.png`)
+  - Mostrar estado de upload (loading, sucesso)
+  - Armazenar o `header_handle` retornado pela Meta após upload
+- Quando "Texto" selecionado: manter o comportamento atual (input de texto)
+- No `handleSubmit`: montar o componente HEADER com `format: 'IMAGE'` e `example.header_handle: [handle]` quando imagem selecionada
+- Adicionar estado: `headerType` (`none` | `text` | `image`), `headerImageFile`, `headerImageHandle`, `isUploadingImage`
 
-No `sendMetaTemplateMessage` dentro de `process-bulk-dispatch/index.ts`:
+### 2. `supabase/functions/meta-create-template/index.ts`
 
-- **Se o usuário forneceu `header_media_url`** → enviar como `link` no componente header (comportamento atual, correto)
-- **Se NÃO forneceu `header_media_url` e o header NÃO tem variáveis de texto** → **não enviar componente header** (a Meta usa a mídia do template automaticamente)
-- **Remover o fallback para `header_handle`** — essa URL é interna e expira
+- Nenhuma mudança necessária — a edge function já repassa os `components` diretamente para a Meta API, incluindo `format: 'IMAGE'` e `example.header_handle`
 
-### Lógica simplificada
+### 3. Nova edge function: `supabase/functions/meta-upload-media/index.ts`
+
+- Endpoint para fazer upload de imagem via **Meta Resumable Upload API**:
+  1. Criar sessão de upload: `POST /{app-id}/uploads` com `file_length`, `file_type`, `access_token`
+  2. Enviar arquivo: `POST` para a URL da sessão com o binário
+  3. Retornar o `h:` handle para uso no template
+- Autenticação: validar JWT do Supabase, buscar `access_token` e `app_id` da `cloudapi_configs`
+
+### 4. `src/hooks/useMetaTemplates.ts`
+
+- Adicionar hook `useUploadMetaMedia` que chama a nova edge function com o arquivo e retorna o handle
+
+## Fluxo do usuário
+
 ```text
-Se headerFormat é IMAGE/VIDEO/DOCUMENT:
-  Se header_media_url fornecida → enviar componente com link
-  Se NÃO fornecida E headerVarCount == 0 → NÃO enviar componente (Meta usa a mídia do template)
-  Se NÃO fornecida E headerVarCount > 0 → erro (variável obrigatória)
+Tipo de Cabeçalho: [Nenhum ▼] [Texto ▼] [Imagem ▼]
+
+Se "Imagem":
+  ┌─────────────────────────────────┐
+  │  📎 Selecionar imagem           │
+  │  Formatos: JPG, PNG (máx 5MB)  │
+  │  [Fazendo upload... ⏳]         │
+  │  ✅ Imagem carregada            │
+  └─────────────────────────────────┘
 ```
 
-### Arquivo modificado
+## Arquivos modificados/criados
 
-| Arquivo | Alteração |
+| Arquivo | Ação |
 |---|---|
-| `supabase/functions/process-bulk-dispatch/index.ts` | Remover fallback `header_handle`; não enviar componente header quando mídia é estática |
+| `src/components/meta-templates/MetaTemplateModal.tsx` | Modificar — adicionar seletor de tipo de header e upload de imagem |
+| `src/hooks/useMetaTemplates.ts` | Modificar — adicionar hook `useUploadMetaMedia` |
+| `supabase/functions/meta-upload-media/index.ts` | Criar — edge function para upload via Meta Resumable Upload API |
 
