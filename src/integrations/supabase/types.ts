@@ -4578,6 +4578,45 @@ export type Database = {
           },
         ]
       }
+      lead_historico_trafego: {
+        Row: {
+          agente: string | null
+          atendimento_id: string
+          created_at: string | null
+          data_entrada: string
+          id: number
+          mes_ano: string
+          nome: string
+          origem_trafego: string
+          raw_primeira_mensagem: string | null
+          telefone_normalizado: string
+        }
+        Insert: {
+          agente?: string | null
+          atendimento_id: string
+          created_at?: string | null
+          data_entrada: string
+          id?: number
+          mes_ano: string
+          nome: string
+          origem_trafego: string
+          raw_primeira_mensagem?: string | null
+          telefone_normalizado: string
+        }
+        Update: {
+          agente?: string | null
+          atendimento_id?: string
+          created_at?: string | null
+          data_entrada?: string
+          id?: number
+          mes_ano?: string
+          nome?: string
+          origem_trafego?: string
+          raw_primeira_mensagem?: string | null
+          telefone_normalizado?: string
+        }
+        Relationships: []
+      }
       lead_status_history: {
         Row: {
           changed_at: string
@@ -9445,6 +9484,42 @@ export type Database = {
           },
         ]
       }
+      sync_vendas_log: {
+        Row: {
+          completed_at: string | null
+          errors: Json | null
+          id: number
+          orders_fetched: number | null
+          orders_matched: number | null
+          orders_new: number | null
+          orders_pending: number | null
+          started_at: string | null
+          status: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          errors?: Json | null
+          id?: number
+          orders_fetched?: number | null
+          orders_matched?: number | null
+          orders_new?: number | null
+          orders_pending?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          errors?: Json | null
+          id?: number
+          orders_fetched?: number | null
+          orders_matched?: number | null
+          orders_new?: number | null
+          orders_pending?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       tags: {
         Row: {
           color: string | null
@@ -9887,6 +9962,30 @@ export type Database = {
           },
         ]
       }
+      token_bling: {
+        Row: {
+          basic_auth: string
+          id: number
+          refresh_token: string
+          token: string
+          updated_at: string | null
+        }
+        Insert: {
+          basic_auth: string
+          id?: number
+          refresh_token: string
+          token: string
+          updated_at?: string | null
+        }
+        Update: {
+          basic_auth?: string
+          id?: number
+          refresh_token?: string
+          token?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       user_channels: {
         Row: {
           channel_id: string
@@ -10176,6 +10275,72 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      vendas_relatorio: {
+        Row: {
+          bling_id: number | null
+          campanha: string | null
+          comprou_apos_disparo: string | null
+          contact_id: string | null
+          created_at: string | null
+          data_entrada_crm: string | null
+          data_pedido: string
+          dias_apos_disparo: number | null
+          id: number
+          match_method: string | null
+          nome: string
+          origem: string
+          pedido: string
+          recebeu_disparo: boolean | null
+          situacao_id: number | null
+          sync_status: string | null
+          tempo_compra_dias: number | null
+          valor: number
+          vendedor: string | null
+        }
+        Insert: {
+          bling_id?: number | null
+          campanha?: string | null
+          comprou_apos_disparo?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          data_entrada_crm?: string | null
+          data_pedido: string
+          dias_apos_disparo?: number | null
+          id?: number
+          match_method?: string | null
+          nome: string
+          origem: string
+          pedido: string
+          recebeu_disparo?: boolean | null
+          situacao_id?: number | null
+          sync_status?: string | null
+          tempo_compra_dias?: number | null
+          valor: number
+          vendedor?: string | null
+        }
+        Update: {
+          bling_id?: number | null
+          campanha?: string | null
+          comprou_apos_disparo?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          data_entrada_crm?: string | null
+          data_pedido?: string
+          dias_apos_disparo?: number | null
+          id?: number
+          match_method?: string | null
+          nome?: string
+          origem?: string
+          pedido?: string
+          recebeu_disparo?: boolean | null
+          situacao_id?: number | null
+          sync_status?: string | null
+          tempo_compra_dias?: number | null
+          valor?: number
+          vendedor?: string | null
+        }
+        Relationships: []
       }
       webhook_configs: {
         Row: {
