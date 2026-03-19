@@ -1,62 +1,44 @@
 
 
-# Corrigir Disparo em Massa com Templates de Header Mídia
+# Diagnóstico: Mensagens não entregues no WhatsApp
 
-## Problema Identificado
+## O que aconteceu
 
-Existem **duas falhas** que causam o erro #132012:
+Analisando os logs e o banco de dados, identifiquei que **3 disparos foram criados em 10 segundos** (16:51:33, 16:51:40, 16:51:43) — todos com o mesmo template `promo_brasil` para os mesmos 4 contatos:
 
-1. **Mapeamento de variáveis quebrado**: A UI salva variáveis como `{{1}}`, `{{2}}`, mas a edge function filtra por prefixos `header_*` e `body_*` — resultado: nenhuma variável é encontrada, o payload vai sem componentes.
+| Dispatch | Criado em | Enviados |
+|---|---|---|
+| 33621da1 | 16:51:33 | 4 |
+| 33a4237c | 16:51:40 | 3 (pausado) |
+| 25c18ae5 | 16:51:43 | 4 |
 
-2. **UI não permite inserir URL de mídia**: O `MetaTemplateSelector` só mostra inputs de texto para variáveis `{{N}}`. Quando o template tem header IMAGE/VIDEO/DOCUMENT, não existe campo para fornecer a URL da mídia.
+**Total: 11 envios** do mesmo template para os mesmos 4 números em ~30 segundos. Somando os testes anteriores (16:09-16:26, mais 5 disparos com erro), esses números receberam o template `promo_brasil` **dezenas de vezes** hoje.
 
-## Plano de Correção
+A Meta aceitou todos (`accepted`) mas **suprimiu a entrega** por detecção de spam/duplicação. Por isso ninguém recebeu no WhatsApp.
 
-### 1. Corrigir a edge function `process-bulk-dispatch/index.ts` — remapear variáveis
+## Causa raiz
 
-Na função `sendMetaTemplateMessage`, trocar a lógica de filtragem por prefixo para interpretar corretamente as variáveis vindas da UI:
+O botão "Iniciar Disparo" não está protegido contra cliques múltiplos de forma eficaz. O `disabled` verifica `createDispatch.isPending`, mas como a operação é rápida, o usuário consegue clicar 3 vezes antes do primeiro completar. Além disso, não há proteção server-side contra dispatches duplicados.
 
-- Se `processedVariables` contém chaves com prefixo `header_`/`body_` → usar como está (compatibilidade)
-- Se contém chaves no formato `{{N}}` → mapear automaticamente usando os `components` do template:
-  - Contar quantas variáveis pertencem ao HEADER (via regex no texto do header)
-  - As primeiras N variáveis vão para header, as restantes para body
-- Se existir chave especial `header_media_url` → usar como URL de mídia do header
+## Correções propostas
 
-### 2. Atualizar `MetaTemplateSelector` — adicionar input de mídia para headers
+### 1. Proteger o botão contra cliques múltiplos (UI)
+- Adicionar estado `isStarting` que fica `true` desde o primeiro clique até o `finally` do handler
+- Usar esse estado no `disabled` do botão em vez de apenas `createDispatch.isPending`
 
-- Detectar se o template selecionado tem header com `format: IMAGE | VIDEO | DOCUMENT`
-- Quando for mídia: mostrar um campo de URL (ou upload) para a mídia do header, salvando como `header_media_url` nas variáveis
-- Quando for TEXT com variáveis: manter comportamento atual
-- Separar visualmente as variáveis por componente (Header / Body)
+### 2. Deduplição no servidor (Edge Function)
+- Antes de processar um contato, verificar se o mesmo número já recebeu o mesmo template com sucesso nos últimos 60 minutos
+- Se já recebeu, pular (marcar como `skipped`) em vez de enviar novamente
 
-### 3. Atualizar `extractTemplateVariables` em `useMetaTemplates.ts`
+### 3. Prevenir criação de dispatches duplicados (servidor)
+- Na criação do dispatch, verificar se já existe um dispatch `running` ou `pending` com o mesmo `meta_template_id` e `channel_id`
+- Se existir, rejeitar a criação
 
-- Retornar informação mais rica: quantidade de variáveis por componente (header vs body) e o formato do header
-- Isso permite ao `MetaTemplateSelector` saber quais inputs renderizar
+### Arquivos modificados
 
-### Arquivos Modificados
-
-| Arquivo | Alteração |
+| Arquivo | Mudança |
 |---|---|
-| `supabase/functions/process-bulk-dispatch/index.ts` | Remapear variáveis `{{N}}` → `header_`/`body_` + usar `header_media_url` |
-| `src/components/meta-templates/MetaTemplateSelector.tsx` | Adicionar campo de URL de mídia para headers IMAGE/VIDEO/DOCUMENT; separar variáveis por componente |
-| `src/hooks/useMetaTemplates.ts` | Criar helper `extractDetailedVariables()` que retorna info por componente |
-
-### Detalhes Técnicos
-
-**Edge function — lógica de remapeamento:**
-```text
-Se variáveis têm formato {{N}}:
-  1. Ler components do template
-  2. Contar vars no HEADER text → headerVarCount
-  3. {{1}}..{{headerVarCount}} → header_1..header_N
-  4. {{headerVarCount+1}}.. → body_1..body_N
-  
-Se existe header_media_url:
-  → Usar como link de mídia (image/video/document)
-```
-
-**MetaTemplateSelector — novo campo de mídia:**
-- Quando `headerComponent.format` é IMAGE/VIDEO/DOCUMENT, renderizar um input de URL com label "URL da imagem/vídeo/documento do cabeçalho"
-- O valor é salvo como `header_media_url` no objeto de variáveis
+| `src/pages/BulkDispatch.tsx` | Adicionar estado `isStarting` para bloquear cliques múltiplos |
+| `supabase/functions/process-bulk-dispatch/index.ts` | Deduplição: pular contatos que já receberam o mesmo template recentemente |
+| `src/hooks/useBulkDispatch.ts` | Validação na criação: rejeitar se dispatch similar já está rodando |
 
