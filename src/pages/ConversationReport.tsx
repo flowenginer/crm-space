@@ -403,18 +403,18 @@ export default function ConversationReportPage() {
       }));
 
       if (conversations.length > 0) {
-        const conversationIds = conversations.map((c: any) => c.id);
+        const contactIds = [...new Set(conversations.map((c: any) => c.contact_id))];
         const { data: tagsData } = await supabase
-          .from('conversation_tags')
-          .select('conversation_id, tag:tags(id, name, color)')
-          .in('conversation_id', conversationIds);
+          .from('contact_tags')
+          .select('contact_id, tag:tags(id, name, color)')
+          .in('contact_id', contactIds);
         if (tagsData) {
-          const tagsByConversation = tagsData.reduce((acc: any, item: any) => {
-            if (!acc[item.conversation_id]) acc[item.conversation_id] = [];
-            acc[item.conversation_id].push({ tag: item.tag });
+          const tagsByContact = tagsData.reduce((acc: any, item: any) => {
+            if (!acc[item.contact_id]) acc[item.contact_id] = [];
+            acc[item.contact_id].push({ tag: item.tag });
             return acc;
           }, {});
-          conversations.forEach((conv: any) => { conv.tags = tagsByConversation[conv.id] || []; });
+          conversations.forEach((conv: any) => { conv.tags = tagsByContact[conv.contact_id] || []; });
         }
       }
       return { conversations, total: Number(total), totalPages: Math.ceil(Number(total) / pageSize) };
@@ -554,23 +554,23 @@ export default function ConversationReportPage() {
           tags: []
         }));
 
-        // Fetch tags for all conversations
+        // Fetch tags for all contacts in conversations
         if (dataToExport.length > 0) {
-          const ids = dataToExport.map((c: any) => c.id);
+          const contactIds = [...new Set(dataToExport.map((c: any) => c.contact_id))];
           // Fetch in batches of 500
           const batches = [];
-          for (let i = 0; i < ids.length; i += 500) batches.push(ids.slice(i, i + 500));
-          const tagsByConversation: Record<string, any[]> = {};
+          for (let i = 0; i < contactIds.length; i += 500) batches.push(contactIds.slice(i, i + 500));
+          const tagsByContact: Record<string, any[]> = {};
           for (const batch of batches) {
-            const { data: tagsData } = await supabase.from('conversation_tags').select('conversation_id, tag:tags(id, name, color)').in('conversation_id', batch);
+            const { data: tagsData } = await supabase.from('contact_tags').select('contact_id, tag:tags(id, name, color)').in('contact_id', batch);
             if (tagsData) {
               tagsData.forEach((item: any) => {
-                if (!tagsByConversation[item.conversation_id]) tagsByConversation[item.conversation_id] = [];
-                tagsByConversation[item.conversation_id].push({ tag: item.tag });
+                if (!tagsByContact[item.contact_id]) tagsByContact[item.contact_id] = [];
+                tagsByContact[item.contact_id].push({ tag: item.tag });
               });
             }
           }
-          dataToExport.forEach((conv: any) => { conv.tags = tagsByConversation[conv.id] || []; });
+          dataToExport.forEach((conv: any) => { conv.tags = tagsByContact[conv.contact_id] || []; });
         }
       } else {
         const source = selectedRows.size > 0
@@ -820,6 +820,7 @@ export default function ConversationReportPage() {
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">#</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Nome</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Contato</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Origem</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Canal</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Agente</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Departamento</th>
@@ -833,14 +834,14 @@ export default function ConversationReportPage() {
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center">
+                    <td colSpan={13} className="px-4 py-12 text-center">
                       <Loader2 size={24} className="animate-spin mx-auto text-primary" />
                       <p className="mt-2 text-sm text-muted-foreground">Carregando atendimentos...</p>
                     </td>
                   </tr>
                 ) : reportData?.conversations.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-muted-foreground">
+                    <td colSpan={13} className="px-4 py-12 text-center text-muted-foreground">
                       <ClipboardList size={40} className="mx-auto mb-3 opacity-50" />
                       <p>Nenhum atendimento encontrado</p>
                       <p className="text-sm">Ajuste os filtros e clique em GERAR</p>
@@ -860,6 +861,7 @@ export default function ConversationReportPage() {
                         </div>
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">{formatPhone(conv.contact?.phone)}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{formatOrigin(conv.contact?.origin)}</td>
                       <td className="px-3 py-3 text-muted-foreground">{conv.channel?.name || '-'}</td>
                       <td className="px-3 py-3 text-muted-foreground">{conv.assigned_user?.full_name || '-'}</td>
                       <td className="px-3 py-3 text-muted-foreground">{conv.department?.name || '-'}</td>

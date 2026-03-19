@@ -1,51 +1,43 @@
 
 
-# Corrigir "Falha ao processar etiquetas" no Bulk Tag
+# Fix: Enviar componente header com imagem para templates Meta
 
-## Problema
+## Problema confirmado pelos logs
 
-A tabela `contact_tags` tem 4 colunas obrigatorias (NOT NULL):
-- `contact_id`
-- `tag_id`
-- `tenant_id`
-- `created_at` (tem default)
+A Meta **sempre** exige o componente `header` com `type: "image"` + `link` ou `id` para templates com header IMAGE. Omitir o componente causa `Format mismatch, expected IMAGE, received UNKNOWN` (#132012).
 
-O codigo em `useBulkAddTag` (arquivo `src/hooks/useBulkConversationActions.ts`) insere apenas `contact_id` e `tag_id`, **sem o `tenant_id`**. O banco de dados rejeita a insercao porque `tenant_id` nao pode ser nulo.
+A correção anterior (omitir header para "imagem estática") estava incorreta.
 
-## Solucao
+## Solução
 
-Buscar o `tenant_id` do usuario logado antes do upsert e inclui-lo nos dados de insercao.
+Para templates com header IMAGE/VIDEO/DOCUMENT sem `header_media_url` fornecida pelo usuário, o sistema precisa:
+1. Extrair a URL de exemplo do template (`example.header_handle` no campo `components` do template salvo no banco)
+2. Se não houver URL de exemplo disponível, **exigir que o usuário forneça** a URL da mídia antes de enviar
 
-## Alteracao
+### Abordagem: Exigir URL de mídia na UI
 
-### Arquivo: `src/hooks/useBulkConversationActions.ts` - funcao `useBulkAddTag` (linhas ~453-457)
+Como os `header_handle` são temporários e expiram, a solução correta é:
 
-Antes do upsert, buscar o `tenant_id` do perfil do usuario logado e incluir no array de insercao:
+1. **Na UI de envio de template** (`Conversations.tsx` e `BulkDispatch`): quando o template tem header IMAGE e não há variáveis de texto no header, mostrar um campo obrigatório para URL da imagem (ou upload)
+2. **No backend**: remover a lógica de "skip" e sempre enviar o componente header com a mídia fornecida
+
+### Arquivos modificados
+
+| Arquivo | Mudança |
+|---|---|
+| `supabase/functions/process-bulk-dispatch/index.ts` | Remover lógica de skip; lançar erro se template IMAGE não tiver `header_media_url` |
+| `supabase/functions/cloudapi-send-message/index.ts` | Sem mudança (já envia o que recebe) |
+| `src/pages/Conversations.tsx` | Quando template tem header IMAGE sem variáveis, exigir URL da imagem no modal |
+| `src/components/meta-templates/MetaTemplateUseModal.tsx` | Adicionar campo de upload/URL para mídia do header quando tipo é IMAGE |
+| `src/components/meta-templates/MetaTemplateSelector.tsx` | Garantir que campo `header_media_url` aparece para templates com header estático IMAGE |
+
+### Fluxo corrigido
 
 ```text
-// Antes (atual):
-const inserts = contactIds.map(contactId => ({
-  contact_id: contactId,
-  tag_id: tagId,
-}));
-
-// Depois (corrigido):
-const { data: { user } } = await supabase.auth.getUser();
-const { data: profile } = await supabase
-  .from('profiles')
-  .select('tenant_id')
-  .eq('id', user?.id)
-  .single();
-
-const tenantId = profile?.tenant_id;
-if (!tenantId) throw new Error('Tenant nao encontrado');
-
-const inserts = contactIds.map(contactId => ({
-  contact_id: contactId,
-  tag_id: tagId,
-  tenant_id: tenantId,
-}));
+Template com header IMAGE (sem variáveis de texto):
+  UI → campo obrigatório "URL da imagem" ou upload
+  → envia header_media_url no payload
+  → backend monta: { type: "header", parameters: [{ type: "image", image: { link: url } }] }
+  → Meta aceita ✅
 ```
-
-Isso resolve o erro sem alterar nenhuma outra funcionalidade.
 

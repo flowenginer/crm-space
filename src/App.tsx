@@ -78,6 +78,7 @@ import BulkLeadUpdate from "@/pages/BulkLeadUpdate";
 import WhatsAppLeadTracking from "@/pages/WhatsAppLeadTracking";
 import LeadConversionDashboard from "@/pages/LeadConversionDashboard";
 import ReprocessTriggersPage from "@/pages/admin/ReprocessTriggersPage";
+import SalesAnalysis from "@/pages/SalesAnalysis";
 // Support pages
 import SupportPage from "@/pages/SupportPage";
 import TicketDetailPage from "@/pages/TicketDetailPage";
@@ -404,6 +405,11 @@ const App = () => (
                 <SuperAdminGuard>
                   <ReprocessTriggersPage />
                 </SuperAdminGuard>
+              } />
+              <Route path="/sales-analysis" element={
+                <ProtectedRoute permission="reports.view">
+                  <SalesAnalysis />
+                </ProtectedRoute>
               } />
             </Route>
 

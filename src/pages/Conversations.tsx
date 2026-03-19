@@ -2908,7 +2908,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     templateName: string,
     language: string,
     variables: Record<string, string>,
-    previewContent: string
+    previewContent: string,
+    templateComponents?: any[]
   ) => {
     const channelId = selectedConversation?.channel_id;
     const contactPhone = selectedConversation?.contact?.phone;
@@ -2919,30 +2920,34 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
 
     try {
-      // Buscar template completo do banco para ter os components originais (header format, etc)
-      const { data: fullTemplate, error: templateError } = await supabase
-        .from('meta_message_templates')
-        .select('components')
-        .eq('id', templateId)
-        .single();
-
-      if (templateError) {
-        console.error('Erro ao buscar template:', templateError);
+      // Usar components passados diretamente ou buscar do banco
+      let resolvedComponents = templateComponents;
+      if (!resolvedComponents || resolvedComponents.length === 0) {
+        const { data: fullTemplate } = await supabase
+          .from('meta_message_templates')
+          .select('components')
+          .eq('id', templateId)
+          .single();
+        resolvedComponents = (fullTemplate?.components as any[]) || [];
       }
-
-      const templateComponents = (fullTemplate?.components as any[]) || [];
 
       // Montar os componentes do template com as variáveis
       const components: any[] = [];
 
       // Detectar formato do header (IMAGE, VIDEO, DOCUMENT, TEXT)
-      const headerComp = templateComponents.find((c: any) => c.type === 'HEADER');
+      const headerComp = resolvedComponents.find((c: any) => c.type === 'HEADER');
       const headerFormat = headerComp?.format?.toUpperCase();
 
+      // Separar variáveis reais das meta-variáveis (header_media_url)
+      const userMediaUrl = variables['header_media_url'];
+      const variableEntries = Object.entries(variables)
+        .filter(([k]) => k !== 'header_media_url')
+        .sort(([a], [b]) => Number(a) - Number(b));
+
       if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
-        // Header de mídia: usar URL do example do template
-        let mediaUrl: string | null = null;
-        if (headerComp?.example?.header_handle?.[0]) {
+        // Header de mídia: priorizar URL fornecida pelo usuário, senão usar example do template
+        let mediaUrl = userMediaUrl || null;
+        if (!mediaUrl && headerComp?.example?.header_handle?.[0]) {
           mediaUrl = headerComp.example.header_handle[0];
         }
         if (mediaUrl) {
@@ -2959,33 +2964,51 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         // Header de texto com variáveis
         const headerMatches = headerComp.text.match(/\{\{\d+\}\}/g);
         if (headerMatches && headerMatches.length > 0) {
+          // Header vars vêm antes das body vars na numeração
+          const headerParams = variableEntries.slice(0, headerMatches.length);
+          if (headerParams.length > 0) {
+            components.push({
+              type: 'header',
+              parameters: headerParams.map(([, v]) => ({ type: 'text', text: v })),
+            });
+          }
+          // Body vars são as restantes
+          const bodyVars = variableEntries.slice(headerMatches.length);
+          if (bodyVars.length > 0) {
+            components.push({
+              type: 'body',
+              parameters: bodyVars.map(([, v]) => ({ type: 'text', text: v })),
+            });
+          }
+        } else {
+          // Header sem variáveis, body normal
+          if (variableEntries.length > 0) {
+            components.push({
+              type: 'body',
+              parameters: variableEntries.map(([, v]) => ({ type: 'text', text: v })),
+            });
+          }
+        }
+      } else {
+        // Sem header especial: todas as variáveis vão pro body
+        if (variableEntries.length > 0) {
           components.push({
-            type: 'header',
-            parameters: headerMatches.map((_: string, i: number) => ({
-              type: 'text',
-              text: variables[String(i + 1)] || '',
-            })),
+            type: 'body',
+            parameters: variableEntries.map(([, v]) => ({ type: 'text', text: v })),
           });
         }
       }
 
-      // Body variables
-      const bodyComp = templateComponents.find((c: any) => c.type === 'BODY');
-      if (bodyComp?.text) {
-        const bodyMatches = bodyComp.text.match(/\{\{\d+\}\}/g);
-        if (bodyMatches && bodyMatches.length > 0) {
-          components.push({
-            type: 'body',
-            parameters: bodyMatches.map((match: string) => {
-              const num = match.replace(/[{}]/g, '');
-              return { type: 'text', text: variables[num] || '' };
-            }),
-          });
-        }
+      // Para headers de mídia, body vars precisam ser adicionadas separadamente
+      if ((headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') && variableEntries.length > 0) {
+        components.push({
+          type: 'body',
+          parameters: variableEntries.map(([, v]) => ({ type: 'text', text: v })),
+        });
       }
 
       // Button variables (URL com sufixo dinâmico)
-      const buttonsComp = templateComponents.find((c: any) => c.type === 'BUTTONS');
+      const buttonsComp = resolvedComponents.find((c: any) => c.type === 'BUTTONS');
       if (buttonsComp?.buttons) {
         buttonsComp.buttons.forEach((btn: any, idx: number) => {
           if (btn.type === 'URL' && btn.url?.includes('{{')) {
@@ -2997,6 +3020,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             });
           }
         });
+      }
       }
 
       // Enviar via Cloud API

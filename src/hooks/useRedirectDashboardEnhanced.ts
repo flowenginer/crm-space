@@ -115,10 +115,24 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
         return status.toLowerCase().includes('layout');
       };
       
-      const isFechadoStatus = (status: string | null): boolean => {
+      const isConvertedStatus = (status: string | null): boolean => {
         if (!status) return false;
-        const lower = status.toLowerCase();
-        return lower.includes('fechado') || lower.includes('pedido fechado');
+        // Status 07 a 10: Pedido Fechado, Em andamento, Cobrança, Aguardando envio
+        return /^(07|08|09|10)\s*-/.test(status);
+      };
+      
+      const isConverted = (contact: any): boolean => {
+        if (!contact) return false;
+        if (isConvertedStatus(contact.lead_status)) return true;
+        // Verificar custom_fields.conversoes
+        const cf = contact.custom_fields;
+        if (cf && typeof cf === 'object') {
+          const conversoes = (cf as any).conversoes;
+          if (conversoes && (typeof conversoes === 'string' ? conversoes.trim() !== '' : Array.isArray(conversoes) ? conversoes.length > 0 : true)) {
+            return true;
+          }
+        }
+        return false;
       };
 
       // 2. Buscar visitas agrupadas por UTM (com paginação)
@@ -153,7 +167,7 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
             utm_content, 
             contact_id,
             created_at,
-            contact:contacts(id, lead_status)
+            contact:contacts(id, lead_status, custom_fields)
           `)
           .eq('tenant_id', tenantId);
 
@@ -291,21 +305,26 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
         targetMap.get(key)!.visitors.add(v.visitor_id);
       });
 
-      // 6. Processar leads por UTM com status
+      // 6. Processar leads por UTM com status (contatos únicos por chave UTM)
       const leadsMap = new Map<string, { 
         total: number; 
         catalogo: number; 
         layout: number; 
-        fechados: number 
+        fechados: number;
+        contacts: Set<string>;
       }>();
       const unmappedLeadsMap = new Map<string, { 
         total: number; 
         catalogo: number; 
         layout: number; 
-        fechados: number 
+        fechados: number;
+        contacts: Set<string>;
       }>();
       
       (leadsData || []).forEach((l) => {
+        const contactId = l.contact_id as string;
+        if (!contactId) return;
+        
         const cleanContent = getCleanContent(l.utm_content, l.utm_medium);
         const key = `${l.utm_source || "(direto)"}|${l.utm_campaign || "(none)"}|${cleanContent || "(none)"}`;
         
@@ -314,20 +333,26 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
         const targetMap = (hasAdFilter && !matches) ? unmappedLeadsMap : leadsMap;
         
         if (!targetMap.has(key)) {
-          targetMap.set(key, { total: 0, catalogo: 0, layout: 0, fechados: 0 });
+          targetMap.set(key, { total: 0, catalogo: 0, layout: 0, fechados: 0, contacts: new Set() });
         }
         
         const entry = targetMap.get(key)!;
+        
+        // Deduplicar: só contar cada contato uma vez por chave UTM
+        if (entry.contacts.has(contactId)) return;
+        entry.contacts.add(contactId);
+        
         entry.total += 1;
         
-        const leadStatus = (l.contact as any)?.lead_status as string | null;
+        const contact = l.contact as any;
+        const leadStatus = contact?.lead_status as string | null;
         if (isCatalogoStatus(leadStatus)) {
           entry.catalogo += 1;
         }
         if (isLayoutStatus(leadStatus)) {
           entry.layout += 1;
         }
-        if (isFechadoStatus(leadStatus)) {
+        if (isConverted(contact)) {
           entry.fechados += 1;
         }
       });
@@ -335,7 +360,7 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
       // 7. Função helper para processar breakdown
       const processBreakdown = (
         vMap: Map<string, { utm_source: string | null; utm_campaign: string | null; utm_content: string | null; visitors: Set<string> }>,
-        lMap: Map<string, { total: number; catalogo: number; layout: number; fechados: number }>
+        lMap: Map<string, { total: number; catalogo: number; layout: number; fechados: number; contacts: Set<string> }>
       ): UTMBreakdownEnhanced[] => {
         const allKeys = new Set([...vMap.keys(), ...lMap.keys()]);
         const breakdown: UTMBreakdownEnhanced[] = [];

@@ -2261,11 +2261,13 @@ serve(async (req) => {
       let closedConversation = null;
       
       const findClosedConversation = async () => {
+        // Search closed conversations across ALL channels (not just current)
+        // This prevents creating duplicate conversations when contact messages from a different channel
         const { data } = await supabase
           .from("conversations")
-          .select("id, status, assigned_to, close_reason, closed_at, closed_by, last_message_at, department_id")
+          .select("id, status, assigned_to, close_reason, closed_at, closed_by, last_message_at, department_id, channel_id")
           .eq("contact_id", contact.id)
-          .eq("channel_id", channel.id)
+          .eq("tenant_id", channel.tenant_id)
           .eq("status", "closed")
           .order("closed_at", { ascending: false })
           .limit(1)
@@ -2319,6 +2321,12 @@ serve(async (req) => {
         // Se não tem atendente atribuído, reabre como "pending", senão como "open"
         const reopenStatus = newAssignedTo ? "open" : "pending";
         
+        // If reopening from a different channel, migrate it
+        const needsChannelMigration = closedConversation.channel_id !== channel.id;
+        if (needsChannelMigration) {
+          console.log(`[Webhook] 🔄 Reopening closed conversation from different channel: ${closedConversation.channel_id} → ${channel.id}`);
+        }
+        
         const { error: reopenError } = await supabase
           .from("conversations")
           .update({
@@ -2337,6 +2345,7 @@ serve(async (req) => {
             closed_by: null,
             close_reason: null,
             updated_at: new Date().toISOString(),
+            ...(needsChannelMigration ? { channel_id: channel.id } : {}),
           })
           .eq("id", closedConversation.id);
 
@@ -2465,6 +2474,10 @@ serve(async (req) => {
         const conversationDepartmentId = contact.department_id || channel.department_id || null;
         console.log(`[Webhook] 📍 Creating conversation with department_id: ${conversationDepartmentId} (contact: ${contact.department_id}, channel: ${channel.department_id})`);
         
+        // Inherit lead_status from contact to keep consistency across channels
+        const inheritedLeadStatus = contact.lead_status || 'new';
+        console.log(`[Webhook] 📍 Creating conversation with inherited lead_status: ${inheritedLeadStatus} (from contact)`);
+        
         const { data: newConversation, error: convError } = await supabase
           .from("conversations")
           .insert({
@@ -2473,6 +2486,7 @@ serve(async (req) => {
             department_id: conversationDepartmentId,
             tenant_id: channel.tenant_id,
             status: initialStatus,
+            lead_status: inheritedLeadStatus,
             is_unread: true,
             unread_count: 1,
             last_message_at: new Date().toISOString(),

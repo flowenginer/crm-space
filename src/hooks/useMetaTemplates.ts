@@ -244,6 +244,43 @@ export function extractTemplateVariables(components: MetaTemplateComponent[]): n
   return maxVar;
 }
 
+// Detailed variable info per component
+export interface DetailedVariableInfo {
+  headerFormat: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | null;
+  headerVarCount: number;
+  bodyVarCount: number;
+  totalVarCount: number;
+  hasMediaHeader: boolean;
+}
+
+export function extractDetailedVariables(components: MetaTemplateComponent[]): DetailedVariableInfo {
+  const header = components.find(c => c.type === 'HEADER');
+  const body = components.find(c => c.type === 'BODY');
+
+  const headerFormat = (header?.format as DetailedVariableInfo['headerFormat']) || null;
+  const hasMediaHeader = headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT';
+
+  let headerVarCount = 0;
+  if (header?.text) {
+    const matches = header.text.match(/\{\{(\d+)\}\}/g);
+    headerVarCount = matches ? matches.length : 0;
+  }
+
+  let bodyVarCount = 0;
+  if (body?.text) {
+    const matches = body.text.match(/\{\{(\d+)\}\}/g);
+    bodyVarCount = matches ? matches.length : 0;
+  }
+
+  return {
+    headerFormat,
+    headerVarCount,
+    bodyVarCount,
+    totalVarCount: headerVarCount + bodyVarCount,
+    hasMediaHeader,
+  };
+}
+
 // Helper function to get body text from components
 export function getTemplateBody(components: MetaTemplateComponent[]): string {
   const bodyComponent = components.find(c => c.type === 'BODY');
@@ -260,4 +297,39 @@ export function getTemplateHeader(components: MetaTemplateComponent[]): string |
 export function getTemplateFooter(components: MetaTemplateComponent[]): string | null {
   const footerComponent = components.find(c => c.type === 'FOOTER');
   return footerComponent?.text || null;
+}
+
+// Upload media to Meta for template header
+export function useUploadMetaMedia() {
+  return useMutation({
+    mutationFn: async (file: File): Promise<string> => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(
+        'https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/meta-upload-media',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: formData,
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to upload media');
+      }
+
+      return result.handle;
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Erro ao fazer upload da imagem');
+    },
+  });
 }

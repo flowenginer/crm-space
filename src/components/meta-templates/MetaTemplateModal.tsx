@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { 
   Dialog, 
   DialogContent, 
@@ -19,9 +19,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Loader2, Info, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Loader2, Info, AlertTriangle, Upload, CheckCircle2, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useCreateMetaTemplate, type MetaTemplateComponent } from '@/hooks/useMetaTemplates';
+import { toast } from 'sonner';
+import { useCreateMetaTemplate, useUploadMetaMedia, type MetaTemplateComponent } from '@/hooks/useMetaTemplates';
 
 interface MetaTemplateModalProps {
   open: boolean;
@@ -47,13 +48,20 @@ type ButtonType = {
   phone_number?: string;
 };
 
+type HeaderType = 'none' | 'text' | 'image';
+
 export function MetaTemplateModal({ open, onOpenChange }: MetaTemplateModalProps) {
   const createTemplate = useCreateMetaTemplate();
+  const uploadMedia = useUploadMetaMedia();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
   const [language, setLanguage] = useState('pt_BR');
   const [category, setCategory] = useState<'MARKETING' | 'UTILITY' | 'AUTHENTICATION'>('MARKETING');
+  const [headerType, setHeaderType] = useState<HeaderType>('none');
   const [headerText, setHeaderText] = useState('');
+  const [headerImageHandle, setHeaderImageHandle] = useState<string | null>(null);
+  const [headerImageName, setHeaderImageName] = useState<string | null>(null);
   const [bodyText, setBodyText] = useState('');
   const [footerText, setFooterText] = useState('');
   const [buttons, setButtons] = useState<ButtonType[]>([]);
@@ -78,24 +86,67 @@ export function MetaTemplateModal({ open, onOpenChange }: MetaTemplateModalProps
     setButtons(newButtons);
   };
 
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file
+    const validTypes = ['image/jpeg', 'image/png'];
+    if (!validTypes.includes(file.type)) {
+      toast.error('Formato inválido. Use apenas JPG ou PNG.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. O tamanho máximo é 5MB.');
+      return;
+    }
+
+    setHeaderImageName(file.name);
+    setHeaderImageHandle(null);
+
+    try {
+      const handle = await uploadMedia.mutateAsync(file);
+      setHeaderImageHandle(handle);
+    } catch (error) {
+      console.error('[MetaTemplateModal] Upload error:', error);
+      setHeaderImageName(null);
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleHeaderTypeChange = (value: HeaderType) => {
+    setHeaderType(value);
+    if (value !== 'text') setHeaderText('');
+    if (value !== 'image') {
+      setHeaderImageHandle(null);
+      setHeaderImageName(null);
+    }
+  };
+
   const handleSubmit = async () => {
-    // Validate name format
-    if (!/^[a-z0-9_]+$/.test(name)) {
-      return;
-    }
+    if (!/^[a-z0-9_]+$/.test(name)) return;
+    if (!bodyText.trim()) return;
 
-    if (!bodyText.trim()) {
-      return;
-    }
-
-    // Build components array
     const components: MetaTemplateComponent[] = [];
 
-    if (headerText.trim()) {
+    // Header component
+    if (headerType === 'text' && headerText.trim()) {
       components.push({
         type: 'HEADER',
         format: 'TEXT',
         text: headerText,
+      });
+    } else if (headerType === 'image' && headerImageHandle) {
+      components.push({
+        type: 'HEADER',
+        format: 'IMAGE',
+        example: {
+          header_handle: [headerImageHandle],
+        },
       });
     }
 
@@ -137,7 +188,10 @@ export function MetaTemplateModal({ open, onOpenChange }: MetaTemplateModalProps
 
       // Reset form
       setName('');
+      setHeaderType('none');
       setHeaderText('');
+      setHeaderImageHandle(null);
+      setHeaderImageName(null);
       setBodyText('');
       setFooterText('');
       setButtons([]);
@@ -148,8 +202,9 @@ export function MetaTemplateModal({ open, onOpenChange }: MetaTemplateModalProps
     }
   };
 
+  const isImageReady = headerType !== 'image' || !!headerImageHandle;
   const isValid = name && /^[a-z0-9_]+$/.test(name) && bodyText.trim() && 
-    (variableCount === 0 || exampleValues.length >= variableCount);
+    (variableCount === 0 || exampleValues.length >= variableCount) && isImageReady;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -222,18 +277,113 @@ export function MetaTemplateModal({ open, onOpenChange }: MetaTemplateModalProps
           </div>
 
           {/* Header */}
-          <div className="space-y-2">
-            <Label htmlFor="header">Cabeçalho (opcional)</Label>
-            <Input
-              id="header"
-              value={headerText}
-              onChange={(e) => setHeaderText(e.target.value)}
-              placeholder="Título da mensagem"
-              maxLength={60}
-            />
-            <p className="text-xs text-muted-foreground">
-              {headerText.length}/60 caracteres
-            </p>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Label>Cabeçalho (opcional)</Label>
+              <Select value={headerType} onValueChange={(v) => handleHeaderTypeChange(v as HeaderType)}>
+                <SelectTrigger className="w-[140px] bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="none">Nenhum</SelectItem>
+                  <SelectItem value="text">Texto</SelectItem>
+                  <SelectItem value="image">Imagem</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {headerType === 'text' && (
+              <div className="space-y-2">
+                <Input
+                  value={headerText}
+                  onChange={(e) => setHeaderText(e.target.value)}
+                  placeholder="Título da mensagem"
+                  maxLength={60}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {headerText.length}/60 caracteres
+                </p>
+              </div>
+            )}
+
+            {headerType === 'image' && (
+              <div className="space-y-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  onChange={handleImageSelect}
+                />
+
+                {!headerImageName && !uploadMedia.isPending && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full flex flex-col items-center justify-center gap-2 p-6 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/50 transition-colors cursor-pointer"
+                  >
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-foreground">Selecionar imagem</p>
+                      <p className="text-xs text-muted-foreground mt-1">JPG ou PNG, máximo 5MB</p>
+                    </div>
+                  </button>
+                )}
+
+                {uploadMedia.isPending && (
+                  <div className="flex items-center gap-3 p-4 rounded-lg border bg-muted/30">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <div>
+                      <p className="text-sm font-medium">Fazendo upload...</p>
+                      <p className="text-xs text-muted-foreground">{headerImageName}</p>
+                    </div>
+                  </div>
+                )}
+
+                {headerImageHandle && headerImageName && (
+                  <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      <div>
+                        <p className="text-sm font-medium">Imagem carregada</p>
+                        <p className="text-xs text-muted-foreground">{headerImageName}</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setHeaderImageHandle(null);
+                        setHeaderImageName(null);
+                      }}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+
+                {!uploadMedia.isPending && headerImageName && !headerImageHandle && (
+                  <div className="flex items-center gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/10">
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                    <div>
+                      <p className="text-sm font-medium text-destructive">Erro no upload</p>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0 text-xs"
+                        onClick={() => {
+                          setHeaderImageName(null);
+                          fileInputRef.current?.click();
+                        }}
+                      >
+                        Tentar novamente
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Body */}

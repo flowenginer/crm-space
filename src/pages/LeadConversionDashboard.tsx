@@ -527,7 +527,7 @@ export default function LeadConversionDashboard() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={statusBreakdown}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="status" tick={{ fontSize: 11, angle: -30 }} height={80} textAnchor="end" />
+                <XAxis dataKey="status" tick={{ fontSize: 11 }} height={80} />
                 <YAxis />
                 <Tooltip formatter={(value: number) => formatNumber(value)} />
                 <Bar dataKey="count" name="Leads" radius={[4, 4, 0, 0]}>

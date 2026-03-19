@@ -63,7 +63,7 @@ export function BulkRescueModal({
         // Get conversation data
         const { data: conv } = await supabase
           .from('conversations')
-          .select('contact_id, contact:contacts(full_name, phone), channel_id')
+          .select('contact_id, tenant_id, contact:contacts(full_name, phone), channel_id')
           .eq('id', conversationId)
           .single();
 
@@ -148,7 +148,7 @@ export function BulkRescueModal({
           accumulatedMinutes += stepsWithName[j].timer_minutes;
         }
 
-        await supabase.from('rescue_scheduled_messages').insert(scheduledMessages);
+        await supabase.from('rescue_scheduled_messages').insert(scheduledMessages.map(m => ({ ...m, tenant_id: (conv as any).tenant_id })) as any);
       } catch (err) {
         console.error(`Error activating rescue for ${conversationId}:`, err);
         errors++;

@@ -118,6 +118,7 @@ function getStatusBadge(status: BulkDispatchType['status']) {
 
 export default function BulkDispatch() {
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
+  const [isStarting, setIsStarting] = useState(false);
   const [selectedDispatchId, setSelectedDispatchId] = useState<string | null>(null);
   const [detailsDispatch, setDetailsDispatch] = useState<BulkDispatchType | null>(null);
   const [dispatchToDelete, setDispatchToDelete] = useState<string | null>(null);
@@ -231,6 +232,7 @@ export default function BulkDispatch() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const handleCreateAndStart = async () => {
+    if (isStarting) return;
     if (!name.trim()) { toast.error('Digite um nome para a campanha'); return; }
     if (campaignType !== 'template_meta' && !templateId) { 
       toast.error(campaignType === 'followup' ? 'Selecione um template de follow-up' : 'Selecione uma campanha de marketing'); 
@@ -243,6 +245,7 @@ export default function BulkDispatch() {
     if (!channelId) { toast.error('Selecione um canal de envio'); return; }
     if (totalContacts === 0) { toast.error('Nenhum contato selecionado'); return; }
 
+    setIsStarting(true);
     try {
       const dispatch = await createDispatch.mutateAsync({
         name, 
@@ -267,6 +270,8 @@ export default function BulkDispatch() {
       setMetaTemplateId(undefined); setMetaVariables({});
     } catch (error) {
       toast.error('Erro ao criar disparo em massa');
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -573,11 +578,11 @@ export default function BulkDispatch() {
                 <Button 
                   className="w-full" 
                   size="lg" 
-                  disabled={!name || (campaignType !== 'template_meta' && !templateId) || (campaignType === 'template_meta' && !metaTemplateId) || !channelId || totalContacts === 0 || createDispatch.isPending || countLoading} 
-                  onClick={handleCreateAndStart}
-                >
-                  {createDispatch.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-                  Iniciar Disparo ({totalContacts.toLocaleString('pt-BR')} contatos)
+                   disabled={!name || (campaignType !== 'template_meta' && !templateId) || (campaignType === 'template_meta' && !metaTemplateId) || !channelId || totalContacts === 0 || isStarting || createDispatch.isPending || countLoading} 
+                   onClick={handleCreateAndStart}
+                 >
+                   {(isStarting || createDispatch.isPending) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                   {isStarting ? 'Iniciando...' : `Iniciar Disparo (${totalContacts.toLocaleString('pt-BR')} contatos)`}
                 </Button>
               </CardContent>
             </Card>

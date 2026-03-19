@@ -322,6 +322,8 @@ async function sendMetaTemplateMessage(
     }
   }
 
+  console.log(`[BulkDispatch] Raw variables keys:`, Object.keys(processedVariables));
+
   // Build template payload
   const templatePayload: any = {
     name: metaTemplate.name,
@@ -333,6 +335,7 @@ async function sendMetaTemplateMessage(
 
   // Detect header format from the Meta template components (IMAGE, VIDEO, DOCUMENT, TEXT)
   let headerFormat: string | null = null;
+  let headerVarCount = 0;
   if (metaTemplate.components && Array.isArray(metaTemplate.components)) {
     const headerComponent = metaTemplate.components.find(
       (c: any) => c.type === 'HEADER'
@@ -340,26 +343,62 @@ async function sendMetaTemplateMessage(
     if (headerComponent?.format) {
       headerFormat = headerComponent.format.toUpperCase();
     }
+    // Count variables in header text
+    if (headerComponent?.text) {
+      const headerMatches = headerComponent.text.match(/\{\{(\d+)\}\}/g);
+      headerVarCount = headerMatches ? headerMatches.length : 0;
+    }
   }
 
+  // ---- REMAP {{N}} variables to header_/body_ prefixes ----
+  const hasLegacyPrefixes = Object.keys(processedVariables).some(
+    k => k.startsWith('header_') || k.startsWith('body_') || k.startsWith('button_')
+  );
+  const hasBracketKeys = Object.keys(processedVariables).some(k => /^\{\{\d+\}\}$/.test(k));
+
+  // Remapped variables (header_N / body_N format)
+  let remappedVars: Record<string, string> = {};
+
+  if (hasBracketKeys && !hasLegacyPrefixes) {
+    // Remap {{N}} → header_N / body_N based on template component analysis
+    console.log(`[BulkDispatch] Remapping {{N}} vars. headerVarCount=${headerVarCount}`);
+    
+    // Collect all numbered vars sorted
+    const numberedEntries = Object.entries(processedVariables)
+      .filter(([k]) => /^\{\{\d+\}\}$/.test(k))
+      .map(([k, v]) => ({ num: parseInt(k.replace(/[{}]/g, '')), value: v }))
+      .sort((a, b) => a.num - b.num);
+
+    for (const entry of numberedEntries) {
+      if (entry.num <= headerVarCount) {
+        remappedVars[`header_${entry.num}`] = entry.value;
+      } else {
+        const bodyIndex = entry.num - headerVarCount;
+        remappedVars[`body_${bodyIndex}`] = entry.value;
+      }
+    }
+  } else {
+    // Already has prefixed keys or no bracket keys — use as-is
+    remappedVars = { ...processedVariables };
+  }
+
+  // Extract header_media_url (special key from UI)
+  const headerMediaUrl = processedVariables['header_media_url'] || remappedVars['header_media_url'] || null;
+  delete remappedVars['header_media_url'];
+
+  console.log(`[BulkDispatch] Remapped vars:`, Object.keys(remappedVars), `headerMediaUrl: ${headerMediaUrl ? 'present' : 'none'}`);
+
   // Handle header variables / media
-  const headerVars = Object.entries(processedVariables)
+  const headerVars = Object.entries(remappedVars)
     .filter(([k]) => k.startsWith('header_'))
     .sort(([a], [b]) => a.localeCompare(b));
 
   if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
-    // Media header: the variable (if any) contains the media URL, or use the template's example
-    let mediaUrl = headerVars.length > 0 ? headerVars[0][1] : null;
-
-    // If no variable was provided, try to extract URL from template example
-    if (!mediaUrl && metaTemplate.components) {
-      const headerComp = metaTemplate.components.find((c: any) => c.type === 'HEADER');
-      if (headerComp?.example?.header_handle?.[0]) {
-        mediaUrl = headerComp.example.header_handle[0];
-      }
-    }
+    // Media header: use header_media_url if provided by user, or header vars
+    const mediaUrl = headerMediaUrl || (headerVars.length > 0 ? headerVars[0][1] : null);
 
     if (mediaUrl) {
+      // User provided a media URL → send it as header component
       const mediaType = headerFormat.toLowerCase(); // 'image', 'video', 'document'
       components.push({
         type: 'header',
@@ -369,6 +408,13 @@ async function sendMetaTemplateMessage(
         }],
       });
       console.log(`[BulkDispatch] Header media (${mediaType}): ${mediaUrl.substring(0, 80)}...`);
+    } else if (headerVarCount === 0) {
+      // No media URL provided AND no header variables → ERROR
+      // Meta ALWAYS requires the header component for media templates
+      console.log(`[BulkDispatch] ERROR: Media header template requires header_media_url but none provided`);
+      throw new Error(`Template com cabeçalho de mídia requer header_media_url`);
+    } else {
+      console.log(`[BulkDispatch] WARNING: Media header has ${headerVarCount} variables but no media URL provided`);
     }
   } else if (headerVars.length > 0) {
     // Text header with variables
@@ -379,7 +425,7 @@ async function sendMetaTemplateMessage(
   }
 
   // Handle body variables
-  const bodyVars = Object.entries(processedVariables)
+  const bodyVars = Object.entries(remappedVars)
     .filter(([k]) => k.startsWith('body_'))
     .sort(([a], [b]) => a.localeCompare(b));
   
@@ -391,7 +437,7 @@ async function sendMetaTemplateMessage(
   }
 
   // Handle button variables
-  const buttonVars = Object.entries(processedVariables)
+  const buttonVars = Object.entries(remappedVars)
     .filter(([k]) => k.startsWith('button_'))
     .sort(([a], [b]) => a.localeCompare(b));
   
@@ -954,6 +1000,51 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
     console.log(`[BulkDispatch] Processing contact: ${contact.full_name} (${contact.phone})`);
 
     try {
+      // === DEDUPLICATION: Skip if same template was sent to this number recently ===
+      if (isMetaTemplateCampaign && metaTemplate) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data: recentlySent } = await supabase
+          .from('bulk_dispatch_contacts')
+          .select('id')
+          .neq('dispatch_id', dispatch.id)
+          .eq('contact_id', contact.id)
+          .eq('status', 'sent')
+          .gte('sent_at', oneHourAgo)
+          .limit(1);
+
+        // Check if the recent dispatch used the same meta_template_id
+        if (recentlySent && recentlySent.length > 0) {
+          const { data: recentDispatch } = await supabase
+            .from('bulk_dispatch_contacts')
+            .select('dispatch:bulk_dispatches!bulk_dispatch_contacts_dispatch_id_fkey(meta_template_id)')
+            .eq('id', recentlySent[0].id)
+            .single();
+
+          const recentMetaTemplateId = (recentDispatch as any)?.dispatch?.meta_template_id;
+          if (recentMetaTemplateId === dispatch.meta_template_id) {
+            console.log(`[BulkDispatch] SKIPPING contact ${contact.full_name} - same template sent within last hour`);
+            await supabase
+              .from('bulk_dispatch_contacts')
+              .update({ status: 'skipped', error_message: 'Template já enviado recentemente para este contato' })
+              .eq('id', dispatchContact.id);
+
+            await supabase
+              .from('bulk_dispatches')
+              .update({
+                processed_count: dispatch.processed_count + 1,
+                skipped_count: (dispatch.skipped_count || 0) + 1,
+              })
+              .eq('id', dispatch.id);
+
+            dispatch.processed_count++;
+            dispatch.skipped_count = (dispatch.skipped_count || 0) + 1;
+            processedCount++;
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
+        }
+      }
+
       // Mark as sending
       await supabase
         .from('bulk_dispatch_contacts')

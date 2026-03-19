@@ -121,7 +121,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
       const { data, error } = await supabase
         .from('conversations')
         .select(`
-          id, contact_id, channel_id, assigned_to, department_id,
+          id, contact_id, channel_id, assigned_to, department_id, tenant_id,
           status, is_unread, unread_count, last_message_at, last_message_preview,
           lead_status, created_at, referral_source, referral_data, last_client_message_at,
           contact:contacts(
@@ -325,29 +325,61 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   // Mutation: Update lead status
   const updateLeadStatus = useMutation({
     mutationFn: async (newStatus: string) => {
-      // Handle contact being array or object
-      const contact = Array.isArray(conversation?.contact) 
-        ? conversation?.contact[0] 
+      const contact = Array.isArray(conversation?.contact)
+        ? conversation?.contact[0]
         : conversation?.contact;
-      
-      if (!contact?.id) {
-        console.error('[updateLeadStatus] No contact found:', conversation);
-        throw new Error('No contact');
+
+      if (!contact?.id || !conversation?.id) {
+        console.error('[updateLeadStatus] Missing contact/conversation:', { contact, conversationId });
+        throw new Error('Dados da conversa incompletos');
       }
-      
-      console.log('[updateLeadStatus] Updating contact', contact.id, 'to status:', newStatus);
-      
-      const { error } = await supabase
+
+      const now = new Date().toISOString();
+      const tenantId = (conversation as any)?.tenant_id ?? null;
+
+      const [contactUpdate, conversationUpdate] = await Promise.all([
+        supabase
+          .from('contacts')
+          .update({
+            lead_status: newStatus,
+            updated_at: now,
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          })
+          .eq('id', contact.id),
+        supabase
+          .from('conversations')
+          .update({
+            lead_status: newStatus,
+            updated_at: now,
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          })
+          .eq('id', conversation.id),
+      ]);
+
+      if (contactUpdate.error) {
+        console.error('[updateLeadStatus] Contact update error:', contactUpdate.error);
+        throw contactUpdate.error;
+      }
+
+      if (conversationUpdate.error) {
+        console.error('[updateLeadStatus] Conversation update error:', conversationUpdate.error);
+        throw conversationUpdate.error;
+      }
+
+      // Verificação final para evitar sensação de "salvou e voltou"
+      const { data: persistedContact, error: persistedError } = await supabase
         .from('contacts')
-        .update({ 
-          lead_status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', contact.id);
-      
-      if (error) {
-        console.error('[updateLeadStatus] Error:', error);
-        throw error;
+        .select('lead_status')
+        .eq('id', contact.id)
+        .maybeSingle();
+
+      if (persistedError) {
+        console.error('[updateLeadStatus] Persist check error:', persistedError);
+        throw persistedError;
+      }
+
+      if (persistedContact?.lead_status !== newStatus) {
+        throw new Error('Status não foi persistido corretamente');
       }
     },
     onSuccess: () => {
@@ -357,9 +389,10 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       toast.success('Status atualizado!');
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error('[updateLeadStatus] Mutation error:', error);
-      toast.error('Erro ao atualizar status');
+      const errorMessage = error?.message || 'Erro ao atualizar status';
+      toast.error(`Falha ao salvar status: ${errorMessage}`);
     }
   });
 
