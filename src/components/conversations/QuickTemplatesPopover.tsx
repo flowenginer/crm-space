@@ -77,7 +77,7 @@ interface QuickTemplatesPopoverProps {
   onCopyToInput?: (content: string) => void;
   onStartFlow?: (flowId: string) => void;
   onTriggerAutomation?: (triggerId: string) => void;
-  onSendMetaTemplate?: (templateId: string, templateName: string, language: string, variables: Record<string, string>, previewContent: string) => void;
+  onSendMetaTemplate?: (templateId: string, templateName: string, language: string, variables: Record<string, string>, previewContent: string, templateComponents?: any[]) => void;
 }
 
 export function QuickTemplatesPopover({
