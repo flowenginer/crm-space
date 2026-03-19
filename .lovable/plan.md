@@ -1,25 +1,62 @@
 
 
-## Diagnóstico: Por que "Fechados" está errado no Redirect
+# Corrigir Disparo em Massa com Templates de Header Mídia
 
-### Problemas encontrados
+## Problema Identificado
 
-1. **Contatos duplicados inflam os números**: O `redirect_logs` tem múltiplas entradas para o mesmo contato (ex: LUAN ATAIDE aparece 2x no AGRO, A.H.MORAES aparece 2x no ENSOL). O código conta cada log entry como +1 lead e +1 fechado, em vez de contar **contatos únicos**.
+Existem **duas falhas** que causam o erro #132012:
 
-2. **Critério de conversão incompleto**: O `isFechadoStatus` só verifica se o status contém "fechado" (07 - Pedido Fechado), mas deveria incluir os status **07 a 10** (07 - Pedido Fechado, 08 - Em andamento, 09 - Cobrança, 10 - Aguardando envio), além de verificar o campo `custom_fields.conversoes`.
+1. **Mapeamento de variáveis quebrado**: A UI salva variáveis como `{{1}}`, `{{2}}`, mas a edge function filtra por prefixos `header_*` e `body_*` — resultado: nenhuma variável é encontrada, o payload vai sem componentes.
 
-### Solução
+2. **UI não permite inserir URL de mídia**: O `MetaTemplateSelector` só mostra inputs de texto para variáveis `{{N}}`. Quando o template tem header IMAGE/VIDEO/DOCUMENT, não existe campo para fornecer a URL da mídia.
 
-**Arquivo**: `src/hooks/useRedirectDashboardEnhanced.ts`
+## Plano de Correção
 
-1. **Deduplicar contatos por UTM**: Usar um `Set<contact_id>` para cada chave UTM, contando apenas contatos únicos (como já faz com `visitors` para visitas)
+### 1. Corrigir a edge function `process-bulk-dispatch/index.ts` — remapear variáveis
 
-2. **Expandir critério de conversão**: Substituir `isFechadoStatus` por uma função que verifica:
-   - Status que começa com "07", "08", "09" ou "10" (Pedido Fechado até Aguardando envio)
-   - Ou `custom_fields.conversoes` preenchido
+Na função `sendMetaTemplateMessage`, trocar a lógica de filtragem por prefixo para interpretar corretamente as variáveis vindas da UI:
 
-3. **Buscar `custom_fields` no join**: Alterar o select do `redirect_logs` para incluir `contact:contacts(id, lead_status, custom_fields)` para poder verificar o campo de conversões
+- Se `processedVariables` contém chaves com prefixo `header_`/`body_` → usar como está (compatibilidade)
+- Se contém chaves no formato `{{N}}` → mapear automaticamente usando os `components` do template:
+  - Contar quantas variáveis pertencem ao HEADER (via regex no texto do header)
+  - As primeiras N variáveis vão para header, as restantes para body
+- Se existir chave especial `header_media_url` → usar como URL de mídia do header
 
-### Resultado esperado
-Os números de "Fechados" refletirão contatos únicos realmente convertidos, sem duplicatas e com critério alinhado ao resto do sistema (status 07-10 + campo conversões).
+### 2. Atualizar `MetaTemplateSelector` — adicionar input de mídia para headers
+
+- Detectar se o template selecionado tem header com `format: IMAGE | VIDEO | DOCUMENT`
+- Quando for mídia: mostrar um campo de URL (ou upload) para a mídia do header, salvando como `header_media_url` nas variáveis
+- Quando for TEXT com variáveis: manter comportamento atual
+- Separar visualmente as variáveis por componente (Header / Body)
+
+### 3. Atualizar `extractTemplateVariables` em `useMetaTemplates.ts`
+
+- Retornar informação mais rica: quantidade de variáveis por componente (header vs body) e o formato do header
+- Isso permite ao `MetaTemplateSelector` saber quais inputs renderizar
+
+### Arquivos Modificados
+
+| Arquivo | Alteração |
+|---|---|
+| `supabase/functions/process-bulk-dispatch/index.ts` | Remapear variáveis `{{N}}` → `header_`/`body_` + usar `header_media_url` |
+| `src/components/meta-templates/MetaTemplateSelector.tsx` | Adicionar campo de URL de mídia para headers IMAGE/VIDEO/DOCUMENT; separar variáveis por componente |
+| `src/hooks/useMetaTemplates.ts` | Criar helper `extractDetailedVariables()` que retorna info por componente |
+
+### Detalhes Técnicos
+
+**Edge function — lógica de remapeamento:**
+```text
+Se variáveis têm formato {{N}}:
+  1. Ler components do template
+  2. Contar vars no HEADER text → headerVarCount
+  3. {{1}}..{{headerVarCount}} → header_1..header_N
+  4. {{headerVarCount+1}}.. → body_1..body_N
+  
+Se existe header_media_url:
+  → Usar como link de mídia (image/video/document)
+```
+
+**MetaTemplateSelector — novo campo de mídia:**
+- Quando `headerComponent.format` é IMAGE/VIDEO/DOCUMENT, renderizar um input de URL com label "URL da imagem/vídeo/documento do cabeçalho"
+- O valor é salvo como `header_media_url` no objeto de variáveis
 
