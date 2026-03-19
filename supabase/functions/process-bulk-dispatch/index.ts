@@ -394,18 +394,11 @@ async function sendMetaTemplateMessage(
     .sort(([a], [b]) => a.localeCompare(b));
 
   if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
-    // Media header: use header_media_url first, then fallback to header vars, then template example
-    let mediaUrl = headerMediaUrl || (headerVars.length > 0 ? headerVars[0][1] : null);
-
-    // If no variable was provided, try to extract URL from template example
-    if (!mediaUrl && metaTemplate.components) {
-      const headerComp = metaTemplate.components.find((c: any) => c.type === 'HEADER');
-      if (headerComp?.example?.header_handle?.[0]) {
-        mediaUrl = headerComp.example.header_handle[0];
-      }
-    }
+    // Media header: use header_media_url if provided by user, or header vars
+    const mediaUrl = headerMediaUrl || (headerVars.length > 0 ? headerVars[0][1] : null);
 
     if (mediaUrl) {
+      // User provided a media URL → send it as header component
       const mediaType = headerFormat.toLowerCase(); // 'image', 'video', 'document'
       components.push({
         type: 'header',
@@ -415,6 +408,12 @@ async function sendMetaTemplateMessage(
         }],
       });
       console.log(`[BulkDispatch] Header media (${mediaType}): ${mediaUrl.substring(0, 80)}...`);
+    } else if (headerVarCount === 0) {
+      // No media URL provided AND no header variables → static pre-uploaded media
+      // Meta automatically uses the template's pre-uploaded media, no component needed
+      console.log(`[BulkDispatch] Static media header - skipping component (Meta uses pre-uploaded media)`);
+    } else {
+      console.log(`[BulkDispatch] WARNING: Media header has ${headerVarCount} variables but no media URL provided`);
     }
   } else if (headerVars.length > 0) {
     // Text header with variables
