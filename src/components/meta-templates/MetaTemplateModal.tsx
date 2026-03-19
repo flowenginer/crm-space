@@ -21,6 +21,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Loader2, Info, AlertTriangle, Upload, CheckCircle2, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import { useCreateMetaTemplate, useUploadMetaMedia, type MetaTemplateComponent } from '@/hooks/useMetaTemplates';
 
 interface MetaTemplateModalProps {
@@ -92,9 +93,11 @@ export function MetaTemplateModal({ open, onOpenChange }: MetaTemplateModalProps
     // Validate file
     const validTypes = ['image/jpeg', 'image/png'];
     if (!validTypes.includes(file.type)) {
+      toast.error('Formato inválido. Use apenas JPG ou PNG.');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. O tamanho máximo é 5MB.');
       return;
     }
 
@@ -104,7 +107,8 @@ export function MetaTemplateModal({ open, onOpenChange }: MetaTemplateModalProps
     try {
       const handle = await uploadMedia.mutateAsync(file);
       setHeaderImageHandle(handle);
-    } catch {
+    } catch (error) {
+      console.error('[MetaTemplateModal] Upload error:', error);
       setHeaderImageName(null);
     }
 
