@@ -598,8 +598,8 @@ export function QuickTemplatesPopover({
           open={!!selectedMetaTemplate}
           onOpenChange={(open) => !open && setSelectedMetaTemplate(null)}
           onCopyToInput={handleMetaTemplateUse}
-          onSend={onSendMetaTemplate ? (templateId, templateName, variables, previewContent) => {
-            onSendMetaTemplate(templateId, templateName, selectedMetaTemplate?.language || 'pt_BR', variables, previewContent);
+          onSend={onSendMetaTemplate ? (templateId, templateName, variables, previewContent, components) => {
+            onSendMetaTemplate(templateId, templateName, selectedMetaTemplate?.language || 'pt_BR', variables, previewContent, components);
             setSelectedMetaTemplate(null);
             setOpen(false);
           } : undefined}
