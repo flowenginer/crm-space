@@ -232,6 +232,7 @@ export default function BulkDispatch() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const handleCreateAndStart = async () => {
+    if (isStarting) return;
     if (!name.trim()) { toast.error('Digite um nome para a campanha'); return; }
     if (campaignType !== 'template_meta' && !templateId) { 
       toast.error(campaignType === 'followup' ? 'Selecione um template de follow-up' : 'Selecione uma campanha de marketing'); 
@@ -244,6 +245,7 @@ export default function BulkDispatch() {
     if (!channelId) { toast.error('Selecione um canal de envio'); return; }
     if (totalContacts === 0) { toast.error('Nenhum contato selecionado'); return; }
 
+    setIsStarting(true);
     try {
       const dispatch = await createDispatch.mutateAsync({
         name, 
@@ -268,6 +270,8 @@ export default function BulkDispatch() {
       setMetaTemplateId(undefined); setMetaVariables({});
     } catch (error) {
       toast.error('Erro ao criar disparo em massa');
+    } finally {
+      setIsStarting(false);
     }
   };
 
