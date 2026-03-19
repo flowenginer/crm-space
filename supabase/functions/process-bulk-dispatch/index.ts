@@ -96,7 +96,78 @@ function getRandomizedInterval(baseMs: number): number {
   return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
 }
 
-// Function to send message directly via whatsapp-instance
+// Helper to check if a channel is Cloud API (official)
+async function isCloudAPIChannel(supabase: any, channelId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('cloudapi_configs')
+    .select('id')
+    .eq('channel_id', channelId)
+    .eq('is_active', true)
+    .maybeSingle();
+  return !!data;
+}
+
+// Send a single message via the correct channel (Cloud API or whatsapp-instance)
+async function sendViaSingleChannel(
+  supabase: any,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  channelId: string,
+  phone: string,
+  content: string,
+  type: string,
+  mediaUrl?: string | null,
+  isCloudAPI?: boolean,
+  conversationId?: string,
+): Promise<{ ok: boolean; messageId?: string; error?: string }> {
+  if (isCloudAPI) {
+    const sendRes = await fetch(`${supabaseUrl}/functions/v1/cloudapi-send-message`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        channelId,
+        phone,
+        type,
+        content: type === 'text' ? content : undefined,
+        mediaUrl: mediaUrl || undefined,
+        conversationId,
+      }),
+    });
+    const result = await sendRes.json();
+    return {
+      ok: sendRes.ok && result?.success !== false,
+      messageId: result?.messageId || result?.messages?.[0]?.id,
+      error: result?.error,
+    };
+  } else {
+    const sendRes = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        action: 'send',
+        channelId,
+        phone,
+        content: type === 'text' ? content : undefined,
+        type,
+        mediaUrl: mediaUrl || undefined,
+      }),
+    });
+    const result = await sendRes.json();
+    return {
+      ok: sendRes.ok,
+      messageId: result?.messageId,
+      error: result?.error,
+    };
+  }
+}
+
+// Function to send message directly via whatsapp-instance or cloudapi-send-message
 async function sendMessageDirectly(
   supabase: any,
   supabaseUrl: string,
@@ -112,7 +183,13 @@ async function sendMessageDirectly(
   attachmentType?: string | null
 ): Promise<void> {
   console.log(`[BulkDispatch] Sending message directly to ${phone}`);
-  
+
+  // Detect if channel is Cloud API (official) - check once for all messages
+  const cloudAPI = await isCloudAPIChannel(supabase, channelId);
+  if (cloudAPI) {
+    console.log(`[BulkDispatch] Channel ${channelId} is Cloud API, routing to cloudapi-send-message`);
+  }
+
   // Send text message if content exists
   if (content?.trim()) {
     // Create message record
@@ -125,7 +202,7 @@ async function sendMessageDirectly(
         is_from_me: true,
         message_type: 'text',
         status: 'pending',
-        tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
+        tenant_id: tenantId,
       })
       .select('id')
       .single();
@@ -135,37 +212,24 @@ async function sendMessageDirectly(
       throw new Error(`Failed to create message: ${msgError.message}`);
     }
 
-    // Send via whatsapp-instance
-    const sendRes = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({
-        action: 'send',
-        channelId,
-        phone,
-        content,
-        type: 'text',
-      }),
-    });
-
-    const result = await sendRes.json();
-    console.log(`[BulkDispatch] WhatsApp send result:`, result);
+    const result = await sendViaSingleChannel(
+      supabase, supabaseUrl, supabaseServiceKey, channelId,
+      phone, content, 'text', null, cloudAPI, conversationId,
+    );
+    console.log(`[BulkDispatch] Send result:`, result);
 
     // Update message status
     await supabase
       .from('messages')
       .update({
-        whatsapp_message_id: result?.messageId || null,
-        status: sendRes.ok ? 'sent' : 'error',
+        whatsapp_message_id: result.messageId || null,
+        status: result.ok ? 'sent' : 'error',
       })
       .eq('id', msgData.id);
 
-    if (!sendRes.ok) {
+    if (!result.ok) {
       console.error(`[BulkDispatch] Failed to send message:`, result);
-      throw new Error(result?.error || 'Failed to send message');
+      throw new Error(result.error || 'Failed to send message');
     }
   }
 
@@ -181,33 +245,21 @@ async function sendMessageDirectly(
         message_type: 'audio',
         media_url: audioUrl,
         status: 'pending',
-        tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
+        tenant_id: tenantId,
       })
       .select('id')
       .single();
 
-    const audioRes = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({
-        action: 'send',
-        channelId,
-        phone,
-        mediaUrl: audioUrl,
-        type: 'audio',
-      }),
-    });
+    const audioResult = await sendViaSingleChannel(
+      supabase, supabaseUrl, supabaseServiceKey, channelId,
+      phone, '', 'audio', audioUrl, cloudAPI, conversationId,
+    );
 
-    const audioResult = await audioRes.json();
-    
     await supabase
       .from('messages')
       .update({
-        whatsapp_message_id: audioResult?.messageId || null,
-        status: audioRes.ok ? 'sent' : 'error',
+        whatsapp_message_id: audioResult.messageId || null,
+        status: audioResult.ok ? 'sent' : 'error',
       })
       .eq('id', audioMsgData?.id);
   }
@@ -230,28 +282,16 @@ async function sendMessageDirectly(
       .select('id')
       .single();
 
-    const attachRes = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({
-        action: 'send',
-        channelId,
-        phone,
-        mediaUrl: attachmentUrl,
-        type: effectiveAttachmentType,
-      }),
-    });
-
-    const attachResult = await attachRes.json();
+    const attachResult = await sendViaSingleChannel(
+      supabase, supabaseUrl, supabaseServiceKey, channelId,
+      phone, '', effectiveAttachmentType, attachmentUrl, cloudAPI, conversationId,
+    );
     
     await supabase
       .from('messages')
       .update({
         whatsapp_message_id: attachResult?.messageId || null,
-        status: attachRes.ok ? 'sent' : 'error',
+        status: attachResult.ok ? 'sent' : 'error',
       })
       .eq('id', attachMsgData?.id);
   }
@@ -290,13 +330,48 @@ async function sendMetaTemplateMessage(
 
   // Build components array from variables
   const components: any[] = [];
-  
-  // Handle header variables
+
+  // Detect header format from the Meta template components (IMAGE, VIDEO, DOCUMENT, TEXT)
+  let headerFormat: string | null = null;
+  if (metaTemplate.components && Array.isArray(metaTemplate.components)) {
+    const headerComponent = metaTemplate.components.find(
+      (c: any) => c.type === 'HEADER'
+    );
+    if (headerComponent?.format) {
+      headerFormat = headerComponent.format.toUpperCase();
+    }
+  }
+
+  // Handle header variables / media
   const headerVars = Object.entries(processedVariables)
     .filter(([k]) => k.startsWith('header_'))
     .sort(([a], [b]) => a.localeCompare(b));
-  
-  if (headerVars.length > 0) {
+
+  if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
+    // Media header: the variable (if any) contains the media URL, or use the template's example
+    let mediaUrl = headerVars.length > 0 ? headerVars[0][1] : null;
+
+    // If no variable was provided, try to extract URL from template example
+    if (!mediaUrl && metaTemplate.components) {
+      const headerComp = metaTemplate.components.find((c: any) => c.type === 'HEADER');
+      if (headerComp?.example?.header_handle?.[0]) {
+        mediaUrl = headerComp.example.header_handle[0];
+      }
+    }
+
+    if (mediaUrl) {
+      const mediaType = headerFormat.toLowerCase(); // 'image', 'video', 'document'
+      components.push({
+        type: 'header',
+        parameters: [{
+          type: mediaType,
+          [mediaType]: { link: mediaUrl },
+        }],
+      });
+      console.log(`[BulkDispatch] Header media (${mediaType}): ${mediaUrl.substring(0, 80)}...`);
+    }
+  } else if (headerVars.length > 0) {
+    // Text header with variables
     components.push({
       type: 'header',
       parameters: headerVars.map(([, v]) => ({ type: 'text', text: v })),
