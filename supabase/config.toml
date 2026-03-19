@@ -154,3 +154,6 @@ verify_jwt = false
 
 [functions.cross-reference-sales]
 verify_jwt = false
+
+[functions.meta-upload-media]
+verify_jwt = false
