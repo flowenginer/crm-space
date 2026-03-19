@@ -2908,7 +2908,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     templateName: string,
     language: string,
     variables: Record<string, string>,
-    previewContent: string
+    previewContent: string,
+    templateComponents?: any[]
   ) => {
     const channelId = selectedConversation?.channel_id;
     const contactPhone = selectedConversation?.contact?.phone;
@@ -2919,18 +2920,58 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
     
     try {
-      // Montar os componentes do template com as variáveis
-      const components: Array<{type: string; parameters: Array<{type: string; text: string}>}> = [];
-      const variableEntries = Object.entries(variables);
+      // Build components based on template structure
+      const components: Array<{type: string; parameters: Array<any>}> = [];
+      const variableEntries = Object.entries(variables).sort(([a], [b]) => Number(a) - Number(b));
       
-      if (variableEntries.length > 0) {
-        components.push({
-          type: 'body',
-          parameters: variableEntries.map(([_, value]) => ({
+      if (templateComponents && templateComponents.length > 0) {
+        // Determine header info
+        const headerComp = templateComponents.find((c: any) => c.type === 'HEADER');
+        const bodyComp = templateComponents.find((c: any) => c.type === 'BODY');
+        const headerFormat = headerComp?.format || 'TEXT';
+        const isMediaHeader = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat);
+        
+        // Count header text variables
+        let headerVarCount = 0;
+        if (headerComp?.text) {
+          const matches = headerComp.text.match(/\{\{(\d+)\}\}/g);
+          headerVarCount = matches ? matches.length : 0;
+        }
+        
+        // For media headers with no variables: skip header component (Meta uses pre-uploaded media)
+        // For text headers with variables: send header component with text params
+        if (!isMediaHeader && headerVarCount > 0) {
+          const headerParams = variableEntries.slice(0, headerVarCount).map(([_, value]) => ({
             type: 'text',
             text: value
-          }))
-        });
+          }));
+          if (headerParams.length > 0) {
+            components.push({ type: 'header', parameters: headerParams });
+          }
+        }
+        
+        // Body variables (offset by headerVarCount)
+        const bodyVars = variableEntries.slice(headerVarCount);
+        if (bodyVars.length > 0) {
+          components.push({
+            type: 'body',
+            parameters: bodyVars.map(([_, value]) => ({
+              type: 'text',
+              text: value
+            }))
+          });
+        }
+      } else {
+        // Fallback: all variables as body (legacy behavior)
+        if (variableEntries.length > 0) {
+          components.push({
+            type: 'body',
+            parameters: variableEntries.map(([_, value]) => ({
+              type: 'text',
+              text: value
+            }))
+          });
+        }
       }
       
       // Enviar via Cloud API
