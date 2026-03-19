@@ -322,6 +322,8 @@ async function sendMetaTemplateMessage(
     }
   }
 
+  console.log(`[BulkDispatch] Raw variables keys:`, Object.keys(processedVariables));
+
   // Build template payload
   const templatePayload: any = {
     name: metaTemplate.name,
@@ -333,6 +335,7 @@ async function sendMetaTemplateMessage(
 
   // Detect header format from the Meta template components (IMAGE, VIDEO, DOCUMENT, TEXT)
   let headerFormat: string | null = null;
+  let headerVarCount = 0;
   if (metaTemplate.components && Array.isArray(metaTemplate.components)) {
     const headerComponent = metaTemplate.components.find(
       (c: any) => c.type === 'HEADER'
@@ -340,16 +343,59 @@ async function sendMetaTemplateMessage(
     if (headerComponent?.format) {
       headerFormat = headerComponent.format.toUpperCase();
     }
+    // Count variables in header text
+    if (headerComponent?.text) {
+      const headerMatches = headerComponent.text.match(/\{\{(\d+)\}\}/g);
+      headerVarCount = headerMatches ? headerMatches.length : 0;
+    }
   }
 
+  // ---- REMAP {{N}} variables to header_/body_ prefixes ----
+  const hasLegacyPrefixes = Object.keys(processedVariables).some(
+    k => k.startsWith('header_') || k.startsWith('body_') || k.startsWith('button_')
+  );
+  const hasBracketKeys = Object.keys(processedVariables).some(k => /^\{\{\d+\}\}$/.test(k));
+
+  // Remapped variables (header_N / body_N format)
+  let remappedVars: Record<string, string> = {};
+
+  if (hasBracketKeys && !hasLegacyPrefixes) {
+    // Remap {{N}} → header_N / body_N based on template component analysis
+    console.log(`[BulkDispatch] Remapping {{N}} vars. headerVarCount=${headerVarCount}`);
+    
+    // Collect all numbered vars sorted
+    const numberedEntries = Object.entries(processedVariables)
+      .filter(([k]) => /^\{\{\d+\}\}$/.test(k))
+      .map(([k, v]) => ({ num: parseInt(k.replace(/[{}]/g, '')), value: v }))
+      .sort((a, b) => a.num - b.num);
+
+    for (const entry of numberedEntries) {
+      if (entry.num <= headerVarCount) {
+        remappedVars[`header_${entry.num}`] = entry.value;
+      } else {
+        const bodyIndex = entry.num - headerVarCount;
+        remappedVars[`body_${bodyIndex}`] = entry.value;
+      }
+    }
+  } else {
+    // Already has prefixed keys or no bracket keys — use as-is
+    remappedVars = { ...processedVariables };
+  }
+
+  // Extract header_media_url (special key from UI)
+  const headerMediaUrl = processedVariables['header_media_url'] || remappedVars['header_media_url'] || null;
+  delete remappedVars['header_media_url'];
+
+  console.log(`[BulkDispatch] Remapped vars:`, Object.keys(remappedVars), `headerMediaUrl: ${headerMediaUrl ? 'present' : 'none'}`);
+
   // Handle header variables / media
-  const headerVars = Object.entries(processedVariables)
+  const headerVars = Object.entries(remappedVars)
     .filter(([k]) => k.startsWith('header_'))
     .sort(([a], [b]) => a.localeCompare(b));
 
   if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
-    // Media header: the variable (if any) contains the media URL, or use the template's example
-    let mediaUrl = headerVars.length > 0 ? headerVars[0][1] : null;
+    // Media header: use header_media_url first, then fallback to header vars, then template example
+    let mediaUrl = headerMediaUrl || (headerVars.length > 0 ? headerVars[0][1] : null);
 
     // If no variable was provided, try to extract URL from template example
     if (!mediaUrl && metaTemplate.components) {
@@ -379,7 +425,7 @@ async function sendMetaTemplateMessage(
   }
 
   // Handle body variables
-  const bodyVars = Object.entries(processedVariables)
+  const bodyVars = Object.entries(remappedVars)
     .filter(([k]) => k.startsWith('body_'))
     .sort(([a], [b]) => a.localeCompare(b));
   
@@ -391,7 +437,7 @@ async function sendMetaTemplateMessage(
   }
 
   // Handle button variables
-  const buttonVars = Object.entries(processedVariables)
+  const buttonVars = Object.entries(remappedVars)
     .filter(([k]) => k.startsWith('button_'))
     .sort(([a], [b]) => a.localeCompare(b));
   

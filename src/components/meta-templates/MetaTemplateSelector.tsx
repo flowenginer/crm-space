@@ -10,12 +10,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, FileText, AlertCircle } from 'lucide-react';
+import { RefreshCw, FileText, AlertCircle, ImageIcon, VideoIcon, FileIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
   useApprovedMetaTemplates, 
   useSyncMetaTemplates,
   extractTemplateVariables,
+  extractDetailedVariables,
   getTemplateBody,
   getTemplateHeader,
   getTemplateFooter,
@@ -44,14 +45,16 @@ export function MetaTemplateSelector({
   const [localVariables, setLocalVariables] = useState<Record<string, string>>(variableValues);
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
-  const variableCount = selectedTemplate ? extractTemplateVariables(selectedTemplate.components) : 0;
+  const detailedVars = selectedTemplate 
+    ? extractDetailedVariables(selectedTemplate.components) 
+    : null;
 
   useEffect(() => {
     setLocalVariables(variableValues);
   }, [variableValues]);
 
-  const handleVariableChange = (index: number, value: string) => {
-    const newVariables = { ...localVariables, [`{{${index}}}`]: value };
+  const handleVariableChange = (key: string, value: string) => {
+    const newVariables = { ...localVariables, [key]: value };
     setLocalVariables(newVariables);
     onVariableChange?.(newVariables);
   };
@@ -59,7 +62,9 @@ export function MetaTemplateSelector({
   const getPreviewText = (text: string): string => {
     let preview = text;
     Object.entries(localVariables).forEach(([key, value]) => {
-      preview = preview.replace(key, value || `[${key}]`);
+      if (key.startsWith('{{')) {
+        preview = preview.replace(key, value || `[${key}]`);
+      }
     });
     return preview;
   };
@@ -70,6 +75,24 @@ export function MetaTemplateSelector({
       case 'UTILITY': return 'bg-blue-500/20 text-blue-500 border-blue-500/30';
       case 'AUTHENTICATION': return 'bg-orange-500/20 text-orange-500 border-orange-500/30';
       default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  const getMediaIcon = (format: string) => {
+    switch (format) {
+      case 'IMAGE': return <ImageIcon className="h-4 w-4" />;
+      case 'VIDEO': return <VideoIcon className="h-4 w-4" />;
+      case 'DOCUMENT': return <FileIcon className="h-4 w-4" />;
+      default: return null;
+    }
+  };
+
+  const getMediaLabel = (format: string) => {
+    switch (format) {
+      case 'IMAGE': return 'URL da imagem do cabeçalho';
+      case 'VIDEO': return 'URL do vídeo do cabeçalho';
+      case 'DOCUMENT': return 'URL do documento do cabeçalho';
+      default: return 'URL da mídia do cabeçalho';
     }
   };
 
@@ -146,25 +169,77 @@ export function MetaTemplateSelector({
         </Button>
       </div>
 
-      {selectedTemplate && variableCount > 0 && (
+      {/* Media header URL input */}
+      {selectedTemplate && detailedVars?.hasMediaHeader && (
+        <div className="space-y-2 rounded-lg border p-4 bg-muted/30">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            {getMediaIcon(detailedVars.headerFormat!)}
+            Mídia do Cabeçalho
+          </Label>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">
+              {getMediaLabel(detailedVars.headerFormat!)}
+            </Label>
+            <Input
+              placeholder="https://exemplo.com/imagem.jpg"
+              value={localVariables['header_media_url'] || ''}
+              onChange={(e) => handleVariableChange('header_media_url', e.target.value)}
+              className="bg-background"
+            />
+            <p className="text-xs text-muted-foreground">
+              Insira a URL pública da mídia que será exibida no cabeçalho do template
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Header text variables */}
+      {selectedTemplate && detailedVars && detailedVars.headerVarCount > 0 && (
         <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
           <Label className="text-sm font-medium">
-            Preencha as variáveis ({variableCount})
+            Variáveis do Cabeçalho ({detailedVars.headerVarCount})
           </Label>
           <div className="grid gap-3 sm:grid-cols-2">
-            {Array.from({ length: variableCount }, (_, i) => i + 1).map((num) => (
-              <div key={num} className="space-y-1">
+            {Array.from({ length: detailedVars.headerVarCount }, (_, i) => i + 1).map((num) => (
+              <div key={`header-${num}`} className="space-y-1">
                 <Label className="text-xs text-muted-foreground">
-                  Variável {`{{${num}}}`}
+                  Cabeçalho {`{{${num}}}`}
                 </Label>
                 <Input
                   placeholder={`Valor para {{${num}}}`}
                   value={localVariables[`{{${num}}}`] || ''}
-                  onChange={(e) => handleVariableChange(num, e.target.value)}
+                  onChange={(e) => handleVariableChange(`{{${num}}}`, e.target.value)}
                   className="bg-background"
                 />
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Body variables */}
+      {selectedTemplate && detailedVars && detailedVars.bodyVarCount > 0 && (
+        <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+          <Label className="text-sm font-medium">
+            Variáveis do Corpo ({detailedVars.bodyVarCount})
+          </Label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Array.from({ length: detailedVars.bodyVarCount }, (_, i) => {
+              const varNum = detailedVars.headerVarCount + i + 1;
+              return (
+                <div key={`body-${varNum}`} className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    Corpo {`{{${varNum}}}`}
+                  </Label>
+                  <Input
+                    placeholder={`Valor para {{${varNum}}}`}
+                    value={localVariables[`{{${varNum}}}`] || ''}
+                    onChange={(e) => handleVariableChange(`{{${varNum}}}`, e.target.value)}
+                    className="bg-background"
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -183,6 +258,12 @@ export function MetaTemplateSelector({
             </Badge>
           </div>
           <div className="p-4 space-y-2">
+            {detailedVars?.hasMediaHeader && localVariables['header_media_url'] && (
+              <div className="text-xs text-muted-foreground italic flex items-center gap-1">
+                {getMediaIcon(detailedVars.headerFormat!)}
+                <span>Mídia: {localVariables['header_media_url'].substring(0, 50)}...</span>
+              </div>
+            )}
             {getTemplateHeader(selectedTemplate.components) && (
               <div className="font-semibold text-sm">
                 {getPreviewText(getTemplateHeader(selectedTemplate.components)!)}
