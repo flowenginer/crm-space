@@ -118,6 +118,7 @@ function getStatusBadge(status: BulkDispatchType['status']) {
 
 export default function BulkDispatch() {
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
+  const [isStarting, setIsStarting] = useState(false);
   const [selectedDispatchId, setSelectedDispatchId] = useState<string | null>(null);
   const [detailsDispatch, setDetailsDispatch] = useState<BulkDispatchType | null>(null);
   const [dispatchToDelete, setDispatchToDelete] = useState<string | null>(null);
