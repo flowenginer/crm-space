@@ -320,6 +320,20 @@ export function useCreateBulkDispatch() {
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Check for duplicate running/draft dispatches with same template and channel
+      if (data.campaign_type === 'template_meta' && data.meta_template_id) {
+        const { data: existing } = await supabase
+          .from('bulk_dispatches')
+          .select('id, status')
+          .eq('meta_template_id', data.meta_template_id)
+          .in('status', ['draft', 'running'])
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+          throw new Error('Já existe um disparo ativo ou pendente com este template. Aguarde a conclusão ou cancele-o antes de criar outro.');
+        }
+      }
+      
       // Criar a campanha com filtros - backend vai gerar os contatos
       const channelIdValue = data.channel_id === '__existing__' ? null : data.channel_id;
       
