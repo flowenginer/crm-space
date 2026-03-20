@@ -394,16 +394,13 @@ async function sendMetaTemplateMessage(
     .sort(([a], [b]) => a.localeCompare(b));
 
   if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
-    // Media header: use header_media_url if provided, or auto-extract from template example
+    // Media header: use header_media_url from dispatch variables, or from template's stored permanent URL
     let mediaUrl = headerMediaUrl || (headerVars.length > 0 ? headerVars[0][1] : null);
 
-    // Auto-extract from template's example.header_handle if not provided
-    if (!mediaUrl && metaTemplate.components && Array.isArray(metaTemplate.components)) {
-      const hdrComp = metaTemplate.components.find((c: any) => c.type === 'HEADER');
-      if (hdrComp?.example?.header_handle?.length > 0) {
-        mediaUrl = hdrComp.example.header_handle[0];
-        console.log(`[BulkDispatch] Auto-extracted media URL from template example`);
-      }
+    // Use permanent Storage URL from template if not provided by user
+    if (!mediaUrl && metaTemplate.header_media_url) {
+      mediaUrl = metaTemplate.header_media_url;
+      console.log(`[BulkDispatch] Using permanent Storage URL from template`);
     }
 
     if (mediaUrl) {
