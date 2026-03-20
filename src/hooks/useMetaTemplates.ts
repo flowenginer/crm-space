@@ -35,6 +35,8 @@ export interface MetaMessageTemplate {
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Permanent URL of header media stored in Supabase Storage */
+  header_media_url?: string | null;
 }
 
 // Fetch templates from local database
