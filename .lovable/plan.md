@@ -1,43 +1,50 @@
 
 
-# Fix: Enviar componente header com imagem para templates Meta
+# Fix: URLs do header_handle da Meta expiram (erro 131053 / 403 Forbidden)
 
-## Problema confirmado pelos logs
+## Problema
 
-A Meta **sempre** exige o componente `header` com `type: "image"` + `link` ou `id` para templates com header IMAGE. Omitir o componente causa `Format mismatch, expected IMAGE, received UNKNOWN` (#132012).
+Os logs do webhook confirmam o erro:
+- **Erro #131053 - "Media upload error"**: `Downloading media from weblink failed with http code 403, status message Forbidden`
+- A URL `scontent.whatsapp.net/...` armazenada em `header_handle` do template e **temporaria** e expira apos algumas horas/dias.
+- O sistema atual usa essa URL expirada como "automatica", mostrando badge "Automatico" e nao pedindo URL ao usuario.
+- A Meta tenta baixar a imagem dessa URL e recebe 403, falhando o envio.
 
-A correção anterior (omitir header para "imagem estática") estava incorreta.
+## Solucao
 
-## Solução
+Nao confiar nas URLs do `header_handle` como fonte de midia para envio. Em vez disso:
 
-Para templates com header IMAGE/VIDEO/DOCUMENT sem `header_media_url` fornecida pelo usuário, o sistema precisa:
-1. Extrair a URL de exemplo do template (`example.header_handle` no campo `components` do template salvo no banco)
-2. Se não houver URL de exemplo disponível, **exigir que o usuário forneça** a URL da mídia antes de enviar
+1. **Ao sincronizar templates**: fazer download da imagem do `header_handle` e re-hospedar no Supabase Storage (bucket publico), salvando a URL permanente no banco.
+2. **Alternativa mais simples (recomendada)**: Sempre mostrar o campo de URL de midia para templates com header IMAGE/VIDEO/DOCUMENT, permitindo que o usuario informe uma URL publica permanente, mas pre-preencher com a URL do Storage se disponivel.
 
-### Abordagem: Exigir URL de mídia na UI
+### Abordagem escolhida: Upload automatico para Supabase Storage durante sincronizacao
 
-Como os `header_handle` são temporários e expiram, a solução correta é:
-
-1. **Na UI de envio de template** (`Conversations.tsx` e `BulkDispatch`): quando o template tem header IMAGE e não há variáveis de texto no header, mostrar um campo obrigatório para URL da imagem (ou upload)
-2. **No backend**: remover a lógica de "skip" e sempre enviar o componente header com a mídia fornecida
-
-### Arquivos modificados
-
-| Arquivo | Mudança |
+| Arquivo | Mudanca |
 |---|---|
-| `supabase/functions/process-bulk-dispatch/index.ts` | Remover lógica de skip; lançar erro se template IMAGE não tiver `header_media_url` |
-| `supabase/functions/cloudapi-send-message/index.ts` | Sem mudança (já envia o que recebe) |
-| `src/pages/Conversations.tsx` | Quando template tem header IMAGE sem variáveis, exigir URL da imagem no modal |
-| `src/components/meta-templates/MetaTemplateUseModal.tsx` | Adicionar campo de upload/URL para mídia do header quando tipo é IMAGE |
-| `src/components/meta-templates/MetaTemplateSelector.tsx` | Garantir que campo `header_media_url` aparece para templates com header estático IMAGE |
+| `src/hooks/useMetaTemplates.ts` | Na funcao `extractDetailedVariables`, nao retornar URLs `scontent.whatsapp.net` como `headerMediaUrl` (sao temporarias). Adicionar campo `headerMediaStorageUrl` para URLs hospedadas localmente. |
+| `src/components/meta-templates/MetaTemplateSelector.tsx` | Remover badge "Automatico" quando a URL e do WhatsApp CDN. Mostrar campo de URL obrigatorio nesses casos. Permitir override manual. |
+| `src/components/meta-templates/MetaTemplateUseModal.tsx` | Mesma logica: mostrar campo de midia quando URL e temporaria. |
+| `supabase/functions/sync-meta-templates/index.ts` | Ao sincronizar, baixar a imagem do `header_handle`, salvar no Supabase Storage, e guardar a URL publica permanente em uma nova coluna `header_media_url` na tabela `meta_message_templates`. |
+| Migracao SQL | Adicionar coluna `header_media_url TEXT` na tabela `meta_message_templates` para armazenar a URL permanente da midia. |
 
 ### Fluxo corrigido
 
 ```text
-Template com header IMAGE (sem variáveis de texto):
-  UI → campo obrigatório "URL da imagem" ou upload
-  → envia header_media_url no payload
-  → backend monta: { type: "header", parameters: [{ type: "image", image: { link: url } }] }
-  → Meta aceita ✅
+Sincronizacao de templates:
+  Meta retorna header_handle (URL temporaria)
+  → Edge function baixa a imagem
+  → Faz upload para Supabase Storage (bucket publico)
+  → Salva URL permanente em meta_message_templates.header_media_url
+
+Envio de template:
+  1. Se header_media_url (Storage) existe → usa automaticamente ✅
+  2. Se nao existe → mostra campo obrigatorio para usuario informar URL
+  3. URL permanente → Meta consegue baixar → envio funciona ✅
 ```
+
+### Detalhes tecnicos
+
+- A deteccao de URL temporaria sera feita verificando se contem `scontent.whatsapp.net` ou `fbcdn.net`
+- O bucket do Storage sera `template-media` com politica publica de leitura
+- A migracao e retrocompativel (coluna nullable)
 
