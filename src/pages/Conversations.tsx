@@ -2940,7 +2940,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         
         // For media headers: always send header component with media link
         if (isMediaHeader) {
-          const mediaUrl = variables['header_media_url'];
+          let mediaUrl = variables['header_media_url'];
+          
+          // Auto-extract from template's example.header_handle if not provided by user
+          if (!mediaUrl && headerComp?.example?.header_handle?.length > 0) {
+            mediaUrl = headerComp.example.header_handle[0];
+          }
+          
           if (mediaUrl) {
             const mediaType = headerFormat.toLowerCase(); // 'image', 'video', 'document'
             components.push({
