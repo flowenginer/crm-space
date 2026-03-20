@@ -39,6 +39,7 @@ export function MetaTemplateUseModal({
   contactName,
 }: MetaTemplateUseModalProps) {
   const [variables, setVariables] = useState<Record<string, string>>({});
+  const [headerMediaUrl, setHeaderMediaUrl] = useState('');
 
   const variableCount = useMemo(() => {
     if (!template) return 0;
@@ -65,8 +66,10 @@ export function MetaTemplateUseModal({
     return getTemplateFooter(template.components);
   }, [template]);
 
-  // Detect if template has a media header (image/video/doc already on Meta servers)
-  const hasMediaHeader = detailedVars?.hasMediaHeader || false;
+  // Check if this template needs a media URL from the user
+  // If the template already has a media URL from Meta (header_handle), no need to ask
+  const hasAutoMediaUrl = !!detailedVars?.headerMediaUrl;
+  const needsMediaUrl = detailedVars?.hasMediaHeader && detailedVars.headerVarCount === 0 && !hasAutoMediaUrl;
 
   // Build preview with variables replaced
   const previewContent = useMemo(() => {
@@ -107,6 +110,12 @@ export function MetaTemplateUseModal({
 
   const handleSend = () => {
     if (!template) return;
+    
+    // Check if media URL is required
+    if (needsMediaUrl && !headerMediaUrl.trim()) {
+      toast.error('Informe a URL da imagem do cabeçalho');
+      return;
+    }
 
     // Check if all variables are filled
     for (let i = 1; i <= variableCount; i++) {
@@ -115,21 +124,32 @@ export function MetaTemplateUseModal({
         return;
       }
     }
-
+    
     // Build full preview content with header and footer
     let fullPreviewContent = '';
     if (headerText) fullPreviewContent += headerText + '\n\n';
     fullPreviewContent += previewContent;
     if (footerText) fullPreviewContent += '\n\n' + footerText;
 
-    onSend?.(template.id, template.name, variables, fullPreviewContent, template.components);
+    // Merge header_media_url into variables so it reaches the send handler
+    const mergedVars = { ...variables };
+    if (detailedVars?.hasMediaHeader && detailedVars.headerVarCount === 0) {
+      if (headerMediaUrl.trim()) {
+        mergedVars['header_media_url'] = headerMediaUrl.trim();
+      } else if (hasAutoMediaUrl) {
+        mergedVars['header_media_url'] = detailedVars.headerMediaUrl!;
+      }
+    }
+    
+    onSend?.(template.id, template.name, mergedVars, fullPreviewContent, template.components);
     onOpenChange(false);
+    setHeaderMediaUrl('');
   };
 
   if (!template) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setHeaderMediaUrl(''); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -139,6 +159,25 @@ export function MetaTemplateUseModal({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Media URL field for IMAGE/VIDEO/DOCUMENT headers */}
+          {needsMediaUrl && (
+            <div className="space-y-2 rounded-lg border p-3 bg-muted/30">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <ImageIcon className="h-4 w-4" />
+                URL da {detailedVars?.headerFormat === 'IMAGE' ? 'Imagem' : detailedVars?.headerFormat === 'VIDEO' ? 'Vídeo' : 'Documento'} do Cabeçalho
+                <span className="text-xs text-destructive">*obrigatório</span>
+              </Label>
+              <Input
+                placeholder="https://exemplo.com/imagem.jpg"
+                value={headerMediaUrl}
+                onChange={(e) => setHeaderMediaUrl(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Informe a URL pública da mídia que será enviada no cabeçalho do template.
+              </p>
+            </div>
+          )}
+
           {/* Variables Form */}
           {variableCount > 0 && (
             <div className="space-y-3">
@@ -165,10 +204,10 @@ export function MetaTemplateUseModal({
             <div className="bg-muted/50 rounded-lg p-4 border">
               {/* WhatsApp-style bubble */}
               <div className="bg-[#dcf8c6] dark:bg-green-800/30 rounded-lg p-3 max-w-xs ml-auto shadow-sm">
-                {hasMediaHeader && (
+                {needsMediaUrl && headerMediaUrl && (
                   <div className="mb-2 text-xs text-muted-foreground italic flex items-center gap-1">
                     <ImageIcon className="h-3 w-3" />
-                    {detailedVars?.headerFormat === 'IMAGE' ? 'Imagem' : detailedVars?.headerFormat === 'VIDEO' ? 'Vídeo' : 'Documento'} do cabeçalho
+                    Imagem do cabeçalho
                   </div>
                 )}
                 {headerText && (

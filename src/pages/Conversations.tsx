@@ -2913,123 +2913,113 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   ) => {
     const channelId = selectedConversation?.channel_id;
     const contactPhone = selectedConversation?.contact?.phone;
-
+    
     if (!channelId || !contactPhone || !selectedConversationId) {
       toast.error('Dados insuficientes para enviar template');
       return;
     }
-
+    
     try {
-      // Usar components passados diretamente ou buscar do banco
-      let resolvedComponents = templateComponents;
-      if (!resolvedComponents || resolvedComponents.length === 0) {
-        const { data: fullTemplate } = await supabase
-          .from('meta_message_templates')
-          .select('components')
-          .eq('id', templateId)
-          .single();
-        resolvedComponents = (fullTemplate?.components as any[]) || [];
-      }
-
-      // Montar os componentes do template com as variáveis
-      const components: any[] = [];
-
-      // Detectar formato do header (IMAGE, VIDEO, DOCUMENT, TEXT)
-      const headerComp = resolvedComponents.find((c: any) => c.type === 'HEADER');
-      const headerFormat = headerComp?.format?.toUpperCase();
-
-      // Separar variáveis reais das meta-variáveis (header_media_url)
-      const userMediaUrl = variables['header_media_url'];
-      const variableEntries = Object.entries(variables)
-        .filter(([k]) => k !== 'header_media_url')
-        .sort(([a], [b]) => Number(a) - Number(b));
-
-      if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
-        // Header de mídia: priorizar URL fornecida pelo usuário, senão usar example do template
-        let mediaUrl = userMediaUrl || null;
-        if (!mediaUrl && headerComp?.example?.header_handle?.[0]) {
-          mediaUrl = headerComp.example.header_handle[0];
+      // Build components based on template structure
+      const components: Array<{type: string; parameters: Array<any>}> = [];
+      const variableEntries = Object.entries(variables).sort(([a], [b]) => Number(a) - Number(b));
+      
+      if (templateComponents && templateComponents.length > 0) {
+        // Determine header info
+        const headerComp = templateComponents.find((c: any) => c.type === 'HEADER');
+        const bodyComp = templateComponents.find((c: any) => c.type === 'BODY');
+        const headerFormat = headerComp?.format || 'TEXT';
+        const isMediaHeader = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat);
+        
+        // Count header text variables
+        let headerVarCount = 0;
+        if (headerComp?.text) {
+          const matches = headerComp.text.match(/\{\{(\d+)\}\}/g);
+          headerVarCount = matches ? matches.length : 0;
         }
-        if (mediaUrl) {
-          const mediaType = headerFormat.toLowerCase();
-          components.push({
-            type: 'header',
-            parameters: [{
-              type: mediaType,
-              [mediaType]: { link: mediaUrl },
-            }],
-          });
-        }
-      } else if (headerFormat === 'TEXT' && headerComp?.text) {
-        // Header de texto com variáveis
-        const headerMatches = headerComp.text.match(/\{\{\d+\}\}/g);
-        if (headerMatches && headerMatches.length > 0) {
-          // Header vars vêm antes das body vars na numeração
-          const headerParams = variableEntries.slice(0, headerMatches.length);
-          if (headerParams.length > 0) {
+        
+        // For media headers: always send header component with media link
+        if (isMediaHeader) {
+          let mediaUrl = variables['header_media_url'];
+          
+          // Auto-extract from template's example.header_handle if not provided by user
+          if (!mediaUrl && headerComp?.example?.header_handle?.length > 0) {
+            mediaUrl = headerComp.example.header_handle[0];
+          }
+          
+          if (mediaUrl) {
+            const mediaType = headerFormat.toLowerCase(); // 'image', 'video', 'document'
             components.push({
               type: 'header',
-              parameters: headerParams.map(([, v]) => ({ type: 'text', text: v })),
+              parameters: [{
+                type: mediaType,
+                [mediaType]: { link: mediaUrl }
+              }]
             });
+            // Remove from variableEntries so it's not sent as body var
+            const filteredEntries = variableEntries.filter(([k]) => k !== 'header_media_url');
+            if (filteredEntries.length > 0) {
+              components.push({
+                type: 'body',
+                parameters: filteredEntries.map(([_, value]) => ({
+                  type: 'text',
+                  text: value
+                }))
+              });
+            }
           }
-          // Body vars são as restantes
-          const bodyVars = variableEntries.slice(headerMatches.length);
+        } else if (headerVarCount > 0) {
+          // Text header with variables
+          const headerParams = variableEntries.slice(0, headerVarCount).map(([_, value]) => ({
+            type: 'text',
+            text: value
+          }));
+          if (headerParams.length > 0) {
+            components.push({ type: 'header', parameters: headerParams });
+          }
+          // Body variables (offset by headerVarCount)
+          const bodyVars = variableEntries.filter(([k]) => k !== 'header_media_url').slice(headerVarCount);
           if (bodyVars.length > 0) {
             components.push({
               type: 'body',
-              parameters: bodyVars.map(([, v]) => ({ type: 'text', text: v })),
+              parameters: bodyVars.map(([_, value]) => ({
+                type: 'text',
+                text: value
+              }))
             });
           }
         } else {
-          // Header sem variáveis, body normal
-          if (variableEntries.length > 0) {
+          // No header vars, no media — just body
+          const bodyVars = variableEntries.filter(([k]) => k !== 'header_media_url');
+          if (bodyVars.length > 0) {
             components.push({
               type: 'body',
-              parameters: variableEntries.map(([, v]) => ({ type: 'text', text: v })),
+              parameters: bodyVars.map(([_, value]) => ({
+                type: 'text',
+                text: value
+              }))
             });
           }
         }
       } else {
-        // Sem header especial: todas as variáveis vão pro body
+        // Fallback: all variables as body (legacy behavior)
         if (variableEntries.length > 0) {
           components.push({
             type: 'body',
-            parameters: variableEntries.map(([, v]) => ({ type: 'text', text: v })),
+            parameters: variableEntries.map(([_, value]) => ({
+              type: 'text',
+              text: value
+            }))
           });
         }
       }
-
-      // Para headers de mídia, body vars precisam ser adicionadas separadamente
-      if ((headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') && variableEntries.length > 0) {
-        components.push({
-          type: 'body',
-          parameters: variableEntries.map(([, v]) => ({ type: 'text', text: v })),
-        });
-      }
-
-      // Button variables (URL com sufixo dinâmico)
-      const buttonsComp = resolvedComponents.find((c: any) => c.type === 'BUTTONS');
-      if (buttonsComp?.buttons) {
-        buttonsComp.buttons.forEach((btn: any, idx: number) => {
-          if (btn.type === 'URL' && btn.url?.includes('{{')) {
-            components.push({
-              type: 'button',
-              sub_type: 'url',
-              index: idx,
-              parameters: [{ type: 'text', text: variables[`button_${idx}`] || '' }],
-            });
-          }
-        });
-      }
-      }
-
+      
       // Enviar via Cloud API
       const { data, error } = await supabase.functions.invoke('cloudapi-send-message', {
         body: {
           channelId,
           phone: contactPhone,
           type: 'template',
-          conversationId: selectedConversationId,
           template: {
             name: templateName,
             language: language,
@@ -3037,10 +3027,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           }
         }
       });
-
+      
       if (error) throw error;
-      if (data?.success === false) throw new Error(data?.error || 'Erro ao enviar template');
-
+      
       // Salvar no banco com o conteúdo real do template
       sendMessage.mutate({
         conversation_id: selectedConversationId,
@@ -3049,11 +3038,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         message_type: 'template',
         whatsapp_message_id: data?.messageId
       });
-
+      
       toast.success('Template enviado com sucesso!');
     } catch (error) {
       console.error('Erro ao enviar template Meta:', error);
-      toast.error(`Erro ao enviar template: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      toast.error('Erro ao enviar template');
     }
   }, [selectedConversation, selectedConversationId, sendMessage]);
 

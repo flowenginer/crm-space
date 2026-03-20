@@ -251,6 +251,8 @@ export interface DetailedVariableInfo {
   bodyVarCount: number;
   totalVarCount: number;
   hasMediaHeader: boolean;
+  /** URL da mídia extraída do example.header_handle do template (se disponível) */
+  headerMediaUrl: string | null;
 }
 
 export function extractDetailedVariables(components: MetaTemplateComponent[]): DetailedVariableInfo {
@@ -259,6 +261,12 @@ export function extractDetailedVariables(components: MetaTemplateComponent[]): D
 
   const headerFormat = (header?.format as DetailedVariableInfo['headerFormat']) || null;
   const hasMediaHeader = headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT';
+
+  // Extrair URL da mídia do example.header_handle (retornada pela Meta ao sincronizar)
+  let headerMediaUrl: string | null = null;
+  if (hasMediaHeader && header?.example?.header_handle && header.example.header_handle.length > 0) {
+    headerMediaUrl = header.example.header_handle[0];
+  }
 
   let headerVarCount = 0;
   if (header?.text) {
@@ -278,6 +286,7 @@ export function extractDetailedVariables(components: MetaTemplateComponent[]): D
     bodyVarCount,
     totalVarCount: headerVarCount + bodyVarCount,
     hasMediaHeader,
+    headerMediaUrl,
   };
 }
 
