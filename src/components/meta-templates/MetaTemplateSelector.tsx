@@ -46,7 +46,7 @@ export function MetaTemplateSelector({
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
   const detailedVars = selectedTemplate 
-    ? extractDetailedVariables(selectedTemplate.components) 
+    ? extractDetailedVariables(selectedTemplate.components, selectedTemplate.header_media_url) 
     : null;
 
   useEffect(() => {
