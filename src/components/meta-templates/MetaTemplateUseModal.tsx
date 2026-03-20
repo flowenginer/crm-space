@@ -133,8 +133,12 @@ export function MetaTemplateUseModal({
 
     // Merge header_media_url into variables so it reaches the send handler
     const mergedVars = { ...variables };
-    if (needsMediaUrl && headerMediaUrl.trim()) {
-      mergedVars['header_media_url'] = headerMediaUrl.trim();
+    if (detailedVars?.hasMediaHeader && detailedVars.headerVarCount === 0) {
+      if (headerMediaUrl.trim()) {
+        mergedVars['header_media_url'] = headerMediaUrl.trim();
+      } else if (hasAutoMediaUrl) {
+        mergedVars['header_media_url'] = detailedVars.headerMediaUrl!;
+      }
     }
     
     onSend?.(template.id, template.name, mergedVars, fullPreviewContent, template.components);
