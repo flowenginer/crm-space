@@ -66,8 +66,10 @@ export function MetaTemplateUseModal({
     return getTemplateFooter(template.components);
   }, [template]);
 
-  // Check if this template needs a media URL
-  const needsMediaUrl = detailedVars?.hasMediaHeader && detailedVars.headerVarCount === 0;
+  // Check if this template needs a media URL from the user
+  // If the template already has a media URL from Meta (header_handle), no need to ask
+  const hasAutoMediaUrl = !!detailedVars?.headerMediaUrl;
+  const needsMediaUrl = detailedVars?.hasMediaHeader && detailedVars.headerVarCount === 0 && !hasAutoMediaUrl;
 
   // Build preview with variables replaced
   const previewContent = useMemo(() => {
