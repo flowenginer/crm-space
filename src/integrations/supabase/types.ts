@@ -5603,6 +5603,7 @@ export type Database = {
           components: Json
           created_at: string
           example_values: Json | null
+          header_media_url: string | null
           id: string
           language: string
           last_synced_at: string | null
@@ -5620,6 +5621,7 @@ export type Database = {
           components?: Json
           created_at?: string
           example_values?: Json | null
+          header_media_url?: string | null
           id?: string
           language?: string
           last_synced_at?: string | null
@@ -5637,6 +5639,7 @@ export type Database = {
           components?: Json
           created_at?: string
           example_values?: Json | null
+          header_media_url?: string | null
           id?: string
           language?: string
           last_synced_at?: string | null

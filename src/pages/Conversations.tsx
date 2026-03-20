@@ -2942,10 +2942,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         if (isMediaHeader) {
           let mediaUrl = variables['header_media_url'];
           
-          // Auto-extract from template's example.header_handle if not provided by user
-          if (!mediaUrl && headerComp?.example?.header_handle?.length > 0) {
-            mediaUrl = headerComp.example.header_handle[0];
-          }
+          // DO NOT fallback to header_handle URLs — they are temporary and expire
+          // The permanent URL should come from variables (set by UI from header_media_url column)
           
           if (mediaUrl) {
             const mediaType = headerFormat.toLowerCase(); // 'image', 'video', 'document'

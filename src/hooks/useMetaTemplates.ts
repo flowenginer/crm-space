@@ -35,6 +35,8 @@ export interface MetaMessageTemplate {
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Permanent URL of header media stored in Supabase Storage */
+  header_media_url?: string | null;
 }
 
 // Fetch templates from local database
@@ -255,18 +257,20 @@ export interface DetailedVariableInfo {
   headerMediaUrl: string | null;
 }
 
-export function extractDetailedVariables(components: MetaTemplateComponent[]): DetailedVariableInfo {
+/**
+ * Extract detailed variable info from template components.
+ * @param components - Template components array
+ * @param storedMediaUrl - Permanent media URL from database (header_media_url column)
+ */
+export function extractDetailedVariables(components: MetaTemplateComponent[], storedMediaUrl?: string | null): DetailedVariableInfo {
   const header = components.find(c => c.type === 'HEADER');
   const body = components.find(c => c.type === 'BODY');
 
   const headerFormat = (header?.format as DetailedVariableInfo['headerFormat']) || null;
   const hasMediaHeader = headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT';
 
-  // Extrair URL da mídia do example.header_handle (retornada pela Meta ao sincronizar)
-  let headerMediaUrl: string | null = null;
-  if (hasMediaHeader && header?.example?.header_handle && header.example.header_handle.length > 0) {
-    headerMediaUrl = header.example.header_handle[0];
-  }
+  // Use permanent Storage URL if available; ignore temporary Meta CDN URLs
+  let headerMediaUrl: string | null = storedMediaUrl || null;
 
   let headerVarCount = 0;
   if (header?.text) {

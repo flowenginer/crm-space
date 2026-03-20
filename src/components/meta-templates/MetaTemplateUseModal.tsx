@@ -48,7 +48,7 @@ export function MetaTemplateUseModal({
 
   const detailedVars = useMemo(() => {
     if (!template) return null;
-    return extractDetailedVariables(template.components);
+    return extractDetailedVariables(template.components, template.header_media_url);
   }, [template]);
 
   const bodyText = useMemo(() => {
