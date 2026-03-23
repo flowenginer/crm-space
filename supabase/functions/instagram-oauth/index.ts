@@ -269,7 +269,7 @@ serve(async (req) => {
           page_id: page_id || instagram_account_id,
           page_access_token,
           instagram_account_id,
-          channel_id: channel.id,
+          channel_id: channelId,
           is_active: true,
           webhook_configured: true,
           verify_token: `ig_verify_${crypto.randomUUID().slice(0, 8)}`,
@@ -277,8 +277,10 @@ serve(async (req) => {
 
       if (configError) {
         console.error('[Instagram OAuth] Config insert error:', configError);
-        // Clean up channel
-        await supabase.from('whatsapp_channels').delete().eq('id', channel.id);
+        // Clean up channel only if we just created it
+        if (!existingConfig?.channel_id) {
+          await supabase.from('whatsapp_channels').delete().eq('id', channelId);
+        }
         return new Response(JSON.stringify({ error: 'Erro ao salvar configuração: ' + configError.message }), {
           status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
