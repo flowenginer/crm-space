@@ -462,7 +462,7 @@ export async function fetchContactProfile(
 
     // CloudAPI (API Oficial) não fornece foto/nome do contato via API do provedor.
     // Então evitamos chamar whatsapp-instance (que exige provider configurado) e retornamos vazio.
-    if (channelType === 'cloudapi' || channelType === 'official') {
+    if (channelType === 'cloudapi' || channelType === 'official' || channelType === 'instagram') {
       return { success: true, profilePictureUrl: null, name: null };
     }
 
