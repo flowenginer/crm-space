@@ -213,24 +213,52 @@ serve(async (req) => {
 
       console.log('[Instagram OAuth] Saving account', instagram_username);
 
-      // Create whatsapp_channels entry with type 'instagram'
-      const { data: channel, error: channelError } = await supabase
-        .from('whatsapp_channels')
-        .insert({
-          name: `Instagram - @${instagram_username}`,
-          phone: `@${instagram_username}`,
-          status: 'connected',
-          type: 'official',
-          tenant_id: tenantId,
-        })
-        .select()
-        .single();
+      // Check if an Instagram channel already exists for this tenant
+      let channelId: string;
+      const { data: existingConfig } = await supabase
+        .from('instagram_configs')
+        .select('channel_id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
 
-      if (channelError) {
-        console.error('[Instagram OAuth] Channel insert error:', channelError);
-        return new Response(JSON.stringify({ error: 'Erro ao criar canal: ' + channelError.message }), {
-          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+      if (existingConfig?.channel_id) {
+        // Update existing channel
+        const { error: updateError } = await supabase
+          .from('whatsapp_channels')
+          .update({
+            name: `Instagram - @${instagram_username}`,
+            phone: `@${instagram_username}`,
+            status: 'connected',
+          })
+          .eq('id', existingConfig.channel_id);
+
+        if (updateError) {
+          console.error('[Instagram OAuth] Channel update error:', updateError);
+        }
+        channelId = existingConfig.channel_id;
+        console.log('[Instagram OAuth] Reusing existing channel:', channelId);
+      } else {
+        // Create new channel
+        const { data: channel, error: channelError } = await supabase
+          .from('whatsapp_channels')
+          .insert({
+            name: `Instagram - @${instagram_username}`,
+            phone: `@${instagram_username}`,
+            status: 'connected',
+            type: 'official',
+            tenant_id: tenantId,
+          })
+          .select()
+          .single();
+
+        if (channelError) {
+          console.error('[Instagram OAuth] Channel insert error:', channelError);
+          return new Response(JSON.stringify({ error: 'Erro ao criar canal: ' + channelError.message }), {
+            status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+        channelId = channel.id;
+        console.log('[Instagram OAuth] Created new channel:', channelId);
       }
 
       // Create/update instagram_configs
@@ -241,7 +269,7 @@ serve(async (req) => {
           page_id: page_id || instagram_account_id,
           page_access_token,
           instagram_account_id,
-          channel_id: channel.id,
+          channel_id: channelId,
           is_active: true,
           webhook_configured: true,
           verify_token: `ig_verify_${crypto.randomUUID().slice(0, 8)}`,
@@ -249,18 +277,20 @@ serve(async (req) => {
 
       if (configError) {
         console.error('[Instagram OAuth] Config insert error:', configError);
-        // Clean up channel
-        await supabase.from('whatsapp_channels').delete().eq('id', channel.id);
+        // Clean up channel only if we just created it
+        if (!existingConfig?.channel_id) {
+          await supabase.from('whatsapp_channels').delete().eq('id', channelId);
+        }
         return new Response(JSON.stringify({ error: 'Erro ao salvar configuração: ' + configError.message }), {
           status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      console.log('[Instagram OAuth] Account saved successfully:', channel.id);
+      console.log('[Instagram OAuth] Account saved successfully:', channelId);
 
       return new Response(JSON.stringify({
         success: true,
-        channel_id: channel.id,
+        channel_id: channelId,
         instagram_username,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
