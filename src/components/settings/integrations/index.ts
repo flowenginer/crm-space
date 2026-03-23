@@ -6,3 +6,4 @@ export { MetaAdsForm } from './forms/MetaAdsForm';
 export { WhatsAppProviderForm } from './forms/WhatsAppProviderForm';
 export { BlingIntegrationForm } from './forms/BlingIntegrationForm';
 export { CloudAPIConfigForm } from './forms/CloudAPIConfigForm';
+export { InstagramConfigForm } from './forms/InstagramConfigForm';

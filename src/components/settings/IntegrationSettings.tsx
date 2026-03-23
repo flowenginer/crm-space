@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, CreditCard, Truck, Facebook, MessageCircle, Package, Phone } from 'lucide-react';
+import { Loader2, CreditCard, Truck, Facebook, MessageCircle, Package, Phone, Instagram } from 'lucide-react';
 import { usePaymentGatewayConfig } from '@/hooks/usePaymentLinks';
 import { useShippingConfig } from '@/hooks/useShippingConfig';
 import { useBlingConfig } from '@/hooks/useBlingIntegration';
 import { useCloudAPIConfig } from '@/hooks/useCloudAPIConfig';
+import { useInstagramConfig } from '@/hooks/useInstagramConfig';
 import { toast } from 'sonner';
 import {
   IntegrationCard,
@@ -17,6 +18,7 @@ import {
   WhatsAppProviderForm,
   BlingIntegrationForm,
   CloudAPIConfigForm,
+  InstagramConfigForm,
 } from './integrations';
 
 interface ProviderWithConfig {
@@ -30,7 +32,7 @@ interface ProviderWithConfig {
   is_configured?: boolean;
 }
 
-type IntegrationType = 'rede' | 'melhor-envio' | 'meta-ads' | 'bling' | 'cloudapi' | string | null;
+type IntegrationType = 'rede' | 'melhor-envio' | 'meta-ads' | 'bling' | 'cloudapi' | 'instagram' | string | null;
 
 export function IntegrationSettings() {
   const [searchParams] = useSearchParams();
@@ -42,6 +44,7 @@ export function IntegrationSettings() {
 
   // Fetch Cloud API config
   const { data: cloudAPIConfig } = useCloudAPIConfig();
+  const { data: instagramConfig } = useInstagramConfig();
   useEffect(() => {
     const blingParam = searchParams.get('bling');
     if (blingParam === 'callback') {
@@ -177,6 +180,17 @@ export function IntegrationSettings() {
           onClick={() => setOpenModal('cloudapi')}
         />
 
+        {/* Instagram Direct */}
+        <IntegrationCard
+          icon={Instagram}
+          name="Instagram"
+          description={instagramConfig ? 'Conectado' : 'Direct Messages'}
+          category="Mensagens"
+          isConfigured={!!instagramConfig}
+          color="#E1306C"
+          onClick={() => setOpenModal('instagram')}
+        />
+
         {/* WhatsApp Providers */}
         {providers?.map((provider) => (
           <IntegrationCard
@@ -231,6 +245,16 @@ export function IntegrationSettings() {
         color="#0066CC"
       >
         <BlingIntegrationForm onSuccess={handleCloseModal} />
+      </IntegrationModal>
+
+      <IntegrationModal
+        open={openModal === 'instagram'}
+        onOpenChange={(open) => !open && setOpenModal(null)}
+        icon={Instagram}
+        name="Instagram Direct"
+        color="#E1306C"
+      >
+        <InstagramConfigForm onSuccess={handleCloseModal} />
       </IntegrationModal>
 
       <IntegrationModal

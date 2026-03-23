@@ -143,6 +143,27 @@ export async function sendWhatsAppMessage(
       }
 
       return data as { success: boolean; messageId?: string; error?: string };
+    } else if (channelType === 'instagram') {
+      // Instagram Direct uses instagram-send-message
+      const igType = type === 'document' ? 'file' : type;
+      const { data, error } = await supabase.functions.invoke('instagram-send-message', {
+        body: {
+          channelId,
+          recipientId: phone, // For Instagram, "phone" is actually "ig:IGSID"
+          type: igType,
+          content,
+          mediaUrl,
+          conversationId,
+        },
+      });
+
+      console.log('[Instance Creator] Instagram Send Response:', data, error);
+
+      if (error) {
+        return { success: false, error: error.message || 'Erro ao enviar mensagem via Instagram' };
+      }
+
+      return data as { success: boolean; messageId?: string; error?: string };
     } else {
       // Regular providers (zapi, uazapi, evolution) use whatsapp-instance
       const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
@@ -441,7 +462,7 @@ export async function fetchContactProfile(
 
     // CloudAPI (API Oficial) não fornece foto/nome do contato via API do provedor.
     // Então evitamos chamar whatsapp-instance (que exige provider configurado) e retornamos vazio.
-    if (channelType === 'cloudapi' || channelType === 'official') {
+    if (channelType === 'cloudapi' || channelType === 'official' || channelType === 'instagram') {
       return { success: true, profilePictureUrl: null, name: null };
     }
 
@@ -639,7 +660,7 @@ export async function markMessagesAsReadOnWhatsApp(
 
     // Verificar se é canal não-oficial (só esses precisam do markAsRead)
     const channelType = await getChannelType(channelId);
-    if (!channelType || channelType === 'cloudapi' || channelType === 'official') {
+    if (!channelType || channelType === 'cloudapi' || channelType === 'official' || channelType === 'instagram') {
       console.log('[Instance Creator] Skipping markAsRead for official API channel');
       return { success: true };
     }
