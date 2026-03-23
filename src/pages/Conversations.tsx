@@ -147,7 +147,6 @@ import { useUserDepartments } from '@/hooks/useUserDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { useUserChannels } from '@/hooks/useUserChannels';
 import { useInstagramChannels } from '@/hooks/useInstagramChannels';
-import { instagramService } from '@/lib/instagram';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds, useAllSharedConversationIds, useMySharePermission } from '@/hooks/useSharedConversations';
 import { useSharedConversationsWithDetails } from '@/hooks/useSharedConversationsWithDetails';
@@ -3241,19 +3240,22 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       const sendViaInstagram = async (content: string, type: string, mediaUrl?: string): Promise<string | undefined> => {
         if (isInstagramConversation && instagramChannelId && contactInstagramId) {
           try {
-            const result = await instagramService.sendMessage(
-              instagramChannelId,
-              contactInstagramId,
-              content,
-              type as 'text' | 'image' | 'video' | 'audio',
-              mediaUrl ? { mediaUrl } : undefined
-            );
-            if (!result.success) {
-              console.error('[Instagram Send Error]', result.error);
-              toast.error('Erro ao enviar para Instagram: ' + (result.error || 'Erro desconhecido'));
+            const { data, error } = await supabase.functions.invoke('instagram-send-message', {
+              body: {
+                channelId: instagramChannelId,
+                recipientId: contactInstagramId,
+                type: type as 'text' | 'image' | 'video' | 'audio',
+                content,
+                mediaUrl,
+                conversationId: selectedConversationId,
+              },
+            });
+            if (error || !data?.success) {
+              console.error('[Instagram Send Error]', error || data?.error);
+              toast.error('Erro ao enviar para Instagram: ' + (data?.error || error?.message || 'Erro desconhecido'));
               return undefined;
             }
-            return result.messageId;
+            return data.messageId;
           } catch (igError) {
             console.error('[Instagram Send Error]', igError);
             return undefined;
@@ -3280,12 +3282,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           message_type: 'text',
           reply_to_message_id: replyingTo?.id,
         }).then(async (savedMessage) => {
-          // BACKGROUND: Send to WhatsApp with same content (already has signature)
-          const whatsAppId = await sendViaWhatsApp(contentWithSignature, 'text', undefined, quotedWhatsAppId);
-          
-          // Update the message with the WhatsApp message ID for future reply linking
-          if (whatsAppId && savedMessage?.id) {
-            updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+          if (isInstagramConversation) {
+            // BACKGROUND: Send to Instagram
+            const igMessageId = await sendViaInstagram(contentWithSignature, 'text');
+            if (igMessageId && savedMessage?.id) {
+              await supabase.from('messages').update({ instagram_message_id: igMessageId, status: 'sent' }).eq('id', savedMessage.id);
+            }
+          } else {
+            // BACKGROUND: Send to WhatsApp with same content (already has signature)
+            const whatsAppId = await sendViaWhatsApp(contentWithSignature, 'text', undefined, quotedWhatsAppId);
+            // Update the message with the WhatsApp message ID for future reply linking
+            if (whatsAppId && savedMessage?.id) {
+              updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+            }
           }
         }).catch(console.error);
         
@@ -3336,19 +3345,26 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             media_mime_type: result.mimeType,
             reply_to_message_id: replyingTo?.id,
           }).then(async (savedMessage) => {
-            // BACKGROUND: Send to WhatsApp with caption for media or filename for documents
-            const contentToSend = captionForWhatsApp || (messageType === 'document' ? file.name : messageContent);
-            const whatsAppId = await sendViaWhatsApp(
-              contentToSend, 
-              messageType, 
-              result.url, 
-              quotedWhatsAppId,
-              messageType === 'document' ? file.name : undefined
-            );
-            
-            // Update the message with the WhatsApp message ID for future reply linking
-            if (whatsAppId && savedMessage?.id) {
-              updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+            if (isInstagramConversation) {
+              // BACKGROUND: Send to Instagram
+              const igMessageId = await sendViaInstagram(messageContent, messageType, result.url);
+              if (igMessageId && savedMessage?.id) {
+                await supabase.from('messages').update({ instagram_message_id: igMessageId, status: 'sent' }).eq('id', savedMessage.id);
+              }
+            } else {
+              // BACKGROUND: Send to WhatsApp with caption for media or filename for documents
+              const contentToSend = captionForWhatsApp || (messageType === 'document' ? file.name : messageContent);
+              const whatsAppId = await sendViaWhatsApp(
+                contentToSend,
+                messageType,
+                result.url,
+                quotedWhatsAppId,
+                messageType === 'document' ? file.name : undefined
+              );
+              // Update the message with the WhatsApp message ID for future reply linking
+              if (whatsAppId && savedMessage?.id) {
+                updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+              }
             }
           }).catch(console.error);
         }
@@ -3842,32 +3858,59 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           messageId: audioMessageId
         });
 
-        if (channelId && contactPhone) {
+        // Check if Instagram conversation
+        const isIgConv = (selectedConv as any)?.channel_type === 'instagram' || (selectedConv as any)?.instagram_channel_id;
+        const igChannelId = (selectedConv as any)?.instagram_channel_id;
+        const igContactId = (selectedConv?.contact as any)?.instagram_id;
+
+        if (isIgConv && igChannelId && igContactId) {
+          // Send via Instagram Edge Function
+          supabase.functions.invoke('instagram-send-message', {
+            body: {
+              channelId: igChannelId,
+              recipientId: igContactId,
+              type: 'audio',
+              mediaUrl: result.url,
+              conversationId: selectedConversationId,
+            },
+          }).then(async ({ data, error }) => {
+            if (error || !data?.success) {
+              console.error('[Audio Send] Instagram send failed:', error || data?.error);
+              if (audioMessageId) {
+                await supabase.from('messages').update({ status: 'failed' }).eq('id', audioMessageId);
+                queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
+              }
+              toast.error('Erro ao enviar áudio para o Instagram');
+            } else if (data?.messageId && audioMessageId) {
+              await supabase.from('messages').update({ instagram_message_id: data.messageId, status: 'sent' }).eq('id', audioMessageId);
+              queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
+            }
+          }).catch(async (error) => {
+            console.error('[Audio Send] Instagram error:', error);
+            if (audioMessageId) {
+              await supabase.from('messages').update({ status: 'failed' }).eq('id', audioMessageId);
+              queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
+            }
+            toast.error('Erro ao enviar áudio para o Instagram');
+          });
+        } else if (channelId && contactPhone) {
           sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url, undefined, undefined, selectedConversationId)
             .then(async (response) => {
               console.log('[Audio Send] WhatsApp response:', response);
               if (response.success && response.messageId) {
-                // Use status from response if available (UAZAPI can return delivered/read)
-                // Otherwise default to 'sent'
                 const messageStatus = (response as any).status || 'sent';
-                console.log('[Audio Send] Using status:', messageStatus);
-                
-                // Update the message with the WhatsApp ID using the saved message ID
                 const { error: updateError } = await supabase
                   .from('messages')
                   .update({ whatsapp_message_id: response.messageId, status: messageStatus })
                   .eq('id', audioMessageId);
-                
+
                 if (updateError) {
                   console.error('[Audio Send] Failed to update message with WhatsApp ID:', updateError);
                 } else {
-                  console.log('[Audio Send] Message updated with WhatsApp ID:', response.messageId, 'Status:', messageStatus);
-                  // Invalidate queries to refresh UI
                   queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
                 }
               } else if (!response.success) {
                 console.error('[Audio Send] WhatsApp send failed:', response.error);
-                // Mark message as failed
                 if (audioMessageId) {
                   await supabase
                     .from('messages')
@@ -3880,7 +3923,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             })
             .catch(async (error) => {
               console.error('[Audio Send] Failed to send audio via WhatsApp:', error);
-              // Mark message as failed
               if (audioMessageId) {
                 await supabase
                   .from('messages')
@@ -3891,7 +3933,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               toast.error('Erro ao enviar áudio para o WhatsApp');
             });
         } else {
-          console.error('[Audio Send] Missing channelId or contactPhone:', { channelId, contactPhone });
+          console.error('[Audio Send] Missing channel data:', { channelId, contactPhone, igChannelId, igContactId });
           toast.error('Não foi possível enviar o áudio: dados do canal incompletos');
         }
       }
