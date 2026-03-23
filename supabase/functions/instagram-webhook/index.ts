@@ -297,6 +297,14 @@ async function processInstagramMessage(
       .select('id')
       .single();
     contactId = newContact?.id;
+  } else if (existingContact && senderName !== senderId) {
+    // Update contact name if we got a real name and contact was created with just the ID
+    await supabase
+      .from('contacts')
+      .update({ full_name: senderName })
+      .eq('id', existingContact.id)
+      .eq('tenant_id', config.tenant_id);
+    console.log(`[Instagram] Updated contact name to: ${senderName}`);
   }
 
   if (!contactId) {

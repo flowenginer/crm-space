@@ -227,8 +227,9 @@ serve(async (req) => {
           .from('whatsapp_channels')
           .update({
             name: `Instagram - @${instagram_username}`,
-            phone: `@${instagram_username}`,
+             phone: `@${instagram_username}`,
             status: 'connected',
+            type: 'instagram',
           })
           .eq('id', existingConfig.channel_id);
 
