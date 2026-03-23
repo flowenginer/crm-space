@@ -248,6 +248,16 @@ export function IntegrationSettings() {
       </IntegrationModal>
 
       <IntegrationModal
+        open={openModal === 'instagram'}
+        onOpenChange={(open) => !open && setOpenModal(null)}
+        icon={Instagram}
+        name="Instagram Direct"
+        color="#E1306C"
+      >
+        <InstagramConfigForm onSuccess={handleCloseModal} />
+      </IntegrationModal>
+
+      <IntegrationModal
         open={openModal === 'cloudapi'}
         onOpenChange={(open) => !open && setOpenModal(null)}
         icon={Phone}
