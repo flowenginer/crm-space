@@ -262,8 +262,8 @@ async function processInstagramMessage(
     );
     if (profileResponse.ok) {
       const profile = await profileResponse.json();
-      senderName = profile.name || senderId;
-      console.log('[Instagram] Sender profile:', profile.name);
+      senderName = profile.name || (profile.username ? `@${profile.username}` : senderId);
+      console.log('[Instagram] Sender profile:', senderName);
     }
   } catch (e) {
     console.warn('[Instagram] Could not fetch sender profile:', e);
