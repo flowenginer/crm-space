@@ -6,6 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// These are the Instagram App credentials (from the Instagram API section, NOT the Facebook App ID)
 const META_APP_ID = Deno.env.get('META_APP_ID');
 const META_APP_SECRET = Deno.env.get('META_APP_SECRET');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
@@ -61,15 +62,19 @@ serve(async (req) => {
         redirect_origin: origin,
       }, { onConflict: 'state' });
 
+      // Use Instagram Login OAuth (NOT Facebook Login)
+      // Docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login
       const scopes = 'instagram_business_basic,instagram_business_manage_messages';
-      const loginUrl = `https://www.facebook.com/v21.0/dialog/oauth?` +
-        `client_id=${META_APP_ID}` +
+      const loginUrl = `https://www.instagram.com/oauth/authorize?` +
+        `enable_fb_login=0` +
+        `&force_authentication=1` +
+        `&client_id=${META_APP_ID}` +
         `&redirect_uri=${encodeURIComponent(frontendCallbackUrl)}` +
         `&state=${state}` +
         `&scope=${scopes}` +
         `&response_type=code`;
 
-      console.log('[Instagram OAuth] Login URL generated');
+      console.log('[Instagram OAuth] Login URL generated with Instagram Login flow');
 
       return new Response(JSON.stringify({ loginUrl, state }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -107,71 +112,70 @@ serve(async (req) => {
         ? `${stateData.redirect_origin}/instagram-oauth-callback`
         : '';
 
-      // Exchange code for short-lived token
-      console.log('[Instagram OAuth] Exchanging code for token...');
-      const tokenRes = await fetch(
-        `https://graph.facebook.com/v21.0/oauth/access_token?` +
-        `client_id=${META_APP_ID}` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-        `&client_secret=${META_APP_SECRET}` +
-        `&code=${code}`
-      );
+      // Step 1: Exchange code for short-lived token via Instagram API
+      console.log('[Instagram OAuth] Exchanging code for short-lived token via Instagram API...');
+      const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: META_APP_ID!,
+          client_secret: META_APP_SECRET!,
+          grant_type: 'authorization_code',
+          redirect_uri: redirectUri,
+          code,
+        }).toString(),
+      });
       const tokenData = await tokenRes.json();
 
       if (!tokenData.access_token) {
-        console.error('[Instagram OAuth] Token error:', tokenData);
-        return new Response(JSON.stringify({ error: tokenData.error?.message || 'Erro ao obter token' }), {
+        console.error('[Instagram OAuth] Short-lived token error:', tokenData);
+        return new Response(JSON.stringify({ error: tokenData.error_message || tokenData.error?.message || 'Erro ao obter token' }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      // Exchange for long-lived user token
+      console.log('[Instagram OAuth] Short-lived token obtained, user_id:', tokenData.user_id);
+
+      // Step 2: Exchange short-lived token for long-lived token
+      console.log('[Instagram OAuth] Exchanging for long-lived token...');
       const longLivedRes = await fetch(
-        `https://graph.facebook.com/v21.0/oauth/access_token?` +
-        `grant_type=fb_exchange_token` +
-        `&client_id=${META_APP_ID}` +
+        `https://graph.instagram.com/access_token?` +
+        `grant_type=ig_exchange_token` +
         `&client_secret=${META_APP_SECRET}` +
-        `&fb_exchange_token=${tokenData.access_token}`
+        `&access_token=${tokenData.access_token}`
       );
       const longLivedData = await longLivedRes.json();
-      const userAccessToken = longLivedData.access_token || tokenData.access_token;
+      const accessToken = longLivedData.access_token || tokenData.access_token;
 
-      // Fetch Pages with their Instagram Business Accounts
-      console.log('[Instagram OAuth] Fetching pages...');
-      const pagesRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${userAccessToken}`
+      console.log('[Instagram OAuth] Long-lived token obtained, expires_in:', longLivedData.expires_in);
+
+      // Step 3: Get Instagram user info
+      console.log('[Instagram OAuth] Fetching user info...');
+      const userRes = await fetch(
+        `https://graph.instagram.com/v21.0/me?fields=user_id,username,name,profile_picture_url,account_type&access_token=${accessToken}`
       );
-      const pagesData = await pagesRes.json();
-      const pages = pagesData.data || [];
+      const userData = await userRes.json();
 
-      console.log('[Instagram OAuth] Pages found:', pages.length);
+      console.log('[Instagram OAuth] User info:', JSON.stringify(userData));
 
-      // For each page with instagram_business_account, fetch IG details
-      const accounts: any[] = [];
-      for (const page of pages) {
-        if (page.instagram_business_account?.id) {
-          try {
-            const igRes = await fetch(
-              `https://graph.facebook.com/v21.0/${page.instagram_business_account.id}?fields=id,username,name,profile_picture_url&access_token=${page.access_token}`
-            );
-            const igData = await igRes.json();
-
-            accounts.push({
-              page_id: page.id,
-              page_name: page.name,
-              page_access_token: page.access_token,
-              instagram_account_id: igData.id,
-              instagram_username: igData.username || igData.name || 'N/A',
-              instagram_name: igData.name || igData.username || page.name,
-              profile_picture_url: igData.profile_picture_url || null,
-            });
-          } catch (e) {
-            console.warn('[Instagram OAuth] Error fetching IG for page', page.id, e);
-          }
-        }
+      if (userData.error) {
+        console.error('[Instagram OAuth] User info error:', userData.error);
+        return new Response(JSON.stringify({ error: userData.error.message || 'Erro ao buscar dados do Instagram' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
 
-      console.log('[Instagram OAuth] Instagram accounts found:', accounts.length);
+      const accounts = [{
+        page_id: userData.user_id || userData.id,
+        page_name: userData.name || userData.username,
+        page_access_token: accessToken,
+        instagram_account_id: userData.user_id || userData.id,
+        instagram_username: userData.username || 'N/A',
+        instagram_name: userData.name || userData.username || 'Instagram',
+        profile_picture_url: userData.profile_picture_url || null,
+      }];
+
+      console.log('[Instagram OAuth] Account ready:', accounts[0].instagram_username);
 
       return new Response(JSON.stringify({
         accounts,
@@ -201,14 +205,12 @@ serve(async (req) => {
         profile_picture_url,
       } = body;
 
-      if (!page_id || !page_access_token || !instagram_account_id || !tenantId) {
+      if (!page_access_token || !instagram_account_id || !tenantId) {
         return new Response(JSON.stringify({ error: 'Dados incompletos' }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      // Get long-lived page access token (page tokens from long-lived user tokens never expire)
-      // The page_access_token from /me/accounts with a long-lived user token is already long-lived
       console.log('[Instagram OAuth] Saving account', instagram_username);
 
       // Create whatsapp_channels entry with type 'instagram'
@@ -236,7 +238,7 @@ serve(async (req) => {
         .from('instagram_configs')
         .upsert({
           tenant_id: tenantId,
-          page_id,
+          page_id: page_id || instagram_account_id,
           page_access_token,
           instagram_account_id,
           channel_id: channel.id,
