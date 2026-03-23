@@ -3790,7 +3790,7 @@ export type Database = {
           {
             foreignKeyName: "instagram_configs_tenant_id_fkey"
             columns: ["tenant_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
