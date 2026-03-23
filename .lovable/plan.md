@@ -1,49 +1,26 @@
 
-## Plano: Conectar Instagram Direct via Login Facebook (OAuth)
 
-### Conceito
-Reaproveitar o mesmo fluxo OAuth do Meta Ads (`meta-oauth`) para Instagram Direct. O usuário clica em "Conectar Instagram" na página de Canais, faz login com Facebook, e o sistema automaticamente identifica as Pages e Instagram Business Accounts vinculadas, cria o canal e salva as credenciais — sem precisar digitar IDs manualmente.
+## Diagnóstico: "Código não encontrado"
 
-### O que será feito
+O erro ocorre porque `searchParams.get('code')` retorna `null` na página de callback. Possíveis causas:
 
-**1. Nova Edge Function `instagram-oauth`**
-- Action `get-login-url`: Gera URL OAuth do Facebook com scopes `instagram_basic,instagram_manage_messages,pages_messaging,pages_show_list`
-- Action `exchange-code`: Troca code por token, busca `/me/accounts` (Pages), para cada Page busca o `instagram_business_account`, retorna lista de Pages+IG accounts para o usuário escolher
-- Action `save-account`: Salva Page Access Token (long-lived), cria/atualiza `instagram_configs` e cria canal tipo `instagram` em `whatsapp_channels`
+1. **Facebook adiciona `#_=_`** ao final da URL de redirect, o que pode interferir com o parsing dos parâmetros em alguns cenários
+2. **O `response_type=code` não está explícito** na URL do OAuth — embora seja o default, é boa prática incluir
+3. **O popup pode ter sido redirecionado sem completar o fluxo** (ex: o usuário fechou antes de autorizar)
 
-**2. Componente `InstagramConnect` (modal popup)**
-- Similar ao `MetaConnect.tsx` / `CloudAPIConnect`
-- Botão "Conectar com Facebook" abre popup OAuth
-- Após retorno, exibe lista de Pages/IG accounts para seleção
-- Salva e cria canal automaticamente
+## Correções
 
-**3. Integração na página de Canais (`WhatsAppChannels.tsx`)**
-- Adicionar opção "Instagram Direct" no dropdown "Adicionar Canal"
-- Exibir canais Instagram em uma seção separada (como já existe para oficiais/não-oficiais)
-- Card específico para canais Instagram com ícone do Instagram
+### 1. Edge Function `instagram-oauth` — Adicionar `response_type=code`
+- Na action `get-login-url`, adicionar `&response_type=code` explicitamente na URL do OAuth
 
-**4. Callback page**
-- Reutilizar ou criar `/instagram-oauth-callback` para capturar o code e enviar de volta ao CRM via `postMessage`/`localStorage`
+### 2. Callback Page — Tratar `#_=_` do Facebook e adicionar debug
+- Antes de ler os searchParams, limpar o hash `#_=_` que o Facebook adiciona
+- Se a URL atual tiver `code` no hash ou em `window.location.search` direto (fallback), tentar extrair de lá
+- Adicionar um `console.log` temporário com a URL completa para debugar caso o erro persista
 
-### Detalhes técnicos
+### Arquivos modificados
+| Arquivo | Mudança |
+|---------|---------|
+| `supabase/functions/instagram-oauth/index.ts` | Adicionar `response_type=code` na URL |
+| `src/pages/InstagramOAuthCallback.tsx` | Tratar `#_=_`, fallback para `window.location.search`, log de debug |
 
-- O token do usuário é trocado por Page Access Token (nunca expira se long-lived page token)
-- A Graph API v21.0 endpoint `/me/accounts?fields=id,name,access_token,instagram_business_account` retorna Pages e IG IDs
-- Para cada Page com `instagram_business_account`, busca `/{ig_id}?fields=id,username,profile_picture_url,name`
-- O `page_access_token` long-lived é obtido via `/oauth/access_token?grant_type=fb_exchange_token` e depois `/{page_id}?fields=access_token` (page tokens de long-lived user tokens nunca expiram)
-
-### Arquivos a criar/modificar
-
-| Arquivo | Ação |
-|---------|------|
-| `supabase/functions/instagram-oauth/index.ts` | Criar — Edge Function OAuth para Instagram |
-| `src/components/instagram/InstagramConnect.tsx` | Criar — Modal de conexão via Facebook Login |
-| `src/pages/InstagramOAuthCallback.tsx` | Criar — Página callback para popup |
-| `src/pages/WhatsAppChannels.tsx` | Modificar — Adicionar botão Instagram e seção de canais IG |
-| `src/App.tsx` | Modificar — Adicionar rota `/instagram-oauth-callback` |
-
-### Permissões Meta necessárias (já configuradas no app 1540198137306576)
-- `instagram_basic`
-- `instagram_manage_messages`
-- `pages_messaging`
-- `pages_show_list`
