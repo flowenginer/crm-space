@@ -146,9 +146,12 @@ export default function WhatsAppChannels() {
   
   // State for Cloud API Connect dialog
   const [showCloudAPIConnect, setShowCloudAPIConnect] = useState(false);
+  // State for Instagram Connect dialog
+  const [showInstagramConnect, setShowInstagramConnect] = useState(false);
   
-  // Separate official and non-official channels
-  const officialChannels = channels.filter(c => c.type === 'official');
+  // Separate official, non-official and instagram channels
+  const instagramChannels = channels.filter(c => c.phone?.startsWith('@'));
+  const officialChannels = channels.filter(c => c.type === 'official' && !c.phone?.startsWith('@'));
   const nonOfficialChannels = channels.filter(c => c.type !== 'official');
 
   // Sincronização automática de status ao carregar a página
