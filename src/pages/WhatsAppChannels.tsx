@@ -1079,6 +1079,16 @@ export default function WhatsAppChannels() {
         }}
       />
 
+      {/* Instagram Connect Dialog */}
+      <InstagramConnect
+        open={showInstagramConnect}
+        onClose={() => setShowInstagramConnect(false)}
+        onSuccess={() => {
+          setShowInstagramConnect(false);
+          refetchChannels();
+        }}
+      />
+
       {/* Add Channel Modal */}
       <Dialog open={showAddModal} onOpenChange={(open) => {
         // NÃO deletar canal ao fechar - usuário pode querer reconectar depois
