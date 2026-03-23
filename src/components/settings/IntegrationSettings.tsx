@@ -44,6 +44,7 @@ export function IntegrationSettings() {
 
   // Fetch Cloud API config
   const { data: cloudAPIConfig } = useCloudAPIConfig();
+  const { data: instagramConfig } = useInstagramConfig();
   useEffect(() => {
     const blingParam = searchParams.get('bling');
     if (blingParam === 'callback') {
