@@ -180,6 +180,17 @@ export function IntegrationSettings() {
           onClick={() => setOpenModal('cloudapi')}
         />
 
+        {/* Instagram Direct */}
+        <IntegrationCard
+          icon={Instagram}
+          name="Instagram"
+          description={instagramConfig ? 'Conectado' : 'Direct Messages'}
+          category="Mensagens"
+          isConfigured={!!instagramConfig}
+          color="#E1306C"
+          onClick={() => setOpenModal('instagram')}
+        />
+
         {/* WhatsApp Providers */}
         {providers?.map((provider) => (
           <IntegrationCard
