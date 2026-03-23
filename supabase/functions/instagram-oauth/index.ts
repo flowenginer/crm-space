@@ -245,7 +245,7 @@ serve(async (req) => {
             name: `Instagram - @${instagram_username}`,
             phone: `@${instagram_username}`,
             status: 'connected',
-            type: 'official',
+            type: 'instagram',
             tenant_id: tenantId,
           })
           .select()
