@@ -286,11 +286,11 @@ serve(async (req) => {
         });
       }
 
-      console.log('[Instagram OAuth] Account saved successfully:', channel.id);
+      console.log('[Instagram OAuth] Account saved successfully:', channelId);
 
       return new Response(JSON.stringify({
         success: true,
-        channel_id: channel.id,
+        channel_id: channelId,
         instagram_username,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
