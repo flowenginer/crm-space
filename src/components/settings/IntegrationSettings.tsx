@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, CreditCard, Truck, Facebook, MessageCircle, Package, Phone } from 'lucide-react';
+import { Loader2, CreditCard, Truck, Facebook, MessageCircle, Package, Phone, Instagram } from 'lucide-react';
 import { usePaymentGatewayConfig } from '@/hooks/usePaymentLinks';
 import { useShippingConfig } from '@/hooks/useShippingConfig';
 import { useBlingConfig } from '@/hooks/useBlingIntegration';
 import { useCloudAPIConfig } from '@/hooks/useCloudAPIConfig';
+import { useInstagramConfig } from '@/hooks/useInstagramConfig';
 import { toast } from 'sonner';
 import {
   IntegrationCard,
@@ -17,6 +18,7 @@ import {
   WhatsAppProviderForm,
   BlingIntegrationForm,
   CloudAPIConfigForm,
+  InstagramConfigForm,
 } from './integrations';
 
 interface ProviderWithConfig {
