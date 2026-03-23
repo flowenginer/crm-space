@@ -31,6 +31,7 @@ import CRM from "@/pages/CRM";
 import CRMSettings from "@/pages/CRMSettings";
 import Shipping from "@/pages/Shipping";
 import WhatsAppChannels from "@/pages/WhatsAppChannels";
+import InstagramChannels from "@/pages/InstagramChannels";
 import Contacts from "@/pages/Contacts";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
@@ -217,6 +218,11 @@ const App = () => (
               <Route path="/whatsapp-channels" element={
                 <ProtectedRoute permission="channels.view">
                   <WhatsAppChannels />
+                </ProtectedRoute>
+              } />
+              <Route path="/instagram-channels" element={
+                <ProtectedRoute permission="channels.view">
+                  <InstagramChannels />
                 </ProtectedRoute>
               } />
               <Route path="/contacts" element={

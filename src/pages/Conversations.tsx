@@ -146,6 +146,8 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useUserDepartments } from '@/hooks/useUserDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { useUserChannels } from '@/hooks/useUserChannels';
+import { useInstagramChannels } from '@/hooks/useInstagramChannels';
+import { instagramService } from '@/lib/instagram';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds, useAllSharedConversationIds, useMySharePermission } from '@/hooks/useSharedConversations';
 import { useSharedConversationsWithDetails } from '@/hooks/useSharedConversationsWithDetails';
@@ -604,41 +606,73 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
             {/* Channel Badge with Status */}
             <div className="flex items-center gap-1.5 flex-wrap">
               {(() => {
-                const channelData = channels?.find(c => c.id === conversation.channel_id);
-                const isConnected = channelData?.status === 'connected';
-                const isOfficial = (channelData as any)?.type === 'official';
+                // Check if it's an Instagram conversation
+                const isInstagram = (conversation as any).channel_type === 'instagram' || (conversation as any).instagram_channel_id;
+                const channelData = isInstagram
+                  ? null
+                  : channels?.find(c => c.id === conversation.channel_id);
+                const igChannelData = isInstagram
+                  ? allInstagramChannels?.find(c => c.id === ((conversation as any).instagram_channel_id || conversation.channel_id))
+                  : null;
+
+                const isConnected = isInstagram
+                  ? igChannelData?.status === 'connected'
+                  : channelData?.status === 'connected';
+                const isOfficial = !isInstagram && (channelData as any)?.type === 'official';
                 const statusLabel = isConnected ? 'Ativo' : 'Inativo';
-                
+                const channelName = isInstagram
+                  ? (igChannelData?.name || `@${igChannelData?.instagram_username || 'Instagram'}`)
+                  : (conversation.channel?.name || 'Chat');
+
                 return (
                   <>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div className={cn(
                           "flex items-center gap-1 px-2 py-0.5 rounded-full cursor-default",
-                          isOfficial 
-                            ? "bg-blue-500/20" 
-                            : isConnected ? "bg-green-500/20" : "bg-red-500/20"
+                          isInstagram
+                            ? "bg-pink-500/20"
+                            : isOfficial
+                              ? "bg-blue-500/20"
+                              : isConnected ? "bg-green-500/20" : "bg-red-500/20"
                         )}>
-                          <MessageCircle size={12} className={cn(
-                            isOfficial 
-                              ? "text-blue-500" 
-                              : isConnected ? "text-green-500" : "text-red-500"
-                          )} />
+                          {isInstagram ? (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500">
+                              <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+                              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+                              <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>
+                            </svg>
+                          ) : (
+                            <MessageCircle size={12} className={cn(
+                              isOfficial
+                                ? "text-blue-500"
+                                : isConnected ? "text-green-500" : "text-red-500"
+                            )} />
+                          )}
                           <span className={cn(
                             "text-xs font-medium truncate max-w-[80px]",
-                            isOfficial 
-                              ? "text-blue-500" 
-                              : isConnected ? "text-green-500" : "text-red-500"
+                            isInstagram
+                              ? "text-pink-500"
+                              : isOfficial
+                                ? "text-blue-500"
+                                : isConnected ? "text-green-500" : "text-red-500"
                           )}>
-                            {conversation.channel?.name || 'Chat'}
+                            {channelName}
                           </span>
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="top">
-                        <p>{statusLabel}</p>
+                        <p>{isInstagram ? 'Instagram' : ''} {statusLabel}</p>
                       </TooltipContent>
                     </Tooltip>
-                    
+
+                    {/* Instagram Badge */}
+                    {isInstagram && (
+                      <div className="flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-500/20 via-pink-500/20 to-orange-500/20 rounded-full">
+                        <span className="text-xs text-pink-600 font-semibold">Instagram</span>
+                      </div>
+                    )}
+
                     {/* Cloud API Badge for Official Channels - AZUL CHAMATIVO */}
                     {isOfficial && (
                       <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-600/25 rounded-full">
@@ -1624,6 +1658,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   }, [searchQuery]);
 
   const { data: allChannels = [] } = useChannels();
+  const { data: allInstagramChannels = [] } = useInstagramChannels();
   const userChannels = useUserChannels();
 
   // IDs dos canais permitidos para o usuário (para filtrar conversas)
@@ -3175,9 +3210,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         if (channelId && contactPhone) {
           try {
             const result = await sendWhatsAppMessage(
-              channelId, 
-              contactPhone, 
-              content, 
+              channelId,
+              contactPhone,
+              content,
               type as 'text' | 'image' | 'audio' | 'video' | 'document',
               mediaUrl,
               quotedMsgId,
@@ -3192,6 +3227,35 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             return result.messageId;
           } catch (whatsappError) {
             console.error('[WhatsApp Send Error]', whatsappError);
+            return undefined;
+          }
+        }
+        return undefined;
+      };
+
+      // Função auxiliar para enviar via Instagram
+      const isInstagramConversation = (selectedConv as any)?.channel_type === 'instagram' || (selectedConv as any)?.instagram_channel_id;
+      const instagramChannelId = (selectedConv as any)?.instagram_channel_id;
+      const contactInstagramId = (selectedConv?.contact as any)?.instagram_id;
+
+      const sendViaInstagram = async (content: string, type: string, mediaUrl?: string): Promise<string | undefined> => {
+        if (isInstagramConversation && instagramChannelId && contactInstagramId) {
+          try {
+            const result = await instagramService.sendMessage(
+              instagramChannelId,
+              contactInstagramId,
+              content,
+              type as 'text' | 'image' | 'video' | 'audio',
+              mediaUrl ? { mediaUrl } : undefined
+            );
+            if (!result.success) {
+              console.error('[Instagram Send Error]', result.error);
+              toast.error('Erro ao enviar para Instagram: ' + (result.error || 'Erro desconhecido'));
+              return undefined;
+            }
+            return result.messageId;
+          } catch (igError) {
+            console.error('[Instagram Send Error]', igError);
             return undefined;
           }
         }
@@ -3952,7 +4016,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       <div className="p-3 border-b border-border">
                         <h4 className="font-semibold flex items-center gap-2 text-sm">
                           <MessageCircle size={16} />
-                          Canais WhatsApp
+                          Canais de Atendimento
                         </h4>
                       </div>
                       <div className="max-h-64 overflow-y-auto">
@@ -3987,10 +4051,43 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             </div>
                           ))
                         )}
+                        {/* Instagram Channels */}
+                        {allInstagramChannels.length > 0 && (
+                          <>
+                            <div className="px-3 py-1.5 bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-orange-500/10 border-b border-border/50">
+                              <span className="text-xs font-medium text-pink-500">Instagram</span>
+                            </div>
+                            {allInstagramChannels.map(igChannel => (
+                              <div
+                                key={igChannel.id}
+                                className="flex items-center justify-between p-3 hover:bg-muted/50 border-b border-border/50 last:border-b-0"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className={cn(
+                                    "w-2 h-2 rounded-full flex-shrink-0",
+                                    igChannel.status === 'connected' ? "bg-pink-500" : "bg-red-500"
+                                  )} />
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-sm truncate">{igChannel.name}</p>
+                                    <p className="text-xs text-muted-foreground">@{igChannel.instagram_username}</p>
+                                  </div>
+                                </div>
+                                <span className={cn(
+                                  "text-xs px-2 py-0.5 rounded-full flex-shrink-0",
+                                  igChannel.status === 'connected'
+                                    ? "bg-pink-500/20 text-pink-600"
+                                    : "bg-red-500/20 text-red-600"
+                                )}>
+                                  {igChannel.status === 'connected' ? 'Ativo' : 'Inativo'}
+                                </span>
+                              </div>
+                            ))}
+                          </>
+                        )}
                       </div>
                       <div className="p-3 border-t border-border bg-muted/30">
                         <span className="text-xs text-muted-foreground">
-                          {userChannels?.filter(c => c.status === 'connected').length || 0} ativos · {userChannels?.filter(c => c.status !== 'connected').length || 0} inativos
+                          {(userChannels?.filter(c => c.status === 'connected').length || 0) + allInstagramChannels.filter(c => c.status === 'connected').length} ativos · {(userChannels?.filter(c => c.status !== 'connected').length || 0) + allInstagramChannels.filter(c => c.status !== 'connected').length} inativos
                         </span>
                       </div>
                     </PopoverContent>
