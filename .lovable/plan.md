@@ -1,26 +1,46 @@
 
 
-## Diagnóstico: "Código não encontrado"
+## Plano: Corrigir scopes OAuth e configurar webhook do Instagram
 
-O erro ocorre porque `searchParams.get('code')` retorna `null` na página de callback. Possíveis causas:
+### Problema
+Os scopes OAuth no código usam nomes antigos que a Meta não reconhece mais. Além disso, o webhook do Instagram não está configurado.
 
-1. **Facebook adiciona `#_=_`** ao final da URL de redirect, o que pode interferir com o parsing dos parâmetros em alguns cenários
-2. **O `response_type=code` não está explícito** na URL do OAuth — embora seja o default, é boa prática incluir
-3. **O popup pode ter sido redirecionado sem completar o fluxo** (ex: o usuário fechou antes de autorizar)
+### 1. Corrigir scopes na Edge Function `instagram-oauth`
 
-## Correções
+**Arquivo:** `supabase/functions/instagram-oauth/index.ts` (linha 64)
 
-### 1. Edge Function `instagram-oauth` — Adicionar `response_type=code`
-- Na action `get-login-url`, adicionar `&response_type=code` explicitamente na URL do OAuth
+Trocar:
+```
+instagram_basic,instagram_manage_messages,pages_messaging,pages_show_list
+```
+Por:
+```
+instagram_business_basic,instagram_business_manage_messages
+```
 
-### 2. Callback Page — Tratar `#_=_` do Facebook e adicionar debug
-- Antes de ler os searchParams, limpar o hash `#_=_` que o Facebook adiciona
-- Se a URL atual tiver `code` no hash ou em `window.location.search` direto (fallback), tentar extrair de lá
-- Adicionar um `console.log` temporário com a URL completa para debugar caso o erro persista
+Esses são os scopes corretos da nova API do Instagram (Instagram API with Instagram Login), conforme mostrado no painel da Meta.
+
+### 2. Configurar webhook do Instagram no Meta Portal (manual pelo usuário)
+
+Preencher no Step 3 do painel:
+- **URL de callback:** `https://<SUPABASE_PROJECT_REF>.supabase.co/functions/v1/instagram-webhook`
+- **Verificar token:** O valor gerado e salvo em `instagram_configs.verify_token` (será criado quando salvar a conta)
+
+> Nota: Precisamos verificar a edge function `instagram-webhook` para confirmar que ela suporta verificação GET do Meta.
+
+### 3. Verificar edge function `instagram-webhook` suporta verificação
+
+Ler o arquivo para confirmar que trata o GET de verificação do Meta (hub.mode=subscribe, hub.verify_token, hub.challenge).
 
 ### Arquivos modificados
 | Arquivo | Mudança |
 |---------|---------|
-| `supabase/functions/instagram-oauth/index.ts` | Adicionar `response_type=code` na URL |
-| `src/pages/InstagramOAuthCallback.tsx` | Tratar `#_=_`, fallback para `window.location.search`, log de debug |
+| `supabase/functions/instagram-oauth/index.ts` | Corrigir scopes para `instagram_business_basic,instagram_business_manage_messages` |
+
+### O que o usuário precisa fazer manualmente no Meta Portal
+1. **Step 1** — ✅ Já está concluído
+2. **Step 2** — Clicar "Gerar token" para spacesports.oficial (pode deixar para depois, não bloqueia o OAuth)
+3. **Step 3** — Preencher URL de callback e verificar token (após conectar a conta via OAuth)
+4. **Step 4** — Clicar "Configurar" para configurar o login da empresa
+5. **Step 5** — Submeter para análise (necessário apenas para produção com usuários externos)
 
