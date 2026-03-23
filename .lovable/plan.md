@@ -1,50 +1,58 @@
 
 
-# Fix: URLs do header_handle da Meta expiram (erro 131053 / 403 Forbidden)
+# Diagnóstico: Leads da Bia e Nadia sumiram
 
-## Problema
+## Causa Raiz
 
-Os logs do webhook confirmam o erro:
-- **Erro #131053 - "Media upload error"**: `Downloading media from weblink failed with http code 403, status message Forbidden`
-- A URL `scontent.whatsapp.net/...` armazenada em `header_handle` do template e **temporaria** e expira apos algumas horas/dias.
-- O sistema atual usa essa URL expirada como "automatica", mostrando badge "Automatico" e nao pedindo URL ao usuario.
-- A Meta tenta baixar a imagem dessa URL e recebe 403, falhando o envio.
+O problema é o **canal EMPREGA-MAIS duplicado** no banco de dados:
 
-## Solucao
+| Canal | ID | Status | Conversas |
+|---|---|---|---|
+| EMPREGA-MAIS (antigo) | `ed6f2c8c` | **disconnected** | **3.244** conversas (onde estão os leads da Bia e Nadia) |
+| EMPREGA-MAIS (novo) | `0e2f9022` | **connected** | apenas 2 conversas |
 
-Nao confiar nas URLs do `header_handle` como fonte de midia para envio. Em vez disso:
+A tabela `user_channels` controla quais canais cada usuário pode ver:
 
-1. **Ao sincronizar templates**: fazer download da imagem do `header_handle` e re-hospedar no Supabase Storage (bucket publico), salvando a URL permanente no banco.
-2. **Alternativa mais simples (recomendada)**: Sempre mostrar o campo de URL de midia para templates com header IMAGE/VIDEO/DOCUMENT, permitindo que o usuario informe uma URL publica permanente, mas pre-preencher com a URL do Storage se disponivel.
+- **Beatriz**: só tem permissão no canal NOVO (`0e2f9022`) → só vê 2 conversas
+- **Nadia**: tem permissão nos dois canais, MAS o filtro `allowedChannelIds` no frontend restringe a lista
 
-### Abordagem escolhida: Upload automatico para Supabase Storage durante sincronizacao
+Como as **3.244 conversas** (incluindo as 1.544 da Beatriz e 1.729 da Nadia) estão vinculadas ao canal ANTIGO (`ed6f2c8c`), e esse canal está marcado como "disconnected", elas simplesmente não aparecem.
 
-| Arquivo | Mudanca |
-|---|---|
-| `src/hooks/useMetaTemplates.ts` | Na funcao `extractDetailedVariables`, nao retornar URLs `scontent.whatsapp.net` como `headerMediaUrl` (sao temporarias). Adicionar campo `headerMediaStorageUrl` para URLs hospedadas localmente. |
-| `src/components/meta-templates/MetaTemplateSelector.tsx` | Remover badge "Automatico" quando a URL e do WhatsApp CDN. Mostrar campo de URL obrigatorio nesses casos. Permitir override manual. |
-| `src/components/meta-templates/MetaTemplateUseModal.tsx` | Mesma logica: mostrar campo de midia quando URL e temporaria. |
-| `supabase/functions/sync-meta-templates/index.ts` | Ao sincronizar, baixar a imagem do `header_handle`, salvar no Supabase Storage, e guardar a URL publica permanente em uma nova coluna `header_media_url` na tabela `meta_message_templates`. |
-| Migracao SQL | Adicionar coluna `header_media_url TEXT` na tabela `meta_message_templates` para armazenar a URL permanente da midia. |
+## Solução
 
-### Fluxo corrigido
+Migrar todas as conversas do canal antigo para o canal novo (que está connected), e depois desativar o antigo.
 
-```text
-Sincronizacao de templates:
-  Meta retorna header_handle (URL temporaria)
-  → Edge function baixa a imagem
-  → Faz upload para Supabase Storage (bucket publico)
-  → Salva URL permanente em meta_message_templates.header_media_url
-
-Envio de template:
-  1. Se header_media_url (Storage) existe → usa automaticamente ✅
-  2. Se nao existe → mostra campo obrigatorio para usuario informar URL
-  3. URL permanente → Meta consegue baixar → envio funciona ✅
+### Passo 1: Migrar conversas do canal antigo para o novo
+```sql
+UPDATE conversations 
+SET channel_id = '0e2f9022-76b5-450e-a0a1-fe65f1f85104'
+WHERE channel_id = 'ed6f2c8c-7339-4e92-8948-3f74baf280df';
 ```
 
-### Detalhes tecnicos
+### Passo 2: Migrar mensagens vinculadas ao canal antigo
+```sql
+UPDATE messages
+SET channel_id = '0e2f9022-76b5-450e-a0a1-fe65f1f85104'
+WHERE channel_id = 'ed6f2c8c-7339-4e92-8948-3f74baf280df';
+```
 
-- A deteccao de URL temporaria sera feita verificando se contem `scontent.whatsapp.net` ou `fbcdn.net`
-- O bucket do Storage sera `template-media` com politica publica de leitura
-- A migracao e retrocompativel (coluna nullable)
+### Passo 3: Limpar registros de user_channels do canal antigo
+```sql
+DELETE FROM user_channels 
+WHERE channel_id = 'ed6f2c8c-7339-4e92-8948-3f74baf280df';
+```
+
+### Passo 4: Desativar/remover o canal duplicado antigo
+```sql
+DELETE FROM whatsapp_channels 
+WHERE id = 'ed6f2c8c-7339-4e92-8948-3f74baf280df';
+```
+
+### Passo 5: Verificar se MASTER-LEADS também está duplicado
+O MASTER-LEADS também tem 2 registros — precisa do mesmo tratamento se houver conversas no antigo.
+
+### Resultado Esperado
+- Todas as 3.244+ conversas passam a estar no canal connected
+- Beatriz e Nadia voltam a ver seus leads normalmente
+- Sem canal fantasma "disconnected" poluindo o sistema
 
