@@ -32,7 +32,7 @@ interface ProviderWithConfig {
   is_configured?: boolean;
 }
 
-type IntegrationType = 'rede' | 'melhor-envio' | 'meta-ads' | 'bling' | 'cloudapi' | string | null;
+type IntegrationType = 'rede' | 'melhor-envio' | 'meta-ads' | 'bling' | 'cloudapi' | 'instagram' | string | null;
 
 export function IntegrationSettings() {
   const [searchParams] = useSearchParams();
