@@ -660,7 +660,7 @@ export async function markMessagesAsReadOnWhatsApp(
 
     // Verificar se é canal não-oficial (só esses precisam do markAsRead)
     const channelType = await getChannelType(channelId);
-    if (!channelType || channelType === 'cloudapi' || channelType === 'official') {
+    if (!channelType || channelType === 'cloudapi' || channelType === 'official' || channelType === 'instagram') {
       console.log('[Instance Creator] Skipping markAsRead for official API channel');
       return { success: true };
     }
