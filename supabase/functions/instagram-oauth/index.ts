@@ -66,7 +66,8 @@ serve(async (req) => {
         `client_id=${META_APP_ID}` +
         `&redirect_uri=${encodeURIComponent(frontendCallbackUrl)}` +
         `&state=${state}` +
-        `&scope=${scopes}`;
+        `&scope=${scopes}` +
+        `&response_type=code`;
 
       console.log('[Instagram OAuth] Login URL generated');
 

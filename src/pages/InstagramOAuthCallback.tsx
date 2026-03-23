@@ -16,10 +16,21 @@ export default function InstagramOAuthCallback() {
   const [accountCount, setAccountCount] = useState(0);
 
   useEffect(() => {
+    // Facebook appends #_=_ to redirect URLs — clean it
+    if (window.location.hash === '#_=_') {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+
     const processCallback = async () => {
-      const code = searchParams.get('code');
-      const state = searchParams.get('state');
-      const error = searchParams.get('error');
+      // Debug: log full URL for troubleshooting
+      console.log('[Instagram OAuth Callback] Full URL:', window.location.href);
+      console.log('[Instagram OAuth Callback] Search:', window.location.search);
+
+      // Use window.location.search as fallback (more reliable than useSearchParams in some redirect scenarios)
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code') || searchParams.get('code');
+      const state = params.get('state') || searchParams.get('state');
+      const error = params.get('error') || searchParams.get('error');
 
       if (error) {
         sendResult({ type: 'INSTAGRAM_OAUTH_ERROR', error }, `Erro: ${error}`);
