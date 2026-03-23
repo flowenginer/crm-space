@@ -26,6 +26,8 @@ import {
   FileText,
 } from 'lucide-react';
 import { CloudAPIConnect } from '@/components/whatsapp/CloudAPIConnect';
+import { InstagramConnect } from '@/components/instagram/InstagramConnect';
+import { Instagram } from 'lucide-react';
 import { CloudAPIChannelCard } from '@/components/whatsapp/CloudAPIChannelCard';
 import {
   Tooltip,

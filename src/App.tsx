@@ -126,6 +126,7 @@ const App = () => (
             <Route path="/no-access" element={<NoTenantAccess />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/meta-oauth-callback" element={<MetaOAuthCallback />} />
+            <Route path="/instagram-oauth-callback" element={<InstagramOAuthCallback />} />
             <Route path="/whatsapp-callback" element={<WhatsAppCallback />} />
 
             {/* Protected routes with MainLayout */}
