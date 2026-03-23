@@ -1037,6 +1037,29 @@ export default function WhatsAppChannels() {
               </div>
             </div>
           )}
+
+          {/* Instagram Channels Section */}
+          {instagramChannels.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Instagram size={20} className="text-pink-600" />
+                <h2 className="text-lg font-semibold text-foreground">Instagram Direct</h2>
+                <span className="px-2 py-0.5 bg-pink-500/20 text-pink-600 rounded-full text-xs font-medium">
+                  {instagramChannels.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {instagramChannels.map((channel) => (
+                  <CloudAPIChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    onOpenDetails={handleOpenDetails}
+                    onDelete={handleDeleteClick}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
         </TabsContent>
