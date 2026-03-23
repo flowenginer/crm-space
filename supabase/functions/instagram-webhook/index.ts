@@ -258,7 +258,7 @@ async function processInstagramMessage(
   let senderName = senderId;
   try {
     const profileResponse = await fetch(
-      `https://graph.facebook.com/v21.0/${senderId}?fields=name,username,profile_pic&access_token=${config.page_access_token}`
+      `https://graph.instagram.com/v21.0/${senderId}?fields=name,username,profile_pic&access_token=${config.page_access_token}`
     );
     if (profileResponse.ok) {
       const profile = await profileResponse.json();

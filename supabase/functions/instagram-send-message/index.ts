@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const GRAPH_API_VERSION = 'v21.0';
-const GRAPH_API_URL = 'https://graph.facebook.com';
+const GRAPH_API_URL = 'https://graph.instagram.com';
 
 interface SendMessagePayload {
   channelId: string;
@@ -166,7 +166,7 @@ serve(async (req) => {
 
     // Send via Instagram Graph API
     const response = await fetch(
-      `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${activeConfig.page_id}/messages`,
+      `${GRAPH_API_URL}/${GRAPH_API_VERSION}/me/messages`,
       {
         method: 'POST',
         headers: {
