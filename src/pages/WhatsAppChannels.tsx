@@ -953,6 +953,14 @@ export default function WhatsAppChannels() {
                   <p className="text-xs text-muted-foreground">API Oficial Meta - Recomendado</p>
                 </div>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowInstagramConnect(true)}>
+                <Instagram size={16} className="mr-2 text-pink-600" />
+                <div>
+                  <p className="font-medium text-pink-600">Instagram Direct</p>
+                  <p className="text-xs text-muted-foreground">Mensagens do Instagram via Facebook Login</p>
+                </div>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           </div>
