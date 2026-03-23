@@ -258,12 +258,12 @@ async function processInstagramMessage(
   let senderName = senderId;
   try {
     const profileResponse = await fetch(
-      `https://graph.facebook.com/v21.0/${senderId}?fields=name,profile_pic&access_token=${config.page_access_token}`
+      `https://graph.facebook.com/v21.0/${senderId}?fields=name,username,profile_pic&access_token=${config.page_access_token}`
     );
     if (profileResponse.ok) {
       const profile = await profileResponse.json();
-      senderName = profile.name || senderId;
-      console.log('[Instagram] Sender profile:', profile.name);
+      senderName = profile.name || (profile.username ? `@${profile.username}` : senderId);
+      console.log('[Instagram] Sender profile:', senderName);
     }
   } catch (e) {
     console.warn('[Instagram] Could not fetch sender profile:', e);
@@ -297,6 +297,14 @@ async function processInstagramMessage(
       .select('id')
       .single();
     contactId = newContact?.id;
+  } else if (existingContact && senderName !== senderId) {
+    // Update contact name if we got a real name and contact was created with just the ID
+    await supabase
+      .from('contacts')
+      .update({ full_name: senderName })
+      .eq('id', existingContact.id)
+      .eq('tenant_id', config.tenant_id);
+    console.log(`[Instagram] Updated contact name to: ${senderName}`);
   }
 
   if (!contactId) {
