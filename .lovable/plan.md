@@ -1,58 +1,49 @@
 
+## Plano: Conectar Instagram Direct via Login Facebook (OAuth)
 
-# Diagnóstico: Leads da Bia e Nadia sumiram
+### Conceito
+Reaproveitar o mesmo fluxo OAuth do Meta Ads (`meta-oauth`) para Instagram Direct. O usuário clica em "Conectar Instagram" na página de Canais, faz login com Facebook, e o sistema automaticamente identifica as Pages e Instagram Business Accounts vinculadas, cria o canal e salva as credenciais — sem precisar digitar IDs manualmente.
 
-## Causa Raiz
+### O que será feito
 
-O problema é o **canal EMPREGA-MAIS duplicado** no banco de dados:
+**1. Nova Edge Function `instagram-oauth`**
+- Action `get-login-url`: Gera URL OAuth do Facebook com scopes `instagram_basic,instagram_manage_messages,pages_messaging,pages_show_list`
+- Action `exchange-code`: Troca code por token, busca `/me/accounts` (Pages), para cada Page busca o `instagram_business_account`, retorna lista de Pages+IG accounts para o usuário escolher
+- Action `save-account`: Salva Page Access Token (long-lived), cria/atualiza `instagram_configs` e cria canal tipo `instagram` em `whatsapp_channels`
 
-| Canal | ID | Status | Conversas |
-|---|---|---|---|
-| EMPREGA-MAIS (antigo) | `ed6f2c8c` | **disconnected** | **3.244** conversas (onde estão os leads da Bia e Nadia) |
-| EMPREGA-MAIS (novo) | `0e2f9022` | **connected** | apenas 2 conversas |
+**2. Componente `InstagramConnect` (modal popup)**
+- Similar ao `MetaConnect.tsx` / `CloudAPIConnect`
+- Botão "Conectar com Facebook" abre popup OAuth
+- Após retorno, exibe lista de Pages/IG accounts para seleção
+- Salva e cria canal automaticamente
 
-A tabela `user_channels` controla quais canais cada usuário pode ver:
+**3. Integração na página de Canais (`WhatsAppChannels.tsx`)**
+- Adicionar opção "Instagram Direct" no dropdown "Adicionar Canal"
+- Exibir canais Instagram em uma seção separada (como já existe para oficiais/não-oficiais)
+- Card específico para canais Instagram com ícone do Instagram
 
-- **Beatriz**: só tem permissão no canal NOVO (`0e2f9022`) → só vê 2 conversas
-- **Nadia**: tem permissão nos dois canais, MAS o filtro `allowedChannelIds` no frontend restringe a lista
+**4. Callback page**
+- Reutilizar ou criar `/instagram-oauth-callback` para capturar o code e enviar de volta ao CRM via `postMessage`/`localStorage`
 
-Como as **3.244 conversas** (incluindo as 1.544 da Beatriz e 1.729 da Nadia) estão vinculadas ao canal ANTIGO (`ed6f2c8c`), e esse canal está marcado como "disconnected", elas simplesmente não aparecem.
+### Detalhes técnicos
 
-## Solução
+- O token do usuário é trocado por Page Access Token (nunca expira se long-lived page token)
+- A Graph API v21.0 endpoint `/me/accounts?fields=id,name,access_token,instagram_business_account` retorna Pages e IG IDs
+- Para cada Page com `instagram_business_account`, busca `/{ig_id}?fields=id,username,profile_picture_url,name`
+- O `page_access_token` long-lived é obtido via `/oauth/access_token?grant_type=fb_exchange_token` e depois `/{page_id}?fields=access_token` (page tokens de long-lived user tokens nunca expiram)
 
-Migrar todas as conversas do canal antigo para o canal novo (que está connected), e depois desativar o antigo.
+### Arquivos a criar/modificar
 
-### Passo 1: Migrar conversas do canal antigo para o novo
-```sql
-UPDATE conversations 
-SET channel_id = '0e2f9022-76b5-450e-a0a1-fe65f1f85104'
-WHERE channel_id = 'ed6f2c8c-7339-4e92-8948-3f74baf280df';
-```
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/instagram-oauth/index.ts` | Criar — Edge Function OAuth para Instagram |
+| `src/components/instagram/InstagramConnect.tsx` | Criar — Modal de conexão via Facebook Login |
+| `src/pages/InstagramOAuthCallback.tsx` | Criar — Página callback para popup |
+| `src/pages/WhatsAppChannels.tsx` | Modificar — Adicionar botão Instagram e seção de canais IG |
+| `src/App.tsx` | Modificar — Adicionar rota `/instagram-oauth-callback` |
 
-### Passo 2: Migrar mensagens vinculadas ao canal antigo
-```sql
-UPDATE messages
-SET channel_id = '0e2f9022-76b5-450e-a0a1-fe65f1f85104'
-WHERE channel_id = 'ed6f2c8c-7339-4e92-8948-3f74baf280df';
-```
-
-### Passo 3: Limpar registros de user_channels do canal antigo
-```sql
-DELETE FROM user_channels 
-WHERE channel_id = 'ed6f2c8c-7339-4e92-8948-3f74baf280df';
-```
-
-### Passo 4: Desativar/remover o canal duplicado antigo
-```sql
-DELETE FROM whatsapp_channels 
-WHERE id = 'ed6f2c8c-7339-4e92-8948-3f74baf280df';
-```
-
-### Passo 5: Verificar se MASTER-LEADS também está duplicado
-O MASTER-LEADS também tem 2 registros — precisa do mesmo tratamento se houver conversas no antigo.
-
-### Resultado Esperado
-- Todas as 3.244+ conversas passam a estar no canal connected
-- Beatriz e Nadia voltam a ver seus leads normalmente
-- Sem canal fantasma "disconnected" poluindo o sistema
-
+### Permissões Meta necessárias (já configuradas no app 1540198137306576)
+- `instagram_basic`
+- `instagram_manage_messages`
+- `pages_messaging`
+- `pages_show_list`
