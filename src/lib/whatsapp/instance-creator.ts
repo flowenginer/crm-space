@@ -143,6 +143,27 @@ export async function sendWhatsAppMessage(
       }
 
       return data as { success: boolean; messageId?: string; error?: string };
+    } else if (channelType === 'instagram') {
+      // Instagram Direct uses instagram-send-message
+      const igType = type === 'document' ? 'file' : type;
+      const { data, error } = await supabase.functions.invoke('instagram-send-message', {
+        body: {
+          channelId,
+          recipientId: phone, // For Instagram, "phone" is actually "ig:IGSID"
+          type: igType,
+          content,
+          mediaUrl,
+          conversationId,
+        },
+      });
+
+      console.log('[Instance Creator] Instagram Send Response:', data, error);
+
+      if (error) {
+        return { success: false, error: error.message || 'Erro ao enviar mensagem via Instagram' };
+      }
+
+      return data as { success: boolean; messageId?: string; error?: string };
     } else {
       // Regular providers (zapi, uazapi, evolution) use whatsapp-instance
       const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
