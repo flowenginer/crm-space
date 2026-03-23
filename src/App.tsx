@@ -70,6 +70,7 @@ import SuperAdminPanel from "@/pages/SuperAdminPanel";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import NotFound from "@/pages/NotFound";
 import MetaOAuthCallback from "@/pages/MetaOAuthCallback";
+import InstagramOAuthCallback from "@/pages/InstagramOAuthCallback";
 import Redirect from "@/pages/Redirect";
 import RedirectLanding from "@/pages/RedirectLanding";
 import CallManagement from "@/pages/CallManagement";
@@ -125,6 +126,7 @@ const App = () => (
             <Route path="/no-access" element={<NoTenantAccess />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/meta-oauth-callback" element={<MetaOAuthCallback />} />
+            <Route path="/instagram-oauth-callback" element={<InstagramOAuthCallback />} />
             <Route path="/whatsapp-callback" element={<WhatsAppCallback />} />
 
             {/* Protected routes with MainLayout */}
