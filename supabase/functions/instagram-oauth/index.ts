@@ -213,24 +213,52 @@ serve(async (req) => {
 
       console.log('[Instagram OAuth] Saving account', instagram_username);
 
-      // Create whatsapp_channels entry with type 'instagram'
-      const { data: channel, error: channelError } = await supabase
-        .from('whatsapp_channels')
-        .insert({
-          name: `Instagram - @${instagram_username}`,
-          phone: `@${instagram_username}`,
-          status: 'connected',
-          type: 'official',
-          tenant_id: tenantId,
-        })
-        .select()
-        .single();
+      // Check if an Instagram channel already exists for this tenant
+      let channelId: string;
+      const { data: existingConfig } = await supabase
+        .from('instagram_configs')
+        .select('channel_id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
 
-      if (channelError) {
-        console.error('[Instagram OAuth] Channel insert error:', channelError);
-        return new Response(JSON.stringify({ error: 'Erro ao criar canal: ' + channelError.message }), {
-          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+      if (existingConfig?.channel_id) {
+        // Update existing channel
+        const { error: updateError } = await supabase
+          .from('whatsapp_channels')
+          .update({
+            name: `Instagram - @${instagram_username}`,
+            phone: `@${instagram_username}`,
+            status: 'connected',
+          })
+          .eq('id', existingConfig.channel_id);
+
+        if (updateError) {
+          console.error('[Instagram OAuth] Channel update error:', updateError);
+        }
+        channelId = existingConfig.channel_id;
+        console.log('[Instagram OAuth] Reusing existing channel:', channelId);
+      } else {
+        // Create new channel
+        const { data: channel, error: channelError } = await supabase
+          .from('whatsapp_channels')
+          .insert({
+            name: `Instagram - @${instagram_username}`,
+            phone: `@${instagram_username}`,
+            status: 'connected',
+            type: 'official',
+            tenant_id: tenantId,
+          })
+          .select()
+          .single();
+
+        if (channelError) {
+          console.error('[Instagram OAuth] Channel insert error:', channelError);
+          return new Response(JSON.stringify({ error: 'Erro ao criar canal: ' + channelError.message }), {
+            status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+        channelId = channel.id;
+        console.log('[Instagram OAuth] Created new channel:', channelId);
       }
 
       // Create/update instagram_configs
