@@ -93,6 +93,16 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { MetaTemplatesTab } from '@/components/meta-templates';
 
+      {/* Instagram Connect Dialog */}
+      <InstagramConnect
+        open={showInstagramConnect}
+        onClose={() => setShowInstagramConnect(false)}
+        onSuccess={() => {
+          setShowInstagramConnect(false);
+          refetchChannels();
+        }}
+      />
+
 
 export default function WhatsAppChannels() {
   const { data: channels = [], isLoading, refetch: refetchChannels } = useChannels();
