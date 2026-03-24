@@ -1,43 +1,27 @@
 
 
-## Plano: Restringir visibilidade de canais para TODOS os perfis (incluindo Admin/Supervisor)
+## Plano: Adicionar colunas "Hora Chegada" e "Hora 1ª Resposta" no Relatório
 
-### Problema
-No hook `useUserChannels` (linha 53), admins e supervisores **sempre veem todos os canais**, ignorando completamente a configuração de `user_channels`. Isso permite que um admin do canal "Emprega Mais" veja e pegue leads do canal "Master Leads".
+### O que já existe
+O RPC `search_conversations_report` já retorna:
+- `created_at` — momento em que o lead chegou
+- `first_response_at` — momento em que o atendente respondeu pela primeira vez
 
-### Solução
-Alterar a lógica de prioridade no `useUserChannels` para:
-
-1. **Se o usuário (qualquer perfil, incluindo admin) tem canais em `user_channels` → usa SOMENTE esses**
-2. Se não tem configuração em `user_channels` → admin/supervisor vê todos; demais usam fallback por departamento
+Porém no frontend, `created_at` é exibido como "Data Abertura" (só data) e `first_response_at` é usado apenas para calcular "Tempo 1º Atendimento" (diferença em minutos). **Não existem colunas mostrando os horários exatos.**
 
 ### Alteração
 
-**Arquivo único:** `src/hooks/useUserChannels.ts`
+**Arquivo único:** `src/pages/ConversationReport.tsx`
 
-Reordenar a lógica no `useMemo` (linhas 51-82):
+1. **Adicionar 2 novas colunas** no `DEFAULT_COLUMNS` (após `closed_at`):
+   - `{ key: 'arrival_time', label: 'Hora Chegada', enabled: true }`
+   - `{ key: 'first_response_datetime', label: 'Hora 1ª Resposta', enabled: true }`
 
-```typescript
-return useMemo(() => {
-  // PRIORIDADE 1: Se o usuário tem canais configurados diretamente, usa SOMENTE esses
-  // Isso vale para TODOS os perfis, incluindo Admin e Supervisor
-  if (userChannelIds.length > 0) {
-    const channelIdSet = new Set(userChannelIds);
-    return allChannels.filter(channel => channelIdSet.has(channel.id));
-  }
+2. **Adicionar renderização** no switch de colunas:
+   - `arrival_time`: formata `conv.created_at` com data + hora (dd/MM/yyyy HH:mm)
+   - `first_response_datetime`: formata `conv.first_response_at` com data + hora, ou "-" se não houver
 
-  // PRIORIDADE 2: Admins e Supervisores sem restrição explícita veem todos
-  if (isAdmin || isSupervisor) {
-    return allChannels;
-  }
+3. **Adicionar no export Excel**: incluir essas duas colunas formatadas na exportação
 
-  // PRIORIDADE 3: Fallback por departamento (vendedores, etc.)
-  // ... (código existente mantido)
-}, [...]);
-```
-
-Isso garante que:
-- Quem já tem `user_channels` configurado **mantém** suas restrições (nada é zerado)
-- Admin sem `user_channels` continua vendo tudo (retrocompatível)
-- Você pode ir configurando um por um sem quebrar nada
+Nenhuma alteração no banco de dados é necessária — os dados já vêm do RPC.
 
