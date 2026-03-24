@@ -79,6 +79,8 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'close_reason', label: 'Motivo Fechamento', enabled: true },
   { key: 'created_at', label: 'Data Abertura', enabled: true },
   { key: 'closed_at', label: 'Data Fechamento', enabled: true },
+  { key: 'arrival_time', label: 'Hora Chegada', enabled: true },
+  { key: 'first_response_datetime', label: 'Hora 1ª Resposta', enabled: true },
   { key: 'first_message', label: '1ª Mensagem', enabled: true },
   { key: 'first_response_time', label: 'Tempo 1º Atendimento', enabled: false },
   { key: 'total_active_time', label: 'Tempo Total Atendimento', enabled: false },
@@ -183,6 +185,8 @@ function getFieldValue(conv: any, key: string): any {
     case 'close_reason': return conv.close_reason || '';
     case 'created_at': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
     case 'closed_at': return conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '';
+    case 'arrival_time': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
+    case 'first_response_datetime': return conv.first_response_at ? format(new Date(conv.first_response_at), 'dd/MM/yyyy HH:mm') : '-';
     case 'first_message': return conv.first_message || '';
     case 'first_response_time': {
       if (!conv.first_response_at || !conv.created_at) return '-';
