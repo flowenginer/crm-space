@@ -1,27 +1,26 @@
 
 
-## Plano: Adicionar colunas "Hora Chegada" e "Hora 1ª Resposta" no Relatório
+## Plano: Filtro de Agentes por Canal no Relatório
 
-### O que já existe
-O RPC `search_conversations_report` já retorna:
-- `created_at` — momento em que o lead chegou
-- `first_response_at` — momento em que o atendente respondeu pela primeira vez
+### Problema
+Quando se filtra por canal "Master Leads", aparecem agentes como "Rainy" que pertencem ao canal "Emprega Mais". Isso acontece porque a Rainy foi atribuída a conversas no canal Master Leads (antes da restrição ou via transferência). O dado é tecnicamente correto, mas operacionalmente confuso.
 
-Porém no frontend, `created_at` é exibido como "Data Abertura" (só data) e `first_response_at` é usado apenas para calcular "Tempo 1º Atendimento" (diferença em minutos). **Não existem colunas mostrando os horários exatos.**
+### Solução Proposta
+Duas melhorias complementares:
 
-### Alteração
+#### 1. Filtro de Agentes contextual por canal selecionado
+**Arquivo:** `src/pages/ConversationReport.tsx`
 
+Quando um canal é selecionado no filtro, o dropdown de **Agentes** passa a mostrar apenas agentes que possuem conversas naquele canal (em vez de listar todos os agentes do tenant). Isso é feito filtrando os agentes disponíveis com base nos dados já retornados ou com uma query auxiliar.
+
+#### 2. Filtro de Agentes por `user_channels` (opcional, mais restritivo)
+Alternativamente, filtrar o dropdown de agentes com base na tabela `user_channels` — só mostra agentes que estão configurados para aquele canal. Isso impediria ver dados de agentes "intrusos" mesmo que tenham atendido leads no canal.
+
+### Recomendação
+A opção 1 é mais pragmática: mostra apenas agentes que realmente têm conversas no canal filtrado, sem esconder dados históricos. A opção 2 é mais restritiva mas pode ocultar dados válidos.
+
+### Alteração Técnica (Opção 1)
 **Arquivo único:** `src/pages/ConversationReport.tsx`
-
-1. **Adicionar 2 novas colunas** no `DEFAULT_COLUMNS` (após `closed_at`):
-   - `{ key: 'arrival_time', label: 'Hora Chegada', enabled: true }`
-   - `{ key: 'first_response_datetime', label: 'Hora 1ª Resposta', enabled: true }`
-
-2. **Adicionar renderização** no switch de colunas:
-   - `arrival_time`: formata `conv.created_at` com data + hora (dd/MM/yyyy HH:mm)
-   - `first_response_datetime`: formata `conv.first_response_at` com data + hora, ou "-" se não houver
-
-3. **Adicionar no export Excel**: incluir essas duas colunas formatadas na exportação
-
-Nenhuma alteração no banco de dados é necessária — os dados já vêm do RPC.
+- No carregamento da lista de agentes para o dropdown, quando `selectedChannels` contiver um canal, fazer uma query para buscar apenas `assigned_to` distintos das conversas daquele canal
+- Isso faz o dropdown de agentes ficar contextual ao canal selecionado
 
