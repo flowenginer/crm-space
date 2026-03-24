@@ -355,7 +355,7 @@ export default function ConversationReportPage() {
   };
 
   const { data: reportData, isLoading, refetch } = useQuery({
-    queryKey: ['conversation-report', appliedFilters, page],
+    queryKey: ['conversation-report', appliedFilters, page, allowedChannelIds],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('search_conversations_report', {
         p_start_date: appliedFilters.startDate ? `${appliedFilters.startDate}T00:00:00${getTimezoneOffset()}` : null,
