@@ -1494,6 +1494,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
   const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
+  const [showBulkCloseModal, setShowBulkCloseModal] = useState(false);
   const [isBulkReturning, setIsBulkReturning] = useState(false);
   const [channelChangeDialog, setChannelChangeDialog] = useState<{
     open: boolean;
