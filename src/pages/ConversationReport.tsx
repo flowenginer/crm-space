@@ -79,6 +79,8 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'close_reason', label: 'Motivo Fechamento', enabled: true },
   { key: 'created_at', label: 'Data Abertura', enabled: true },
   { key: 'closed_at', label: 'Data Fechamento', enabled: true },
+  { key: 'arrival_time', label: 'Hora Chegada', enabled: true },
+  { key: 'first_response_datetime', label: 'Hora 1ª Resposta', enabled: true },
   { key: 'first_message', label: '1ª Mensagem', enabled: true },
   { key: 'first_response_time', label: 'Tempo 1º Atendimento', enabled: false },
   { key: 'total_active_time', label: 'Tempo Total Atendimento', enabled: false },
