@@ -363,7 +363,7 @@ export default function ConversationReportPage() {
         p_name: appliedFilters.name || null,
         p_phone: appliedFilters.phone || null,
         p_lead_status: appliedFilters.leadStatus.length > 0 ? appliedFilters.leadStatus : null,
-        p_channel_ids: appliedFilters.channel.length > 0 ? appliedFilters.channel : null,
+        p_channel_ids: getEffectiveChannelIds(appliedFilters.channel),
         p_agent_ids: appliedFilters.agent.length > 0 ? appliedFilters.agent : null,
         p_department_ids: appliedFilters.department.length > 0 ? appliedFilters.department : null,
         p_tag_ids: appliedFilters.tag.length > 0 ? appliedFilters.tag : null,
