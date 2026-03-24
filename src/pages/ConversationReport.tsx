@@ -752,7 +752,7 @@ export default function ConversationReportPage() {
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Canal</label>
-              <MultiSelect options={channelOptions} value={filters.channel} onChange={(value) => setFilters(prev => ({ ...prev, channel: value }))} placeholder="Todos" />
+              <MultiSelect options={channelOptions} value={filters.channel} onChange={(value) => setFilters(prev => ({ ...prev, channel: value, agent: [] }))} placeholder="Todos" />
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Agente</label>
