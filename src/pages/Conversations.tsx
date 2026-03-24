@@ -4660,6 +4660,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              onClick={() => setShowBulkCloseModal(true)}
+              disabled={selectedConversationIds.size === 0}
+              className="h-8 text-destructive border-destructive/30 hover:bg-destructive/10"
+            >
+              <XCircle size={16} className="mr-1" />
+              Fechar
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               onClick={cancelConversationSelection}
               className="h-8"
