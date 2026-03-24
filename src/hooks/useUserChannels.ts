@@ -56,7 +56,12 @@ export function useUserChannels(): WhatsAppChannel[] {
       return allChannels.filter(channel => channelIdSet.has(channel.id));
     }
 
-    // Fallback: comportamento por departamento
+    // PRIORIDADE 2: Admins e Supervisores sem restrição explícita veem todos
+    if (isAdmin || isSupervisor) {
+      return allChannels;
+    }
+
+    // PRIORIDADE 3: Fallback por departamento
     const userDeptIds = new Set<string>();
 
     // Adiciona departamentos da tabela user_departments
