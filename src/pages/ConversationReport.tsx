@@ -28,6 +28,7 @@ import { BulkActionsBar } from '@/components/conversations/BulkActionsBar';
 import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
 import { BulkCloseModal } from '@/components/conversations/BulkCloseModal';
 import { BulkTagModal } from '@/components/conversations/BulkTagModal';
+import { useUserChannels } from '@/hooks/useUserChannels';
 import { BulkLeadStatusModal } from '@/components/conversations/BulkLeadStatusModal';
 import { BulkRescueModal } from '@/components/conversations/BulkRescueModal';
 import { useBulkReopenConversations } from '@/hooks/useBulkConversationActions';
