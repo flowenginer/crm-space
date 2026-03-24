@@ -309,13 +309,8 @@ export default function ConversationReportPage() {
   }, [queryClient]);
 
   // Fetch filter options
-  const { data: channels = [] } = useQuery({
-    queryKey: ['channels-filter'],
-    queryFn: async () => {
-      const { data } = await supabase.from('whatsapp_channels').select('id, name, phone').eq('is_deleted', false);
-      return data || [];
-    }
-  });
+  const userChannels = useUserChannels();
+  const channels = userChannels.map(ch => ({ id: ch.id, name: ch.name, phone: ch.phone }));
 
   const { data: agents = [] } = useQuery({
     queryKey: ['agents-filter'],
