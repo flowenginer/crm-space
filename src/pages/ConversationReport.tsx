@@ -324,6 +324,25 @@ export default function ConversationReportPage() {
     }
   });
 
+  // Buscar agentes vinculados aos canais selecionados via user_channels
+  const { data: channelAgentIds } = useQuery({
+    queryKey: ['agents-by-channel', filters.channel],
+    queryFn: async () => {
+      if (filters.channel.length === 0) return null; // null = sem filtro
+      const { data, error } = await (supabase as any)
+        .from('user_channels')
+        .select('user_id')
+        .in('channel_id', filters.channel);
+      if (error) {
+        console.warn('Erro ao buscar user_channels:', error.message);
+        return null;
+      }
+      return (data || []).map((d: any) => d.user_id) as string[];
+    },
+    enabled: true,
+    staleTime: 30000,
+  });
+
   const { data: departments = [] } = useQuery({
     queryKey: ['departments-filter'],
     queryFn: async () => {
@@ -664,7 +683,12 @@ export default function ConversationReportPage() {
   const showSelectAllPagesBanner = selectAll && !selectAllPages && reportData && reportData.total > pageSize;
 
   const channelOptions = channels.map(ch => ({ value: ch.id, label: ch.name }));
-  const agentOptions = [{ value: 'no_agent', label: '⚠️ Sem agente' }, ...agents.map(a => ({ value: a.id, label: a.full_name || '' }))];
+  const filteredAgents = useMemo(() => {
+    if (!channelAgentIds || channelAgentIds.length === 0) return agents;
+    const allowedSet = new Set(channelAgentIds);
+    return agents.filter(a => allowedSet.has(a.id));
+  }, [agents, channelAgentIds]);
+  const agentOptions = [{ value: 'no_agent', label: '⚠️ Sem agente' }, ...filteredAgents.map(a => ({ value: a.id, label: a.full_name || '' }))];
   const departmentOptions = [{ value: 'no_department', label: '⚠️ Sem departamento' }, ...departments.map(d => ({ value: d.id, label: d.name }))];
   const tagOptions = tags.map(t => ({ value: t.id, label: t.name }));
   const leadStatusOptions = leadStatuses.map(ls => ({ value: ls.name, label: ls.name }));
@@ -728,7 +752,7 @@ export default function ConversationReportPage() {
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Canal</label>
-              <MultiSelect options={channelOptions} value={filters.channel} onChange={(value) => setFilters(prev => ({ ...prev, channel: value }))} placeholder="Todos" />
+              <MultiSelect options={channelOptions} value={filters.channel} onChange={(value) => setFilters(prev => ({ ...prev, channel: value, agent: [] }))} placeholder="Todos" />
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Agente</label>
