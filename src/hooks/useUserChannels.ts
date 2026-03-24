@@ -49,18 +49,19 @@ export function useUserChannels(): WhatsAppChannel[] {
   });
 
   return useMemo(() => {
-    // Admins e Supervisores veem todos os canais
-    if (isAdmin || isSupervisor) {
-      return allChannels;
-    }
-
-    // Se o usuário tem canais configurados diretamente, usa SOMENTE esses
+    // PRIORIDADE 1: Se o usuário tem canais configurados diretamente, usa SOMENTE esses
+    // Isso vale para TODOS os perfis, incluindo Admin e Supervisor
     if (userChannelIds.length > 0) {
       const channelIdSet = new Set(userChannelIds);
       return allChannels.filter(channel => channelIdSet.has(channel.id));
     }
 
-    // Fallback: comportamento por departamento
+    // PRIORIDADE 2: Admins e Supervisores sem restrição explícita veem todos
+    if (isAdmin || isSupervisor) {
+      return allChannels;
+    }
+
+    // PRIORIDADE 3: Fallback por departamento
     const userDeptIds = new Set<string>();
 
     // Adiciona departamentos da tabela user_departments
