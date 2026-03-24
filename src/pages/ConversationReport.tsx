@@ -345,6 +345,15 @@ export default function ConversationReportPage() {
   });
 
   // Fetch report data
+  // Se o usuário tem canais restritos, sempre força o filtro (mesmo sem seleção explícita)
+  const allowedChannelIds = useMemo(() => channels.map(ch => ch.id), [channels]);
+  const getEffectiveChannelIds = (selectedChannels: string[]) => {
+    if (selectedChannels.length > 0) return selectedChannels;
+    // Se o usuário tem restrição de canais, força o filtro
+    if (allowedChannelIds.length > 0) return allowedChannelIds;
+    return null;
+  };
+
   const { data: reportData, isLoading, refetch } = useQuery({
     queryKey: ['conversation-report', appliedFilters, page],
     queryFn: async () => {
