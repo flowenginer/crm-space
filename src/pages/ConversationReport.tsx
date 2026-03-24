@@ -324,6 +324,25 @@ export default function ConversationReportPage() {
     }
   });
 
+  // Buscar agentes vinculados aos canais selecionados via user_channels
+  const { data: channelAgentIds } = useQuery({
+    queryKey: ['agents-by-channel', filters.channel],
+    queryFn: async () => {
+      if (filters.channel.length === 0) return null; // null = sem filtro
+      const { data, error } = await (supabase as any)
+        .from('user_channels')
+        .select('user_id')
+        .in('channel_id', filters.channel);
+      if (error) {
+        console.warn('Erro ao buscar user_channels:', error.message);
+        return null;
+      }
+      return (data || []).map((d: any) => d.user_id) as string[];
+    },
+    enabled: true,
+    staleTime: 30000,
+  });
+
   const { data: departments = [] } = useQuery({
     queryKey: ['departments-filter'],
     queryFn: async () => {
