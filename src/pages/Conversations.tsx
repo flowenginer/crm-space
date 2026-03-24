@@ -291,8 +291,16 @@ const formatWhatsAppText = (text: string): React.ReactNode => {
   });
 };
 
+// Mask undecryptable messages with friendly text
+const maskUndecryptable = (content: string): string => {
+  if (content.includes('[Undecryptable]') || content.includes('descriptografar')) {
+    return '📢 Mensagem inicial do lead (conteúdo criptografado - visualize no WhatsApp do celular)';
+  }
+  return content;
+};
+
 // Alias for backwards compatibility
-const linkifyText = formatWhatsAppText;
+const linkifyText = (text: string) => formatWhatsAppText(maskUndecryptable(text));
 
 // Mock Data for reference (will be replaced by real data)
 const mockConversations = [

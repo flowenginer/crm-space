@@ -636,6 +636,26 @@ async function processMessages(supabase: any, value: any) {
         console.log('[CloudAPI] Unknown message type:', messageType, JSON.stringify(message));
     }
 
+    // Handle undecryptable messages - replace with CTWA ad info when available
+    if (content.includes('[Undecryptable]') || content.includes('descriptografar')) {
+      console.log('[CloudAPI] ⚠️ Undecryptable message detected, checking for CTWA referral data...');
+      if (referral) {
+        const headline = referral.headline || '';
+        const body = referral.body || referral.greetingMessageBody || '';
+        const sourceApp = referral.sourceApp || referral.source_app || '';
+        const parts = [];
+        if (headline) parts.push(headline);
+        if (body) parts.push(body);
+        content = parts.length > 0 
+          ? `📢 Mensagem via anúncio${sourceApp ? ` (${sourceApp})` : ''}:\n${parts.join('\n')}`
+          : `📢 Lead chegou via anúncio${sourceApp ? ` do ${sourceApp}` : ''}`;
+        console.log('[CloudAPI] ✅ Replaced undecryptable with CTWA content:', content);
+      } else {
+        content = '📢 Mensagem inicial do lead (conteúdo não disponível - abra o WhatsApp no celular para visualizar)';
+        console.log('[CloudAPI] ℹ️ Replaced undecryptable with friendly message (no referral data)');
+      }
+    }
+
     // Check for reply/quote context
     let replyToMessageId = null;
     if (message.context?.id) {

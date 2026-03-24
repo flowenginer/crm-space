@@ -57,8 +57,13 @@ interface ConversationData {
   } | null;
 }
 
-// Function to make URLs clickable
+// Function to make URLs clickable (also masks undecryptable messages)
 const linkifyText = (text: string) => {
+  // Mask undecryptable messages
+  if (text.includes('[Undecryptable]') || text.includes('descriptografar')) {
+    text = '📢 Mensagem inicial do lead (conteúdo criptografado - visualize no WhatsApp do celular)';
+  }
+
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
   
