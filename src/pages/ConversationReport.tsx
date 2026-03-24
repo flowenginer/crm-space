@@ -28,6 +28,7 @@ import { BulkActionsBar } from '@/components/conversations/BulkActionsBar';
 import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
 import { BulkCloseModal } from '@/components/conversations/BulkCloseModal';
 import { BulkTagModal } from '@/components/conversations/BulkTagModal';
+import { useUserChannels } from '@/hooks/useUserChannels';
 import { BulkLeadStatusModal } from '@/components/conversations/BulkLeadStatusModal';
 import { BulkRescueModal } from '@/components/conversations/BulkRescueModal';
 import { useBulkReopenConversations } from '@/hooks/useBulkConversationActions';
@@ -308,13 +309,8 @@ export default function ConversationReportPage() {
   }, [queryClient]);
 
   // Fetch filter options
-  const { data: channels = [] } = useQuery({
-    queryKey: ['channels-filter'],
-    queryFn: async () => {
-      const { data } = await supabase.from('whatsapp_channels').select('id, name, phone').eq('is_deleted', false);
-      return data || [];
-    }
-  });
+  const userChannels = useUserChannels();
+  const channels = userChannels.map(ch => ({ id: ch.id, name: ch.name, phone: ch.phone }));
 
   const { data: agents = [] } = useQuery({
     queryKey: ['agents-filter'],
@@ -349,8 +345,17 @@ export default function ConversationReportPage() {
   });
 
   // Fetch report data
+  // Se o usuário tem canais restritos, sempre força o filtro (mesmo sem seleção explícita)
+  const allowedChannelIds = useMemo(() => channels.map(ch => ch.id), [channels]);
+  const getEffectiveChannelIds = (selectedChannels: string[]) => {
+    if (selectedChannels.length > 0) return selectedChannels;
+    // Se o usuário tem restrição de canais, força o filtro
+    if (allowedChannelIds.length > 0) return allowedChannelIds;
+    return null;
+  };
+
   const { data: reportData, isLoading, refetch } = useQuery({
-    queryKey: ['conversation-report', appliedFilters, page],
+    queryKey: ['conversation-report', appliedFilters, page, allowedChannelIds],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('search_conversations_report', {
         p_start_date: appliedFilters.startDate ? `${appliedFilters.startDate}T00:00:00${getTimezoneOffset()}` : null,
@@ -358,7 +363,7 @@ export default function ConversationReportPage() {
         p_name: appliedFilters.name || null,
         p_phone: appliedFilters.phone || null,
         p_lead_status: appliedFilters.leadStatus.length > 0 ? appliedFilters.leadStatus : null,
-        p_channel_ids: appliedFilters.channel.length > 0 ? appliedFilters.channel : null,
+        p_channel_ids: getEffectiveChannelIds(appliedFilters.channel),
         p_agent_ids: appliedFilters.agent.length > 0 ? appliedFilters.agent : null,
         p_department_ids: appliedFilters.department.length > 0 ? appliedFilters.department : null,
         p_tag_ids: appliedFilters.tag.length > 0 ? appliedFilters.tag : null,
@@ -521,7 +526,7 @@ export default function ConversationReportPage() {
           p_name: appliedFilters.name || null,
           p_phone: appliedFilters.phone || null,
           p_lead_status: appliedFilters.leadStatus.length > 0 ? appliedFilters.leadStatus : null,
-          p_channel_ids: appliedFilters.channel.length > 0 ? appliedFilters.channel : null,
+          p_channel_ids: getEffectiveChannelIds(appliedFilters.channel),
           p_agent_ids: appliedFilters.agent.length > 0 ? appliedFilters.agent : null,
           p_department_ids: appliedFilters.department.length > 0 ? appliedFilters.department : null,
           p_tag_ids: appliedFilters.tag.length > 0 ? appliedFilters.tag : null,
