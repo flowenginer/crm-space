@@ -683,7 +683,12 @@ export default function ConversationReportPage() {
   const showSelectAllPagesBanner = selectAll && !selectAllPages && reportData && reportData.total > pageSize;
 
   const channelOptions = channels.map(ch => ({ value: ch.id, label: ch.name }));
-  const agentOptions = [{ value: 'no_agent', label: '⚠️ Sem agente' }, ...agents.map(a => ({ value: a.id, label: a.full_name || '' }))];
+  const filteredAgents = useMemo(() => {
+    if (!channelAgentIds || channelAgentIds.length === 0) return agents;
+    const allowedSet = new Set(channelAgentIds);
+    return agents.filter(a => allowedSet.has(a.id));
+  }, [agents, channelAgentIds]);
+  const agentOptions = [{ value: 'no_agent', label: '⚠️ Sem agente' }, ...filteredAgents.map(a => ({ value: a.id, label: a.full_name || '' }))];
   const departmentOptions = [{ value: 'no_department', label: '⚠️ Sem departamento' }, ...departments.map(d => ({ value: d.id, label: d.name }))];
   const tagOptions = tags.map(t => ({ value: t.id, label: t.name }));
   const leadStatusOptions = leadStatuses.map(ls => ({ value: ls.name, label: ls.name }));
