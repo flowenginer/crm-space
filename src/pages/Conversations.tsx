@@ -165,6 +165,7 @@ import { RescueButton } from '@/components/rescue/RescueButton';
 import { RescueActiveAlert } from '@/components/rescue/RescueActiveAlert';
 import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
 import { BulkTagModal } from '@/components/conversations/BulkTagModal';
+import { BulkCloseModal } from '@/components/conversations/BulkCloseModal';
 import { useBulkReturnToOriginalAgent } from '@/hooks/useBulkConversationActions';
 import { use24hWindow, formatRemainingTime } from '@/hooks/use24hWindow';
 import type { Profile } from '@/types';
