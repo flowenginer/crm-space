@@ -185,6 +185,8 @@ function getFieldValue(conv: any, key: string): any {
     case 'close_reason': return conv.close_reason || '';
     case 'created_at': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
     case 'closed_at': return conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '';
+    case 'arrival_time': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
+    case 'first_response_datetime': return conv.first_response_at ? format(new Date(conv.first_response_at), 'dd/MM/yyyy HH:mm') : '-';
     case 'first_message': return conv.first_message || '';
     case 'first_response_time': {
       if (!conv.first_response_at || !conv.created_at) return '-';
