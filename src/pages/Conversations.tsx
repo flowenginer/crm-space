@@ -4704,6 +4704,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             setIsConversationSelectionMode(false);
           }}
         />
+
+        {/* Bulk Close Modal */}
+        <BulkCloseModal
+          open={showBulkCloseModal}
+          onClose={() => setShowBulkCloseModal(false)}
+          conversationIds={Array.from(selectedConversationIds)}
+          onSuccess={() => {
+            setShowBulkCloseModal(false);
+            setSelectedConversationIds(new Set());
+            setIsConversationSelectionMode(false);
+          }}
+        />
       </div>
 
       {/* Column 2: Chat Area */}
