@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const GRAPH_API_VERSION = 'v21.0';
-const GRAPH_API_URL = 'https://graph.facebook.com';
+const GRAPH_API_URL = 'https://graph.instagram.com';
 
 interface SendMessagePayload {
   channelId: string;
