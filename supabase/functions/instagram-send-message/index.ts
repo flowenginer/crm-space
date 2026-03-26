@@ -7,15 +7,16 @@ const corsHeaders = {
 };
 
 const GRAPH_API_VERSION = 'v21.0';
-const GRAPH_API_URL = 'https://graph.instagram.com';
+const GRAPH_API_URL = 'https://graph.facebook.com';
 
 interface SendMessagePayload {
   channelId: string;
-  recipientId: string; // Instagram Scoped User ID (IGSID)
-  type: 'text' | 'image' | 'audio' | 'video' | 'file';
+  recipientId: string; // IGSID (Instagram Scoped User ID)
+  type: 'text' | 'image' | 'video' | 'audio';
   content?: string;
   mediaUrl?: string;
   conversationId?: string;
+  quickReplies?: Array<{ title: string; payload: string }>;
 }
 
 serve(async (req) => {
@@ -36,20 +37,18 @@ serve(async (req) => {
 
     const token = authHeader.replace('Bearer ', '');
     let isAuthorized = false;
-    let user: any = null;
 
-    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
-    if (!authError && authUser) {
+    // Validate as user token
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (!authError && user) {
       isAuthorized = true;
-      user = authUser;
-      console.log('[Instagram Send] Authorized via user token');
     }
 
+    // Internal calls from other edge functions
     if (!isAuthorized) {
       const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
       if (token === serviceRoleKey) {
         isAuthorized = true;
-        console.log('[Instagram Send] Authorized via service role');
       }
     }
 
@@ -58,143 +57,142 @@ serve(async (req) => {
     }
 
     const payload: SendMessagePayload = await req.json();
-    const { channelId, recipientId, type, content, mediaUrl, conversationId } = payload;
+    const { channelId, recipientId, type, content, mediaUrl, conversationId, quickReplies } = payload;
 
     if (!channelId || !recipientId) {
       throw new Error('channelId and recipientId are required');
     }
 
-    // Extract IGSID from "ig:XXXXX" format if needed
-    const igsid = recipientId.startsWith('ig:') ? recipientId.slice(3) : recipientId;
-
-    // Get Instagram config for this channel
-    const { data: config, error: configError } = await supabase
-      .from('instagram_configs')
-      .select('*')
-      .eq('channel_id', channelId)
+    // Buscar canal Instagram
+    const { data: channel, error: channelError } = await supabase
+      .from('instagram_channels')
+      .select('id, page_id, page_access_token, instagram_account_id, tenant_id, department_id')
+      .eq('id', channelId)
       .eq('is_active', true)
+      .eq('is_deleted', false)
       .single();
 
-    if (configError || !config) {
-      // Fallback: try by tenant
-      const { data: channel } = await supabase
-        .from('whatsapp_channels')
-        .select('tenant_id')
-        .eq('id', channelId)
-        .single();
-
-      if (channel) {
-        const { data: tenantConfig } = await supabase
-          .from('instagram_configs')
-          .select('*')
-          .eq('tenant_id', channel.tenant_id)
-          .eq('is_active', true)
-          .single();
-
-        if (!tenantConfig) {
-          throw new Error('No Instagram configuration found for this channel');
-        }
-
-        Object.assign(config || {}, tenantConfig);
-      } else {
-        throw new Error('Channel not found');
-      }
+    if (channelError || !channel) {
+      throw new Error('Instagram channel not found or inactive');
     }
 
-    const activeConfig = config!;
+    if (!channel.page_access_token) {
+      throw new Error('Page access token not configured');
+    }
 
-    // Build Instagram Send API payload
-    // Instagram uses the Page Send API: POST /{page-id}/messages
-    const messagePayload: any = {
-      recipient: { id: igsid },
-    };
+    // Construir payload da mensagem para a Instagram Send API
+    let messagePayload: Record<string, unknown> = {};
 
     switch (type) {
       case 'text':
-        messagePayload.message = { text: content || '' };
+        if (quickReplies && quickReplies.length > 0) {
+          messagePayload = {
+            text: content || '',
+            quick_replies: quickReplies.map(qr => ({
+              content_type: 'text',
+              title: qr.title,
+              payload: qr.payload,
+            })),
+          };
+        } else {
+          messagePayload = { text: content || '' };
+        }
         break;
 
       case 'image':
-        if (mediaUrl) {
-          messagePayload.message = {
-            attachment: {
-              type: 'image',
-              payload: { url: mediaUrl, is_reusable: true },
-            },
-          };
-        }
+        messagePayload = {
+          attachment: {
+            type: 'image',
+            payload: { url: mediaUrl || content, is_reusable: true },
+          },
+        };
         break;
 
       case 'video':
-        if (mediaUrl) {
-          messagePayload.message = {
-            attachment: {
-              type: 'video',
-              payload: { url: mediaUrl, is_reusable: true },
-            },
-          };
-        }
+        messagePayload = {
+          attachment: {
+            type: 'video',
+            payload: { url: mediaUrl || content, is_reusable: true },
+          },
+        };
         break;
 
       case 'audio':
-        if (mediaUrl) {
-          messagePayload.message = {
-            attachment: {
-              type: 'audio',
-              payload: { url: mediaUrl, is_reusable: true },
-            },
-          };
-        }
-        break;
-
-      case 'file':
-        if (mediaUrl) {
-          messagePayload.message = {
-            attachment: {
-              type: 'file',
-              payload: { url: mediaUrl, is_reusable: true },
-            },
-          };
-        }
+        messagePayload = {
+          attachment: {
+            type: 'audio',
+            payload: { url: mediaUrl || content, is_reusable: true },
+          },
+        };
         break;
 
       default:
-        throw new Error(`Unsupported message type: ${type}`);
+        messagePayload = { text: content || '' };
     }
 
-    console.log('[Instagram Send] Sending to:', igsid, 'type:', type);
+    // Enviar via Instagram Send API (usa Page ID, não Instagram Account ID)
+    console.log('[Instagram Send] Sending message:', {
+      recipientId,
+      type,
+      channelId: channel.id,
+    });
 
-    // Send via Instagram Graph API
     const response = await fetch(
-      `${GRAPH_API_URL}/${GRAPH_API_VERSION}/me/messages`,
+      `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${channel.page_id}/messages`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${activeConfig.page_access_token}`,
+          'Authorization': `Bearer ${channel.page_access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(messagePayload),
+        body: JSON.stringify({
+          recipient: { id: recipientId },
+          message: messagePayload,
+        }),
       }
     );
 
     const result = await response.json();
 
-    if (!response.ok) {
-      console.error('[Instagram Send] Error:', result);
+    if (!response.ok || result.error) {
+      console.error('[Instagram Send] Error:', result.error || result);
       throw new Error(result.error?.message || 'Failed to send Instagram message');
     }
 
-    console.log('[Instagram Send] Message sent:', result);
+    console.log('[Instagram Send] ✅ Message sent:', result);
+
+    const instagramMessageId = result.message_id || null;
+
+    // Atualizar estatísticas do canal
+    await supabase
+      .from('instagram_channels')
+      .update({
+        messages_sent: (channel as any).messages_sent ? (channel as any).messages_sent + 1 : 1,
+        last_sync_at: new Date().toISOString(),
+      })
+      .eq('id', channel.id);
+
+    // Se temos conversationId, atualizar a conversa
+    if (conversationId) {
+      const preview = type === 'text' ? (content || '').substring(0, 100) : `📎 ${type}`;
+      await supabase
+        .from('conversations')
+        .update({
+          last_message_at: new Date().toISOString(),
+          last_message_preview: preview,
+          last_message_is_from_me: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', conversationId);
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        messageId: result.message_id,
-        recipientId: result.recipient_id,
+        messageId: instagramMessageId,
+        recipientId,
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('[Instagram Send] Error:', error);
