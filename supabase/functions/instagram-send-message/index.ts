@@ -57,10 +57,18 @@ serve(async (req) => {
     }
 
     const payload: SendMessagePayload = await req.json();
-    const { channelId, recipientId, type, content, mediaUrl, conversationId, quickReplies } = payload;
+    const { channelId, type, content, mediaUrl, conversationId, quickReplies } = payload;
+    // Strip "ig:" prefix from recipientId — contacts store Instagram IDs as "ig:123"
+    // but the Instagram Graph API expects the raw numeric IGSID
+    let recipientId = payload.recipientId;
 
     if (!channelId || !recipientId) {
       throw new Error('channelId and recipientId are required');
+    }
+
+    if (recipientId.startsWith('ig:')) {
+      recipientId = recipientId.substring(3);
+      console.log('[Instagram Send] Stripped ig: prefix from recipientId:', recipientId);
     }
 
     // Buscar canal Instagram - tenta múltiplas estratégias de lookup
