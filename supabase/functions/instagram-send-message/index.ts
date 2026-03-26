@@ -63,34 +63,82 @@ serve(async (req) => {
       throw new Error('channelId and recipientId are required');
     }
 
-    // Buscar canal Instagram - tenta por channel_id primeiro, depois por id
+    // Buscar canal Instagram - tenta múltiplas estratégias de lookup
     let channel = null;
-    let channelError = null;
+    const configFields = 'id, page_id, page_access_token, instagram_account_id, tenant_id, channel_id';
 
-    // Primeiro tenta buscar por channel_id (vindo do whatsapp_channels)
-    const { data: channelByChannelId, error: errByChannelId } = await supabase
+    // 1. Tenta buscar por channel_id (vindo do whatsapp_channels)
+    const { data: channelByChannelId } = await supabase
       .from('instagram_configs')
-      .select('id, page_id, page_access_token, instagram_account_id, tenant_id, channel_id')
+      .select(configFields)
       .eq('channel_id', channelId)
       .eq('is_active', true)
       .single();
 
-    if (channelByChannelId && !errByChannelId) {
+    if (channelByChannelId) {
       channel = channelByChannelId;
-    } else {
-      // Fallback: busca por id da própria tabela instagram_configs
-      const { data: channelById, error: errById } = await supabase
+    }
+
+    // 2. Fallback: busca por id da própria tabela instagram_configs
+    if (!channel) {
+      const { data: channelById } = await supabase
         .from('instagram_configs')
-        .select('id, page_id, page_access_token, instagram_account_id, tenant_id, channel_id')
+        .select(configFields)
         .eq('id', channelId)
         .eq('is_active', true)
         .single();
 
-      channel = channelById;
-      channelError = errById;
+      if (channelById) {
+        channel = channelById;
+      }
     }
 
-    if (channelError || !channel) {
+    // 3. Fallback: busca via whatsapp_channels do tipo instagram e vincula
+    if (!channel) {
+      const { data: waChannel } = await supabase
+        .from('whatsapp_channels')
+        .select('id, phone, type')
+        .eq('id', channelId)
+        .eq('type', 'instagram')
+        .single();
+
+      if (waChannel) {
+        // Busca instagram_configs por page_id ou instagram_account_id
+        // O phone do canal instagram pode conter o username com prefixo "ig:"
+        const { data: configByPhone } = await supabase
+          .from('instagram_configs')
+          .select(configFields)
+          .eq('is_active', true)
+          .is('channel_id', null)
+          .limit(1);
+
+        if (configByPhone && configByPhone.length > 0) {
+          // Encontrou config sem channel_id vinculado - vincular automaticamente
+          channel = configByPhone[0];
+          console.log(`[Instagram Send] Auto-linking instagram_config ${channel.id} to whatsapp_channel ${channelId}`);
+          await supabase
+            .from('instagram_configs')
+            .update({ channel_id: channelId, updated_at: new Date().toISOString() })
+            .eq('id', channel.id);
+          channel.channel_id = channelId;
+        } else {
+          // Busca qualquer config ativa do mesmo tenant
+          const { data: anyConfig } = await supabase
+            .from('instagram_configs')
+            .select(configFields)
+            .eq('is_active', true)
+            .limit(1);
+
+          if (anyConfig && anyConfig.length > 0) {
+            channel = anyConfig[0];
+            console.log(`[Instagram Send] Found instagram_config ${channel.id} for channel ${channelId} (channel_id mismatch, using tenant fallback)`);
+          }
+        }
+      }
+    }
+
+    if (!channel) {
+      console.error('[Instagram Send] Channel not found. channelId:', channelId);
       throw new Error('Instagram channel not found or inactive');
     }
 
@@ -261,7 +309,13 @@ serve(async (req) => {
     console.error('[Instagram Send] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({
+        success: false,
+        error: errorMessage,
+        hint: errorMessage.includes('channel not found')
+          ? 'Verify that channelId matches an active instagram_configs.channel_id, instagram_configs.id, or a whatsapp_channels.id of type instagram'
+          : undefined,
+      }),
       {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
