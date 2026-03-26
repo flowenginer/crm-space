@@ -66,7 +66,7 @@ serve(async (req) => {
     // Buscar canal Instagram
     const { data: channel, error: channelError } = await supabase
       .from('instagram_channels')
-      .select('id, page_id, page_access_token, instagram_account_id, tenant_id')
+      .select('id, page_id, page_access_token, instagram_account_id, tenant_id, department_id')
       .eq('id', channelId)
       .eq('is_active', true)
       .eq('is_deleted', false)
