@@ -48,9 +48,9 @@ export function LoginForm() {
     if (error) {
       let message = 'Erro ao fazer login';
       if (error.message === 'network_timeout') {
-        message = 'Tempo limite excedido. Verifique sua conexão com a internet e tente novamente.';
+        message = 'Tempo limite excedido. Verifique sua conexão com a internet e tente novamente. Se o problema persistir, tente alterar o DNS do computador para 8.8.8.8 (Google) ou 1.1.1.1 (Cloudflare).';
       } else if (error.message === 'network_error' || error.message?.includes('Failed to fetch') || error.message?.includes('fetch')) {
-        message = 'Erro de conexão. Verifique sua internet ou tente novamente em alguns instantes.';
+        message = 'Erro de conexão. Verifique sua internet ou tente novamente em alguns instantes. Se o problema persistir, tente alterar o DNS para 8.8.8.8 (Google) ou 1.1.1.1 (Cloudflare).';
       } else if (error.message?.includes('Invalid login credentials')) {
         message = 'Email ou senha inválidos';
       } else if (error.message?.includes('Email not confirmed')) {

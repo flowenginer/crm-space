@@ -8,7 +8,7 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false, // Disable refetch on tab focus
       refetchOnReconnect: true, // Refetch quando a rede voltar
       refetchOnMount: false, // Disable refetch when component mounts if data exists
-      retry: 1, // Reduce retry attempts
+      retry: 3, // Retry com backoff para redes instáveis
     },
   },
 });
