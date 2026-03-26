@@ -155,22 +155,68 @@ serve(async (req) => {
       channelId: channel.id,
     });
 
-    const response = await fetch(
-      `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${channel.page_id}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${channel.page_access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipient: { id: recipientId },
-          message: messagePayload,
-        }),
-      }
-    );
+    let accessToken = channel.page_access_token;
 
-    const result = await response.json();
+    const sendToInstagram = async (token: string) => {
+      return fetch(
+        `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${channel.page_id}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            recipient: { id: recipientId },
+            message: messagePayload,
+          }),
+        }
+      );
+    };
+
+    let response = await sendToInstagram(accessToken);
+    let result = await response.json();
+
+    // Se o token estiver inválido, tentar renovar automaticamente
+    if (!response.ok && result.error?.code === 190 || result.error?.message?.includes('access token')) {
+      console.log('[Instagram Send] Token inválido, tentando renovar...');
+
+      try {
+        const refreshRes = await fetch(
+          `https://graph.instagram.com/refresh_access_token?` +
+          `grant_type=ig_refresh_token` +
+          `&access_token=${accessToken}`
+        );
+        const refreshData = await refreshRes.json();
+
+        if (refreshData.access_token) {
+          accessToken = refreshData.access_token;
+          const tokenExpiresAt = new Date(
+            Date.now() + (refreshData.expires_in || 5184000) * 1000
+          ).toISOString();
+
+          // Salvar novo token no banco
+          await supabase
+            .from('instagram_configs')
+            .update({
+              page_access_token: accessToken,
+              token_expires_at: tokenExpiresAt,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', channel.id);
+
+          console.log('[Instagram Send] Token renovado, reenviando mensagem...');
+
+          // Reenviar com novo token
+          response = await sendToInstagram(accessToken);
+          result = await response.json();
+        } else {
+          console.error('[Instagram Send] Falha ao renovar token:', refreshData.error);
+        }
+      } catch (refreshErr) {
+        console.error('[Instagram Send] Erro ao renovar token:', refreshErr);
+      }
+    }
 
     if (!response.ok || result.error) {
       console.error('[Instagram Send] Error:', result.error || result);
