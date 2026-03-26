@@ -63,13 +63,32 @@ serve(async (req) => {
       throw new Error('channelId and recipientId are required');
     }
 
-    // Buscar canal Instagram
-    const { data: channel, error: channelError } = await supabase
+    // Buscar canal Instagram - tenta por channel_id primeiro, depois por id
+    let channel = null;
+    let channelError = null;
+
+    // Primeiro tenta buscar por channel_id (vindo do whatsapp_channels)
+    const { data: channelByChannelId, error: errByChannelId } = await supabase
       .from('instagram_configs')
       .select('id, page_id, page_access_token, instagram_account_id, tenant_id, channel_id')
-      .eq('id', channelId)
+      .eq('channel_id', channelId)
       .eq('is_active', true)
       .single();
+
+    if (channelByChannelId && !errByChannelId) {
+      channel = channelByChannelId;
+    } else {
+      // Fallback: busca por id da própria tabela instagram_configs
+      const { data: channelById, error: errById } = await supabase
+        .from('instagram_configs')
+        .select('id, page_id, page_access_token, instagram_account_id, tenant_id, channel_id')
+        .eq('id', channelId)
+        .eq('is_active', true)
+        .single();
+
+      channel = channelById;
+      channelError = errById;
+    }
 
     if (channelError || !channel) {
       throw new Error('Instagram channel not found or inactive');
