@@ -42,6 +42,8 @@ const getPresetRanges = () => {
     { label: 'Este Mes', range: { from: startOfMonth(today), to: endOfMonth(today) } },
     { label: 'Ultimos 7 dias', range: { from: startOfDay(subDays(today, 6)), to: endOfDay(today) } },
     { label: 'Ultimos 30 dias', range: { from: startOfDay(subDays(today, 29)), to: endOfDay(today) } },
+    { label: 'Ultimos 60 dias', range: { from: startOfDay(subDays(today, 59)), to: endOfDay(today) } },
+    { label: 'Ultimos 90 dias', range: { from: startOfDay(subDays(today, 89)), to: endOfDay(today) } },
   ];
 };
 
