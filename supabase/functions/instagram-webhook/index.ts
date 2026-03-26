@@ -11,19 +11,23 @@ async function downloadAndUploadMedia(
   supabase: any,
   mediaUrl: string,
   messageType: string,
-  conversationId: string
+  conversationId: string,
+  accessToken: string
 ): Promise<string | null> {
   try {
     console.log(`[Instagram] Downloading media for conversation ${conversationId}`);
 
-    const mediaResponse = await fetch(mediaUrl);
+    const mediaResponse = await fetch(mediaUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
     if (!mediaResponse.ok) {
       console.error('[Instagram] Failed to download media:', mediaResponse.status);
       return null;
     }
 
-    const contentType = mediaResponse.headers.get('content-type') || 'application/octet-stream';
     const mediaBuffer = await mediaResponse.arrayBuffer();
+    const contentType = mediaResponse.headers.get('content-type') || 'application/octet-stream';
 
     const extensionMap: Record<string, string> = {
       'image/jpeg': 'jpg',
@@ -31,8 +35,8 @@ async function downloadAndUploadMedia(
       'image/webp': 'webp',
       'image/gif': 'gif',
       'video/mp4': 'mp4',
-      'audio/mpeg': 'mp3',
       'audio/mp4': 'm4a',
+      'audio/mpeg': 'mp3',
       'audio/ogg': 'ogg',
     };
 
@@ -58,7 +62,7 @@ async function downloadAndUploadMedia(
     console.log(`[Instagram] Media uploaded: ${publicUrl}`);
     return publicUrl;
   } catch (error) {
-    console.error('[Instagram] Media download/upload error:', error);
+    console.error('[Instagram] Error downloading/uploading media:', error);
     return null;
   }
 }
@@ -75,33 +79,31 @@ serve(async (req) => {
   try {
     const url = new URL(req.url);
 
-    // =========================================================
-    // WEBHOOK VERIFICATION (GET) - Meta envia para validar
-    // =========================================================
+    // =====================================================
+    // GET - Webhook verification from Meta
+    // =====================================================
     if (req.method === 'GET') {
       const mode = url.searchParams.get('hub.mode');
       const token = url.searchParams.get('hub.verify_token');
       const challenge = url.searchParams.get('hub.challenge');
 
-      console.log('[Instagram Webhook] Verification request:', { mode, token, challenge });
+      console.log('[Instagram] Webhook verification:', { mode, token, challenge });
 
       if (mode === 'subscribe' && token) {
-        // Buscar canal com verify_token correspondente
-        const { data: channel } = await supabase
-          .from('instagram_channels')
+        const { data: config } = await supabase
+          .from('instagram_configs')
           .select('id, verify_token')
           .eq('verify_token', token)
           .eq('is_active', true)
-          .eq('is_deleted', false)
           .single();
 
-        if (channel) {
+        if (config) {
           await supabase
-            .from('instagram_channels')
-            .update({ webhook_configured: true, updated_at: new Date().toISOString() })
-            .eq('id', channel.id);
+            .from('instagram_configs')
+            .update({ webhook_configured: true })
+            .eq('id', config.id);
 
-          console.log('[Instagram Webhook] Verified for channel:', channel.id);
+          console.log('[Instagram] Webhook verified for config:', config.id);
           return new Response(challenge, {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'text/plain' },
@@ -109,60 +111,33 @@ serve(async (req) => {
         }
       }
 
-      console.error('[Instagram Webhook] Verification failed: invalid token');
+      console.error('[Instagram] Webhook verification failed');
       return new Response('Forbidden', { status: 403, headers: corsHeaders });
     }
 
-    // =========================================================
-    // INCOMING WEBHOOKS (POST) - Mensagens recebidas
-    // =========================================================
+    // =====================================================
+    // POST - Incoming Instagram webhooks
+    // =====================================================
     if (req.method === 'POST') {
       const body = await req.json();
-      console.log('[Instagram Webhook] Received:', JSON.stringify(body, null, 2));
-
-      // Instagram webhook always has object: 'instagram'
-      if (body.object !== 'instagram') {
-        console.log('[Instagram Webhook] Ignoring non-instagram object:', body.object);
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
+      console.log('[Instagram] Received webhook:', JSON.stringify(body, null, 2));
 
       const entries = body.entry || [];
 
       for (const entry of entries) {
-        const instagramAccountId = entry.id;
+        // Instagram webhooks use "messaging" array (not "changes")
         const messagingEvents = entry.messaging || [];
+        // Also handle "changes" for some event types
+        const changes = entry.changes || [];
 
-        // Buscar canal pelo instagram_account_id
-        const { data: channel } = await supabase
-          .from('instagram_channels')
-          .select('id, tenant_id, page_id, page_access_token, department_id, instagram_account_id')
-          .eq('instagram_account_id', instagramAccountId)
-          .eq('is_active', true)
-          .eq('is_deleted', false)
-          .single();
-
-        if (!channel) {
-          console.log('[Instagram Webhook] No channel found for account:', instagramAccountId);
-          continue;
+        // Process messaging events (DMs)
+        for (const event of messagingEvents) {
+          await processMessagingEvent(supabase, event, entry.id);
         }
 
-        // Log do webhook
-        await supabase.from('instagram_webhook_logs').insert({
-          tenant_id: channel.tenant_id,
-          channel_id: channel.id,
-          event_type: 'messaging',
-          payload: entry,
-          processed: false,
-        });
-
-        for (const event of messagingEvents) {
-          try {
-            await processMessagingEvent(supabase, channel, event);
-          } catch (eventError) {
-            console.error('[Instagram Webhook] Error processing event:', eventError);
-          }
+        // Process changes (stories, comments mentions etc - log only)
+        for (const change of changes) {
+          console.log('[Instagram] Change event:', change.field, JSON.stringify(change.value));
         }
       }
 
@@ -173,7 +148,7 @@ serve(async (req) => {
 
     return new Response('Method not allowed', { status: 405, headers: corsHeaders });
   } catch (error) {
-    console.error('[Instagram Webhook] Error:', error);
+    console.error('[Instagram] Webhook error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
@@ -182,413 +157,496 @@ serve(async (req) => {
   }
 });
 
-// =========================================================
-// PROCESSAR EVENTO DE MENSAGEM
-// =========================================================
-async function processMessagingEvent(
-  supabase: any,
-  channel: any,
-  event: any
-) {
+async function processMessagingEvent(supabase: any, event: any, pageId: string) {
   const senderId = event.sender?.id;
   const recipientId = event.recipient?.id;
-  const timestamp = event.timestamp ? new Date(event.timestamp) : new Date();
+  const timestamp = event.timestamp ? new Date(event.timestamp * 1000) : new Date();
 
-  // Ignorar echoes (mensagens enviadas por nós)
-  if (event.message?.is_echo) {
-    console.log('[Instagram] Ignoring echo message');
-    // Atualizar status da mensagem se tivermos o mid
-    if (event.message?.mid) {
-      await supabase
-        .from('messages')
-        .update({ status: 'sent' })
-        .eq('instagram_message_id', event.message.mid);
-    }
+  if (!senderId || !recipientId) {
+    console.log('[Instagram] Missing sender/recipient');
     return;
   }
 
-  // Processar read receipts
-  if (event.read) {
-    console.log('[Instagram] Read receipt:', event.read);
-    // Marcar mensagens como lidas até o watermark
+  // Determine if this is an incoming message (from user) or echo (from page)
+  const isEcho = event.message?.is_echo === true;
+  const isFromMe = isEcho || senderId === recipientId;
+
+  // Find config for this page
+  const { data: config } = await supabase
+    .from('instagram_configs')
+    .select('id, tenant_id, channel_id, page_access_token, page_id, instagram_account_id')
+    .eq('page_id', recipientId)
+    .eq('is_active', true)
+    .single();
+
+  // If not found by recipient (incoming), try by sender (echo/outgoing)
+  let activeConfig = config;
+  if (!activeConfig && isEcho) {
+    const { data: echoConfig } = await supabase
+      .from('instagram_configs')
+      .select('id, tenant_id, channel_id, page_access_token, page_id, instagram_account_id')
+      .eq('page_id', senderId)
+      .eq('is_active', true)
+      .single();
+    activeConfig = echoConfig;
+  }
+
+  if (!activeConfig) {
+    console.log('[Instagram] No config found for page:', recipientId, 'or sender:', senderId);
     return;
   }
 
-  // Processar reactions
-  if (event.reaction) {
-    console.log('[Instagram] Reaction:', event.reaction);
-    return;
-  }
-
-  // Só processar messages e postbacks
-  if (!event.message && !event.postback) {
-    console.log('[Instagram] Ignoring non-message event');
-    return;
-  }
-
-  // Verificar se o remetente é o próprio Instagram (page/bot)
-  const isFromMe = senderId === channel.instagram_account_id || senderId === channel.page_id;
-  if (isFromMe) {
-    console.log('[Instagram] Message from self, skipping');
-    return;
-  }
-
-  console.log('[Instagram] Processing message:', {
-    senderId,
-    recipientId,
-    hasMessage: !!event.message,
-    hasPostback: !!event.postback,
-    tenantId: channel.tenant_id,
+  // Log webhook
+  await supabase.from('instagram_webhook_logs').insert({
+    event_type: event.message ? 'message' : (event.postback ? 'postback' : 'unknown'),
+    payload: event,
+    sender_id: senderId,
+    config_id: activeConfig.id,
+    channel_id: activeConfig.channel_id,
+    tenant_id: activeConfig.tenant_id,
   });
 
-  // =========================================================
-  // 1. BUSCAR OU CRIAR CONTATO POR IGSID
-  // =========================================================
-  let contactId: string | null = null;
-  let senderName: string | null = null;
-
-  // Tentar obter nome do remetente via Graph API
-  try {
-    if (channel.page_access_token) {
-      const profileResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${senderId}?fields=name,username,profile_pic&access_token=${channel.page_access_token}`
-      );
-      if (profileResponse.ok) {
-        const profile = await profileResponse.json();
-        senderName = profile.name || profile.username || null;
-
-        // Atualizar username do contato se disponível
-        if (profile.username) {
-          await supabase
-            .from('contacts')
-            .update({ instagram_username: profile.username })
-            .eq('instagram_id', senderId)
-            .eq('tenant_id', channel.tenant_id);
-        }
-      }
-    }
-  } catch (profileError) {
-    console.log('[Instagram] Could not fetch sender profile:', profileError);
+  // Skip echo messages (messages sent by the page itself)
+  if (isEcho) {
+    console.log('[Instagram] Skipping echo message');
+    return;
   }
 
-  // Buscar contato existente pelo instagram_id
+  // Handle message delivery/read receipts
+  if (event.delivery || event.read) {
+    console.log('[Instagram] Delivery/read receipt, skipping');
+    return;
+  }
+
+  // Handle postbacks (quick reply buttons from ice breakers, etc)
+  if (event.postback) {
+    console.log('[Instagram] Postback:', event.postback);
+    await processInstagramMessage(supabase, activeConfig, senderId, {
+      mid: `postback_${Date.now()}`,
+      text: event.postback.title || event.postback.payload || '[Postback]',
+    }, timestamp);
+    return;
+  }
+
+  // Handle regular messages
+  if (event.message) {
+    await processInstagramMessage(supabase, activeConfig, senderId, event.message, timestamp);
+  }
+}
+
+async function processInstagramMessage(
+  supabase: any,
+  config: any,
+  senderId: string,
+  message: any,
+  timestamp: Date
+) {
+  console.log('[Instagram] Processing message from:', senderId, 'type:', message.attachments?.[0]?.type || 'text');
+
+  // Get channel department
+  let channelDepartmentId: string | null = null;
+  if (config.channel_id) {
+    const { data: channelInfo } = await supabase
+      .from('whatsapp_channels')
+      .select('department_id')
+      .eq('id', config.channel_id)
+      .single();
+    channelDepartmentId = channelInfo?.department_id || null;
+  }
+
+  // Get sender profile from Instagram Graph API
+  let senderName = senderId;
+  try {
+    const profileResponse = await fetch(
+      `https://graph.instagram.com/v21.0/${senderId}?fields=name,username,profile_pic&access_token=${config.page_access_token}`
+    );
+    if (profileResponse.ok) {
+      const profile = await profileResponse.json();
+      senderName = profile.name || (profile.username ? `@${profile.username}` : senderId);
+      console.log('[Instagram] Sender profile:', senderName);
+    }
+  } catch (e) {
+    console.warn('[Instagram] Could not fetch sender profile:', e);
+  }
+
+  // Find or create contact using Instagram Scoped ID (IGSID)
+  // We store the IGSID in the phone field with prefix "ig:" for identification
+  const igPhone = `ig:${senderId}`;
+  
   const { data: existingContact } = await supabase
     .from('contacts')
-    .select('id, full_name, instagram_username')
-    .eq('instagram_id', senderId)
-    .eq('tenant_id', channel.tenant_id)
+    .select('id, phone, assigned_to')
+    .or(`phone.eq.${igPhone}`)
+    .eq('tenant_id', config.tenant_id)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
 
-  if (existingContact) {
-    contactId = existingContact.id;
-    // Atualizar nome se estava genérico
-    if (senderName && existingContact.full_name?.startsWith('Instagram ')) {
-      await supabase
-        .from('contacts')
-        .update({ full_name: senderName })
-        .eq('id', contactId);
-    }
-  } else {
-    // Criar novo contato
-    const { data: newContact, error: contactError } = await supabase
+  let contactId = existingContact?.id;
+
+  if (!contactId) {
+    console.log(`[Instagram] Creating new contact: ${senderName} (${igPhone})`);
+    const { data: newContact } = await supabase
       .from('contacts')
       .insert({
-        instagram_id: senderId,
-        full_name: senderName || `Instagram ${senderId.slice(-6)}`,
-        origin: 'instagram',
-        tenant_id: channel.tenant_id,
+        phone: igPhone,
+        full_name: senderName,
+        tenant_id: config.tenant_id,
+        origin: 'instagram_direct',
       })
       .select('id')
       .single();
-
-    if (contactError) {
-      if (contactError.code === '23505') {
-        // Duplicata - buscar existente
-        const { data: existing } = await supabase
-          .from('contacts')
-          .select('id')
-          .eq('instagram_id', senderId)
-          .eq('tenant_id', channel.tenant_id)
-          .maybeSingle();
-        contactId = existing?.id || null;
-      } else {
-        console.error('[Instagram] Error creating contact:', contactError);
-        return;
-      }
-    } else {
-      contactId = newContact?.id || null;
-    }
+    contactId = newContact?.id;
+  } else if (existingContact && senderName !== senderId) {
+    // Update contact name if we got a real name and contact was created with just the ID
+    await supabase
+      .from('contacts')
+      .update({ full_name: senderName })
+      .eq('id', existingContact.id)
+      .eq('tenant_id', config.tenant_id);
+    console.log(`[Instagram] Updated contact name to: ${senderName}`);
   }
 
   if (!contactId) {
-    console.error('[Instagram] Failed to resolve contact for sender:', senderId);
+    console.error('[Instagram] Failed to create/find contact');
     return;
   }
 
-  // =========================================================
-  // 2. BUSCAR OU CRIAR CONVERSA
-  // =========================================================
-  let conversationId: string | null = null;
-  let isNewConversation = false;
+  // Find or create conversation
+  let conversationId: string | undefined;
 
-  // Buscar conversa aberta para este contato neste canal Instagram
+  // 1. Check for existing open conversation on same channel
   const { data: existingConv } = await supabase
     .from('conversations')
-    .select('id')
+    .select('id, channel_id')
     .eq('contact_id', contactId)
-    .eq('instagram_channel_id', channel.id)
-    .eq('channel_type', 'instagram')
+    .eq('channel_id', config.channel_id)
     .in('status', ['open', 'pending'])
-    .order('updated_at', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (existingConv) {
     conversationId = existingConv.id;
   } else {
-    // Buscar conversa aberta em qualquer canal Instagram
-    const { data: anyIgConv } = await supabase
+    // 2. Check for any open conversation for this contact
+    const { data: anyConv } = await supabase
       .from('conversations')
-      .select('id, instagram_channel_id')
+      .select('id, channel_id, assigned_to, department_id, status')
       .eq('contact_id', contactId)
-      .eq('channel_type', 'instagram')
-      .eq('tenant_id', channel.tenant_id)
+      .eq('tenant_id', config.tenant_id)
       .in('status', ['open', 'pending'])
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (anyIgConv) {
-      // Migrar conversa para o canal atual
-      if (anyIgConv.instagram_channel_id !== channel.id) {
+    if (anyConv) {
+      // Migrate to current channel if different
+      if (anyConv.channel_id !== config.channel_id) {
+        console.log(`[Instagram] Migrating conversation ${anyConv.id} to Instagram channel`);
+        await supabase
+          .from('conversations')
+          .update({ channel_id: config.channel_id, updated_at: new Date().toISOString() })
+          .eq('id', anyConv.id);
+
+        await supabase.from('conversation_events').insert({
+          conversation_id: anyConv.id,
+          event_type: 'channel_changed',
+          tenant_id: config.tenant_id,
+          data: {
+            from_channel_id: anyConv.channel_id,
+            to_channel_id: config.channel_id,
+            reason: 'instagram_direct_message',
+          },
+        });
+      }
+      conversationId = anyConv.id;
+    } else {
+      // 3. Check for closed conversations to reopen
+      const { data: closedConv } = await supabase
+        .from('conversations')
+        .select('id, assigned_to, department_id')
+        .eq('contact_id', contactId)
+        .eq('tenant_id', config.tenant_id)
+        .eq('status', 'closed')
+        .order('closed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (closedConv) {
+        console.log(`[Instagram] Reopening closed conversation ${closedConv.id}`);
         await supabase
           .from('conversations')
           .update({
-            instagram_channel_id: channel.id,
+            status: closedConv.assigned_to ? 'open' : 'pending',
+            channel_id: config.channel_id,
+            reopened_at: new Date().toISOString(),
+            reopen_count: supabase.rpc ? undefined : 1,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', anyIgConv.id);
-      }
-      conversationId = anyIgConv.id;
-    } else {
-      // Criar nova conversa
-      const { data: newConv, error: convError } = await supabase
-        .from('conversations')
-        .insert({
-          contact_id: contactId,
-          instagram_channel_id: channel.id,
-          channel_type: 'instagram',
-          tenant_id: channel.tenant_id,
-          status: 'open',
-          department_id: channel.department_id || null,
-          last_message_at: timestamp.toISOString(),
-        })
-        .select('id')
-        .single();
-
-      if (convError) {
-        if (convError.code === '23505') {
-          const { data: dup } = await supabase
-            .from('conversations')
-            .select('id')
-            .eq('contact_id', contactId)
-            .eq('instagram_channel_id', channel.id)
-            .eq('channel_type', 'instagram')
-            .in('status', ['open', 'pending'])
-            .limit(1)
-            .maybeSingle();
-          conversationId = dup?.id || null;
-        } else {
-          console.error('[Instagram] Error creating conversation:', convError);
-          return;
-        }
+          .eq('id', closedConv.id);
+        conversationId = closedConv.id;
       } else {
-        conversationId = newConv?.id || null;
-        isNewConversation = true;
+        // 4. Create new conversation
+        console.log('[Instagram] Creating new conversation');
+        const { data: newConv, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            contact_id: contactId,
+            channel_id: config.channel_id,
+            tenant_id: config.tenant_id,
+            status: 'pending',
+            department_id: channelDepartmentId,
+            referral_source: 'instagram_direct',
+          })
+          .select('id')
+          .single();
+
+        if (convError) {
+          if (convError.code === '23505') {
+            const { data: existing } = await supabase
+              .from('conversations')
+              .select('id')
+              .eq('contact_id', contactId)
+              .eq('channel_id', config.channel_id)
+              .in('status', ['open', 'pending'])
+              .limit(1)
+              .single();
+            conversationId = existing?.id;
+          } else {
+            console.error('[Instagram] Error creating conversation:', convError);
+            return;
+          }
+        } else {
+          conversationId = newConv?.id;
+        }
       }
     }
   }
 
   if (!conversationId) {
-    console.error('[Instagram] Failed to resolve conversation');
+    console.error('[Instagram] No conversation ID available');
     return;
   }
 
-  // =========================================================
-  // 3. EXTRAIR CONTEÚDO DA MENSAGEM
-  // =========================================================
+  // Extract message content
   let content = '';
-  let messageType = 'text';
   let mediaUrl: string | null = null;
+  let messageType = 'text';
 
-  if (event.postback) {
-    content = event.postback.title || '[Postback]';
+  if (message.text) {
+    content = message.text;
     messageType = 'text';
-  } else if (event.message) {
-    const msg = event.message;
+  }
 
-    if (msg.attachments && msg.attachments.length > 0) {
-      const attachment = msg.attachments[0];
-      const attachmentType = attachment.type;
-      const attachmentUrl = attachment.payload?.url;
+  if (message.attachments && message.attachments.length > 0) {
+    const attachment = message.attachments[0];
+    const attachType = attachment.type;
 
-      switch (attachmentType) {
-        case 'image':
-          messageType = 'image';
-          content = msg.text || '[Imagem]';
-          if (attachmentUrl) {
-            mediaUrl = await downloadAndUploadMedia(supabase, attachmentUrl, 'image', conversationId);
-          }
-          break;
-        case 'video':
-          messageType = 'video';
-          content = '[Vídeo]';
-          if (attachmentUrl) {
-            mediaUrl = await downloadAndUploadMedia(supabase, attachmentUrl, 'video', conversationId);
-          }
-          break;
-        case 'audio':
-          messageType = 'audio';
-          content = '[Áudio]';
-          if (attachmentUrl) {
-            mediaUrl = await downloadAndUploadMedia(supabase, attachmentUrl, 'audio', conversationId);
-          }
-          break;
-        case 'story_mention':
-          messageType = 'image';
-          content = '[Menção no Story]';
-          if (attachmentUrl) {
-            mediaUrl = await downloadAndUploadMedia(supabase, attachmentUrl, 'story', conversationId);
-          }
-          break;
-        case 'reel':
-          messageType = 'video';
-          content = msg.text || '[Resposta ao Reel]';
-          if (attachmentUrl) {
-            mediaUrl = await downloadAndUploadMedia(supabase, attachmentUrl, 'reel', conversationId);
-          }
-          break;
-        default:
-          messageType = 'text';
-          content = msg.text || `[${attachmentType}]`;
-      }
-    } else {
-      messageType = 'text';
-      content = msg.text || '';
+    switch (attachType) {
+      case 'image':
+        messageType = 'image';
+        content = '[Imagem]';
+        if (attachment.payload?.url) {
+          mediaUrl = await downloadAndUploadMedia(
+            supabase, attachment.payload.url, 'image', conversationId, config.page_access_token
+          );
+        }
+        break;
+      case 'video':
+        messageType = 'video';
+        content = '[Vídeo]';
+        if (attachment.payload?.url) {
+          mediaUrl = await downloadAndUploadMedia(
+            supabase, attachment.payload.url, 'video', conversationId, config.page_access_token
+          );
+        }
+        break;
+      case 'audio':
+        messageType = 'audio';
+        content = '[Áudio]';
+        if (attachment.payload?.url) {
+          mediaUrl = await downloadAndUploadMedia(
+            supabase, attachment.payload.url, 'audio', conversationId, config.page_access_token
+          );
+        }
+        break;
+      case 'file':
+        messageType = 'document';
+        content = '[Arquivo]';
+        if (attachment.payload?.url) {
+          mediaUrl = await downloadAndUploadMedia(
+            supabase, attachment.payload.url, 'document', conversationId, config.page_access_token
+          );
+        }
+        break;
+      case 'share':
+        // Shared post/reel/story
+        messageType = 'text';
+        content = attachment.payload?.url
+          ? `📎 Compartilhou: ${attachment.payload.url}`
+          : '[Compartilhamento]';
+        break;
+      case 'story_mention':
+        messageType = 'text';
+        content = '📖 Mencionou você nos Stories';
+        if (attachment.payload?.url) {
+          mediaUrl = await downloadAndUploadMedia(
+            supabase, attachment.payload.url, 'image', conversationId, config.page_access_token
+          );
+        }
+        break;
+      default:
+        content = `[${attachType}]`;
     }
 
-    // Story reply detection
-    if (msg.reply_to?.story) {
-      if (!content) content = '[Resposta ao Story]';
+    // If there's text alongside the attachment
+    if (message.text && attachType !== 'share') {
+      content = message.text;
     }
   }
 
-  // =========================================================
-  // 4. SALVAR MENSAGEM
-  // =========================================================
-  const instagramMessageId = event.message?.mid || event.postback?.mid || null;
+  // Quick reply
+  if (message.quick_reply) {
+    content = message.text || message.quick_reply.payload || '[Resposta rápida]';
+  }
 
-  // Check for duplicate
-  if (instagramMessageId) {
-    const { data: existingMsg } = await supabase
-      .from('messages')
-      .select('id')
-      .eq('instagram_message_id', instagramMessageId)
-      .maybeSingle();
+  // Sticker (special case of image)
+  if (message.sticker_id) {
+    messageType = 'sticker';
+    content = '[Sticker]';
+  }
 
-    if (existingMsg) {
-      console.log('[Instagram] Duplicate message, skipping:', instagramMessageId);
+  // Story reply
+  if (message.reply_to?.story) {
+    content = `💬 Respondeu ao Story: ${content}`;
+    if (message.reply_to.story.url) {
+      // Could download story media too
+    }
+  }
+
+  // Check idempotency
+  const { data: existingMsg } = await supabase
+    .from('messages')
+    .select('id')
+    .eq('whatsapp_message_id', message.mid)
+    .maybeSingle();
+
+  let insertedMessage: { id: string } | null = null;
+
+  if (existingMsg) {
+    console.log('[Instagram] Message already exists:', message.mid);
+    insertedMessage = existingMsg;
+  } else {
+    const { data, error } = await supabase.from('messages').insert({
+      conversation_id: conversationId,
+      contact_id: contactId,
+      tenant_id: config.tenant_id,
+      content,
+      message_type: messageType,
+      media_url: mediaUrl,
+      is_from_me: false,
+      whatsapp_message_id: message.mid, // Reusing this field for Instagram message ID
+    }).select('id').single();
+
+    if (error) {
+      console.error('[Instagram] Error inserting message:', error);
       return;
     }
+    insertedMessage = data;
   }
 
-  const { error: msgError } = await supabase.from('messages').insert({
-    conversation_id: conversationId,
-    contact_id: contactId,
-    content,
-    message_type: messageType,
-    media_url: mediaUrl,
-    is_from_me: false,
-    instagram_message_id: instagramMessageId,
-    status: 'delivered',
-    tenant_id: channel.tenant_id,
-    created_at: timestamp.toISOString(),
-  });
+  console.log('[Instagram] ✅ Message saved:', insertedMessage?.id);
 
-  if (msgError) {
-    console.error('[Instagram] Error saving message:', msgError);
-    return;
-  }
-
-  // =========================================================
-  // 5. ATUALIZAR CONVERSA
-  // =========================================================
-  const preview = getMessagePreview(messageType, content);
-
-  const { data: currentConv } = await supabase
-    .from('conversations')
-    .select('unread_count')
-    .eq('id', conversationId)
-    .single();
+  // Update conversation
+  await supabase.rpc('increment_unread', { conv_id: conversationId });
 
   await supabase
     .from('conversations')
     .update({
       last_message_at: timestamp.toISOString(),
-      last_message_preview: preview,
+      last_message_preview: content.substring(0, 100),
       last_message_is_from_me: false,
-      unread_count: (currentConv?.unread_count || 0) + 1,
       is_unread: true,
-      status: 'open',
-      updated_at: new Date().toISOString(),
+      last_client_message_at: timestamp.toISOString(),
     })
     .eq('id', conversationId);
 
-  // Atualizar estatísticas do canal
-  await supabase.rpc('increment_field', {
-    table_name: 'instagram_channels',
-    field_name: 'messages_received',
-    row_id: channel.id,
-    increment_by: 1,
-  }).catch(() => {
-    // Se RPC não existir, atualizar diretamente
-    supabase
-      .from('instagram_channels')
-      .update({
-        messages_received: (channel.messages_received || 0) + 1,
-        last_sync_at: new Date().toISOString(),
-      })
-      .eq('id', channel.id);
-  });
+  // Dispatch webhook
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-  console.log(`[Instagram] ✅ Message saved: conv=${conversationId}, contact=${contactId}, type=${messageType}`);
+    const { data: contactData } = await supabase
+      .from('contacts')
+      .select('id, full_name, phone, email, lead_status, lead_score')
+      .eq('id', contactId)
+      .single();
 
-  // =========================================================
-  // 6. DISPARAR FLOW TRIGGERS (se configurado)
-  // =========================================================
-  if (isNewConversation) {
-    try {
-      await supabase.functions.invoke('process-flow-triggers', {
-        body: {
+    await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        action: 'dispatch',
+        event: {
+          type: 'message.received',
+          data: {
+            message: {
+              id: insertedMessage?.id,
+              whatsapp_message_id: message.mid,
+              type: messageType,
+              content,
+              media_url: mediaUrl,
+              timestamp: timestamp.toISOString(),
+              source: 'instagram_direct',
+            },
+            contact: {
+              id: contactId,
+              name: contactData?.full_name || senderName,
+              phone: contactData?.phone || igPhone,
+              email: contactData?.email || null,
+            },
+            conversation: { id: conversationId },
+            channel: { id: config.channel_id },
+          },
+          context: {
+            channel: { id: config.channel_id },
+            tenant_id: config.tenant_id,
+          },
+        },
+      }),
+    });
+  } catch (webhookError) {
+    console.error('[Instagram] Webhook dispatch error:', webhookError);
+  }
+
+  // Trigger flow processing
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    await fetch(`${supabaseUrl}/functions/v1/process-flow-triggers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        type: 'message_received',
+        tenant_id: config.tenant_id,
+        data: {
           conversation_id: conversationId,
           contact_id: contactId,
-          tenant_id: channel.tenant_id,
-          trigger_type: 'first_message',
+          channel_id: config.channel_id,
           message_content: content,
-          channel_type: 'instagram',
+          message_type: messageType,
         },
-      });
-    } catch (flowError) {
-      console.log('[Instagram] Flow trigger error (non-critical):', flowError);
-    }
-  }
-}
-
-function getMessagePreview(type: string, content: string): string {
-  switch (type) {
-    case 'image': return '📷 Imagem';
-    case 'video': return '🎬 Vídeo';
-    case 'audio': return '🎵 Áudio';
-    default: return content.substring(0, 100);
+      }),
+    });
+  } catch (flowError) {
+    console.error('[Instagram] Flow trigger error:', flowError);
   }
 }

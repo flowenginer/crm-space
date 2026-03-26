@@ -17,7 +17,6 @@ const pageTitles: Record<string, string> = {
   '/quick-messages': 'Mensagens Rápidas',
   '/crm': 'CRM',
   '/whatsapp-channels': 'Canais WhatsApp',
-  '/instagram-channels': 'Canais Instagram',
   '/contacts': 'Contatos',
   '/reports': 'Relatórios',
   '/settings': 'Configurações',

@@ -46,7 +46,7 @@ export function MetaTemplateSelector({
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
   const detailedVars = selectedTemplate 
-    ? extractDetailedVariables(selectedTemplate.components) 
+    ? extractDetailedVariables(selectedTemplate.components, selectedTemplate.header_media_url) 
     : null;
 
   useEffect(() => {
@@ -169,8 +169,8 @@ export function MetaTemplateSelector({
         </Button>
       </div>
 
-      {/* Media header URL input — REQUIRED for templates with media headers */}
-      {selectedTemplate && detailedVars?.hasMediaHeader && (
+      {/* Media header URL input — only shown when template has no auto URL from Meta */}
+      {selectedTemplate && detailedVars?.hasMediaHeader && !detailedVars.headerMediaUrl && (
         <div className="space-y-2 rounded-lg border p-4 bg-muted/30">
           <Label className="text-sm font-medium flex items-center gap-2">
             {getMediaIcon(detailedVars.headerFormat!)}
@@ -193,6 +193,22 @@ export function MetaTemplateSelector({
               Informe a URL pública da mídia que será enviada no cabeçalho do template.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Show auto-detected media info */}
+      {selectedTemplate && detailedVars?.hasMediaHeader && detailedVars.headerMediaUrl && (
+        <div className="space-y-2 rounded-lg border p-4 bg-muted/30">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            {getMediaIcon(detailedVars.headerFormat!)}
+            Mídia do Cabeçalho
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-green-500 text-green-500">
+              Automático
+            </Badge>
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            A imagem cadastrada no template será usada automaticamente.
+          </p>
         </div>
       )}
 

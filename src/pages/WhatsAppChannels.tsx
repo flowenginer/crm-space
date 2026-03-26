@@ -26,6 +26,8 @@ import {
   FileText,
 } from 'lucide-react';
 import { CloudAPIConnect } from '@/components/whatsapp/CloudAPIConnect';
+import { InstagramConnect } from '@/components/instagram/InstagramConnect';
+import { Instagram } from 'lucide-react';
 import { CloudAPIChannelCard } from '@/components/whatsapp/CloudAPIChannelCard';
 import {
   Tooltip,
@@ -144,9 +146,12 @@ export default function WhatsAppChannels() {
   
   // State for Cloud API Connect dialog
   const [showCloudAPIConnect, setShowCloudAPIConnect] = useState(false);
+  // State for Instagram Connect dialog
+  const [showInstagramConnect, setShowInstagramConnect] = useState(false);
   
-  // Separate official and non-official channels
-  const officialChannels = channels.filter(c => c.type === 'official');
+  // Separate official, non-official and instagram channels
+  const instagramChannels = channels.filter(c => c.phone?.startsWith('@'));
+  const officialChannels = channels.filter(c => c.type === 'official' && !c.phone?.startsWith('@'));
   const nonOfficialChannels = channels.filter(c => c.type !== 'official');
 
   // Sincronização automática de status ao carregar a página
@@ -948,6 +953,14 @@ export default function WhatsAppChannels() {
                   <p className="text-xs text-muted-foreground">API Oficial Meta - Recomendado</p>
                 </div>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowInstagramConnect(true)}>
+                <Instagram size={16} className="mr-2 text-pink-600" />
+                <div>
+                  <p className="font-medium text-pink-600">Instagram Direct</p>
+                  <p className="text-xs text-muted-foreground">Mensagens do Instagram via Facebook Login</p>
+                </div>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           </div>
@@ -1024,6 +1037,29 @@ export default function WhatsAppChannels() {
               </div>
             </div>
           )}
+
+          {/* Instagram Channels Section */}
+          {instagramChannels.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Instagram size={20} className="text-pink-600" />
+                <h2 className="text-lg font-semibold text-foreground">Instagram Direct</h2>
+                <span className="px-2 py-0.5 bg-pink-500/20 text-pink-600 rounded-full text-xs font-medium">
+                  {instagramChannels.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {instagramChannels.map((channel) => (
+                  <CloudAPIChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    onOpenDetails={handleOpenDetails}
+                    onDelete={handleDeleteClick}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
         </TabsContent>
@@ -1039,6 +1075,16 @@ export default function WhatsAppChannels() {
         onClose={() => setShowCloudAPIConnect(false)}
         onSuccess={() => {
           setShowCloudAPIConnect(false);
+          refetchChannels();
+        }}
+      />
+
+      {/* Instagram Connect Dialog */}
+      <InstagramConnect
+        open={showInstagramConnect}
+        onClose={() => setShowInstagramConnect(false)}
+        onSuccess={() => {
+          setShowInstagramConnect(false);
           refetchChannels();
         }}
       />

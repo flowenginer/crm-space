@@ -1,43 +1,26 @@
 
 
-# Fix: Enviar componente header com imagem para templates Meta
+## Plano: Filtro de Agentes por Canal no Relatório
 
-## Problema confirmado pelos logs
+### Problema
+Quando se filtra por canal "Master Leads", aparecem agentes como "Rainy" que pertencem ao canal "Emprega Mais". Isso acontece porque a Rainy foi atribuída a conversas no canal Master Leads (antes da restrição ou via transferência). O dado é tecnicamente correto, mas operacionalmente confuso.
 
-A Meta **sempre** exige o componente `header` com `type: "image"` + `link` ou `id` para templates com header IMAGE. Omitir o componente causa `Format mismatch, expected IMAGE, received UNKNOWN` (#132012).
+### Solução Proposta
+Duas melhorias complementares:
 
-A correção anterior (omitir header para "imagem estática") estava incorreta.
+#### 1. Filtro de Agentes contextual por canal selecionado
+**Arquivo:** `src/pages/ConversationReport.tsx`
 
-## Solução
+Quando um canal é selecionado no filtro, o dropdown de **Agentes** passa a mostrar apenas agentes que possuem conversas naquele canal (em vez de listar todos os agentes do tenant). Isso é feito filtrando os agentes disponíveis com base nos dados já retornados ou com uma query auxiliar.
 
-Para templates com header IMAGE/VIDEO/DOCUMENT sem `header_media_url` fornecida pelo usuário, o sistema precisa:
-1. Extrair a URL de exemplo do template (`example.header_handle` no campo `components` do template salvo no banco)
-2. Se não houver URL de exemplo disponível, **exigir que o usuário forneça** a URL da mídia antes de enviar
+#### 2. Filtro de Agentes por `user_channels` (opcional, mais restritivo)
+Alternativamente, filtrar o dropdown de agentes com base na tabela `user_channels` — só mostra agentes que estão configurados para aquele canal. Isso impediria ver dados de agentes "intrusos" mesmo que tenham atendido leads no canal.
 
-### Abordagem: Exigir URL de mídia na UI
+### Recomendação
+A opção 1 é mais pragmática: mostra apenas agentes que realmente têm conversas no canal filtrado, sem esconder dados históricos. A opção 2 é mais restritiva mas pode ocultar dados válidos.
 
-Como os `header_handle` são temporários e expiram, a solução correta é:
-
-1. **Na UI de envio de template** (`Conversations.tsx` e `BulkDispatch`): quando o template tem header IMAGE e não há variáveis de texto no header, mostrar um campo obrigatório para URL da imagem (ou upload)
-2. **No backend**: remover a lógica de "skip" e sempre enviar o componente header com a mídia fornecida
-
-### Arquivos modificados
-
-| Arquivo | Mudança |
-|---|---|
-| `supabase/functions/process-bulk-dispatch/index.ts` | Remover lógica de skip; lançar erro se template IMAGE não tiver `header_media_url` |
-| `supabase/functions/cloudapi-send-message/index.ts` | Sem mudança (já envia o que recebe) |
-| `src/pages/Conversations.tsx` | Quando template tem header IMAGE sem variáveis, exigir URL da imagem no modal |
-| `src/components/meta-templates/MetaTemplateUseModal.tsx` | Adicionar campo de upload/URL para mídia do header quando tipo é IMAGE |
-| `src/components/meta-templates/MetaTemplateSelector.tsx` | Garantir que campo `header_media_url` aparece para templates com header estático IMAGE |
-
-### Fluxo corrigido
-
-```text
-Template com header IMAGE (sem variáveis de texto):
-  UI → campo obrigatório "URL da imagem" ou upload
-  → envia header_media_url no payload
-  → backend monta: { type: "header", parameters: [{ type: "image", image: { link: url } }] }
-  → Meta aceita ✅
-```
+### Alteração Técnica (Opção 1)
+**Arquivo único:** `src/pages/ConversationReport.tsx`
+- No carregamento da lista de agentes para o dropdown, quando `selectedChannels` contiver um canal, fazer uma query para buscar apenas `assigned_to` distintos das conversas daquele canal
+- Isso faz o dropdown de agentes ficar contextual ao canal selecionado
 

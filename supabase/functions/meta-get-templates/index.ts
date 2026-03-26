@@ -126,7 +126,67 @@ serve(async (req) => {
 
     // Sync templates to local database
     for (const template of templates) {
-      const templateData = {
+      // Check if template has an IMAGE/VIDEO/DOCUMENT header with header_handle
+      let headerMediaUrl: string | null = null;
+      const headerComp = template.components?.find((c: any) => c.type === 'HEADER');
+      const headerFormat = headerComp?.format;
+      const isMediaHeader = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat || '');
+      
+      if (isMediaHeader && headerComp?.example?.header_handle?.length > 0) {
+        const tempUrl = headerComp.example.header_handle[0];
+        
+        // Check if we already have a permanent URL for this template
+        const { data: existing } = await supabase
+          .from('meta_message_templates')
+          .select('header_media_url')
+          .eq('tenant_id', tenantId)
+          .eq('name', template.name)
+          .eq('language', template.language)
+          .maybeSingle();
+        
+        if (existing?.header_media_url) {
+          // Already have a permanent URL, keep it
+          headerMediaUrl = existing.header_media_url;
+          console.log('[Meta Templates] Using existing Storage URL for:', template.name);
+        } else {
+          // Download from Meta CDN and upload to Supabase Storage
+          try {
+            console.log('[Meta Templates] Downloading header media for:', template.name);
+            const mediaResponse = await fetch(tempUrl);
+            
+            if (mediaResponse.ok) {
+              const mediaBlob = await mediaResponse.arrayBuffer();
+              const contentType = mediaResponse.headers.get('content-type') || 'image/jpeg';
+              const ext = contentType.includes('png') ? 'png' : contentType.includes('video') ? 'mp4' : contentType.includes('pdf') ? 'pdf' : 'jpg';
+              const storagePath = `${tenantId}/${template.name}_${template.language}.${ext}`;
+              
+              const { error: uploadError } = await supabase.storage
+                .from('template-media')
+                .upload(storagePath, mediaBlob, {
+                  contentType,
+                  upsert: true,
+                });
+              
+              if (!uploadError) {
+                const { data: publicUrlData } = supabase.storage
+                  .from('template-media')
+                  .getPublicUrl(storagePath);
+                
+                headerMediaUrl = publicUrlData.publicUrl;
+                console.log('[Meta Templates] Uploaded to Storage:', headerMediaUrl);
+              } else {
+                console.error('[Meta Templates] Upload error:', uploadError);
+              }
+            } else {
+              console.warn('[Meta Templates] Failed to download media (status', mediaResponse.status, ') for:', template.name);
+            }
+          } catch (downloadErr) {
+            console.error('[Meta Templates] Error downloading/uploading media for:', template.name, downloadErr);
+          }
+        }
+      }
+
+      const templateData: Record<string, any> = {
         tenant_id: tenantId,
         cloudapi_config_id: config.id,
         meta_template_id: template.id,
@@ -139,6 +199,10 @@ serve(async (req) => {
         rejection_reason: template.rejected_reason || null,
         last_synced_at: new Date().toISOString(),
       };
+      
+      if (headerMediaUrl) {
+        templateData.header_media_url = headerMediaUrl;
+      }
 
       // Upsert template
       const { error: upsertError } = await supabase

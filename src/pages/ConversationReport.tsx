@@ -28,6 +28,7 @@ import { BulkActionsBar } from '@/components/conversations/BulkActionsBar';
 import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
 import { BulkCloseModal } from '@/components/conversations/BulkCloseModal';
 import { BulkTagModal } from '@/components/conversations/BulkTagModal';
+import { useUserChannels } from '@/hooks/useUserChannels';
 import { BulkLeadStatusModal } from '@/components/conversations/BulkLeadStatusModal';
 import { BulkRescueModal } from '@/components/conversations/BulkRescueModal';
 import { useBulkReopenConversations } from '@/hooks/useBulkConversationActions';
@@ -78,6 +79,8 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'close_reason', label: 'Motivo Fechamento', enabled: true },
   { key: 'created_at', label: 'Data Abertura', enabled: true },
   { key: 'closed_at', label: 'Data Fechamento', enabled: true },
+  { key: 'arrival_time', label: 'Hora Chegada', enabled: true },
+  { key: 'first_response_datetime', label: 'Hora 1ª Resposta', enabled: true },
   { key: 'first_message', label: '1ª Mensagem', enabled: true },
   { key: 'first_response_time', label: 'Tempo 1º Atendimento', enabled: false },
   { key: 'total_active_time', label: 'Tempo Total Atendimento', enabled: false },
@@ -182,6 +185,8 @@ function getFieldValue(conv: any, key: string): any {
     case 'close_reason': return conv.close_reason || '';
     case 'created_at': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
     case 'closed_at': return conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '';
+    case 'arrival_time': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
+    case 'first_response_datetime': return conv.first_response_at ? format(new Date(conv.first_response_at), 'dd/MM/yyyy HH:mm') : '-';
     case 'first_message': return conv.first_message || '';
     case 'first_response_time': {
       if (!conv.first_response_at || !conv.created_at) return '-';
@@ -308,13 +313,8 @@ export default function ConversationReportPage() {
   }, [queryClient]);
 
   // Fetch filter options
-  const { data: channels = [] } = useQuery({
-    queryKey: ['channels-filter'],
-    queryFn: async () => {
-      const { data } = await supabase.from('whatsapp_channels').select('id, name, phone').eq('is_deleted', false);
-      return data || [];
-    }
-  });
+  const userChannels = useUserChannels();
+  const channels = userChannels.map(ch => ({ id: ch.id, name: ch.name, phone: ch.phone }));
 
   const { data: agents = [] } = useQuery({
     queryKey: ['agents-filter'],
@@ -322,6 +322,25 @@ export default function ConversationReportPage() {
       const { data } = await supabase.from('profiles').select('id, full_name').eq('is_active', true).order('full_name');
       return data || [];
     }
+  });
+
+  // Buscar agentes vinculados aos canais selecionados via user_channels
+  const { data: channelAgentIds } = useQuery({
+    queryKey: ['agents-by-channel', filters.channel],
+    queryFn: async () => {
+      if (filters.channel.length === 0) return null; // null = sem filtro
+      const { data, error } = await (supabase as any)
+        .from('user_channels')
+        .select('user_id')
+        .in('channel_id', filters.channel);
+      if (error) {
+        console.warn('Erro ao buscar user_channels:', error.message);
+        return null;
+      }
+      return (data || []).map((d: any) => d.user_id) as string[];
+    },
+    enabled: true,
+    staleTime: 30000,
   });
 
   const { data: departments = [] } = useQuery({
@@ -349,8 +368,17 @@ export default function ConversationReportPage() {
   });
 
   // Fetch report data
+  // Se o usuário tem canais restritos, sempre força o filtro (mesmo sem seleção explícita)
+  const allowedChannelIds = useMemo(() => channels.map(ch => ch.id), [channels]);
+  const getEffectiveChannelIds = (selectedChannels: string[]) => {
+    if (selectedChannels.length > 0) return selectedChannels;
+    // Se o usuário tem restrição de canais, força o filtro
+    if (allowedChannelIds.length > 0) return allowedChannelIds;
+    return null;
+  };
+
   const { data: reportData, isLoading, refetch } = useQuery({
-    queryKey: ['conversation-report', appliedFilters, page],
+    queryKey: ['conversation-report', appliedFilters, page, allowedChannelIds],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('search_conversations_report', {
         p_start_date: appliedFilters.startDate ? `${appliedFilters.startDate}T00:00:00${getTimezoneOffset()}` : null,
@@ -358,7 +386,7 @@ export default function ConversationReportPage() {
         p_name: appliedFilters.name || null,
         p_phone: appliedFilters.phone || null,
         p_lead_status: appliedFilters.leadStatus.length > 0 ? appliedFilters.leadStatus : null,
-        p_channel_ids: appliedFilters.channel.length > 0 ? appliedFilters.channel : null,
+        p_channel_ids: getEffectiveChannelIds(appliedFilters.channel),
         p_agent_ids: appliedFilters.agent.length > 0 ? appliedFilters.agent : null,
         p_department_ids: appliedFilters.department.length > 0 ? appliedFilters.department : null,
         p_tag_ids: appliedFilters.tag.length > 0 ? appliedFilters.tag : null,
@@ -521,7 +549,7 @@ export default function ConversationReportPage() {
           p_name: appliedFilters.name || null,
           p_phone: appliedFilters.phone || null,
           p_lead_status: appliedFilters.leadStatus.length > 0 ? appliedFilters.leadStatus : null,
-          p_channel_ids: appliedFilters.channel.length > 0 ? appliedFilters.channel : null,
+          p_channel_ids: getEffectiveChannelIds(appliedFilters.channel),
           p_agent_ids: appliedFilters.agent.length > 0 ? appliedFilters.agent : null,
           p_department_ids: appliedFilters.department.length > 0 ? appliedFilters.department : null,
           p_tag_ids: appliedFilters.tag.length > 0 ? appliedFilters.tag : null,
@@ -655,7 +683,12 @@ export default function ConversationReportPage() {
   const showSelectAllPagesBanner = selectAll && !selectAllPages && reportData && reportData.total > pageSize;
 
   const channelOptions = channels.map(ch => ({ value: ch.id, label: ch.name }));
-  const agentOptions = [{ value: 'no_agent', label: '⚠️ Sem agente' }, ...agents.map(a => ({ value: a.id, label: a.full_name || '' }))];
+  const filteredAgents = useMemo(() => {
+    if (!channelAgentIds || channelAgentIds.length === 0) return agents;
+    const allowedSet = new Set(channelAgentIds);
+    return agents.filter(a => allowedSet.has(a.id));
+  }, [agents, channelAgentIds]);
+  const agentOptions = [{ value: 'no_agent', label: '⚠️ Sem agente' }, ...filteredAgents.map(a => ({ value: a.id, label: a.full_name || '' }))];
   const departmentOptions = [{ value: 'no_department', label: '⚠️ Sem departamento' }, ...departments.map(d => ({ value: d.id, label: d.name }))];
   const tagOptions = tags.map(t => ({ value: t.id, label: t.name }));
   const leadStatusOptions = leadStatuses.map(ls => ({ value: ls.name, label: ls.name }));
@@ -719,7 +752,7 @@ export default function ConversationReportPage() {
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Canal</label>
-              <MultiSelect options={channelOptions} value={filters.channel} onChange={(value) => setFilters(prev => ({ ...prev, channel: value }))} placeholder="Todos" />
+              <MultiSelect options={channelOptions} value={filters.channel} onChange={(value) => setFilters(prev => ({ ...prev, channel: value, agent: [] }))} placeholder="Todos" />
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Agente</label>

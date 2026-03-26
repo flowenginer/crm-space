@@ -1,0 +1,3 @@
+ALTER TABLE whatsapp_channels DROP CONSTRAINT whatsapp_channels_type_check;
+ALTER TABLE whatsapp_channels ADD CONSTRAINT whatsapp_channels_type_check CHECK (type = ANY (ARRAY['unofficial'::text, 'business'::text, 'official'::text, 'instagram'::text]));
+UPDATE whatsapp_channels SET type = 'instagram' WHERE id IN (SELECT channel_id FROM instagram_configs WHERE is_active = true AND channel_id IS NOT NULL);

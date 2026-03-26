@@ -31,7 +31,6 @@ import CRM from "@/pages/CRM";
 import CRMSettings from "@/pages/CRMSettings";
 import Shipping from "@/pages/Shipping";
 import WhatsAppChannels from "@/pages/WhatsAppChannels";
-import InstagramChannels from "@/pages/InstagramChannels";
 import Contacts from "@/pages/Contacts";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
@@ -71,6 +70,7 @@ import SuperAdminPanel from "@/pages/SuperAdminPanel";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import NotFound from "@/pages/NotFound";
 import MetaOAuthCallback from "@/pages/MetaOAuthCallback";
+import InstagramOAuthCallback from "@/pages/InstagramOAuthCallback";
 import Redirect from "@/pages/Redirect";
 import RedirectLanding from "@/pages/RedirectLanding";
 import CallManagement from "@/pages/CallManagement";
@@ -126,6 +126,7 @@ const App = () => (
             <Route path="/no-access" element={<NoTenantAccess />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/meta-oauth-callback" element={<MetaOAuthCallback />} />
+            <Route path="/instagram-oauth-callback" element={<InstagramOAuthCallback />} />
             <Route path="/whatsapp-callback" element={<WhatsAppCallback />} />
 
             {/* Protected routes with MainLayout */}
@@ -218,11 +219,6 @@ const App = () => (
               <Route path="/whatsapp-channels" element={
                 <ProtectedRoute permission="channels.view">
                   <WhatsAppChannels />
-                </ProtectedRoute>
-              } />
-              <Route path="/instagram-channels" element={
-                <ProtectedRoute permission="channels.view">
-                  <InstagramChannels />
                 </ProtectedRoute>
               } />
               <Route path="/contacts" element={

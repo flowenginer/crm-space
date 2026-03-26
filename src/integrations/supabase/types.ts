@@ -3736,6 +3736,127 @@ export type Database = {
           },
         ]
       }
+      instagram_configs: {
+        Row: {
+          app_secret: string | null
+          channel_id: string | null
+          created_at: string | null
+          id: string
+          instagram_account_id: string
+          is_active: boolean | null
+          page_access_token: string
+          page_id: string
+          tenant_id: string
+          updated_at: string | null
+          verify_token: string
+          webhook_configured: boolean | null
+        }
+        Insert: {
+          app_secret?: string | null
+          channel_id?: string | null
+          created_at?: string | null
+          id?: string
+          instagram_account_id: string
+          is_active?: boolean | null
+          page_access_token: string
+          page_id: string
+          tenant_id: string
+          updated_at?: string | null
+          verify_token?: string
+          webhook_configured?: boolean | null
+        }
+        Update: {
+          app_secret?: string | null
+          channel_id?: string | null
+          created_at?: string | null
+          id?: string
+          instagram_account_id?: string
+          is_active?: boolean | null
+          page_access_token?: string
+          page_id?: string
+          tenant_id?: string
+          updated_at?: string | null
+          verify_token?: string
+          webhook_configured?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_configs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_configs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      instagram_webhook_logs: {
+        Row: {
+          channel_id: string | null
+          config_id: string | null
+          created_at: string | null
+          event_type: string
+          id: string
+          payload: Json
+          processed: boolean | null
+          processing_error: string | null
+          sender_id: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          config_id?: string | null
+          created_at?: string | null
+          event_type: string
+          id?: string
+          payload: Json
+          processed?: boolean | null
+          processing_error?: string | null
+          sender_id?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          config_id?: string | null
+          created_at?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json
+          processed?: boolean | null
+          processing_error?: string | null
+          sender_id?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_webhook_logs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_webhook_logs_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_webhook_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_api_keys: {
         Row: {
           api_key: string
@@ -5603,6 +5724,7 @@ export type Database = {
           components: Json
           created_at: string
           example_values: Json | null
+          header_media_url: string | null
           id: string
           language: string
           last_synced_at: string | null
@@ -5620,6 +5742,7 @@ export type Database = {
           components?: Json
           created_at?: string
           example_values?: Json | null
+          header_media_url?: string | null
           id?: string
           language?: string
           last_synced_at?: string | null
@@ -5637,6 +5760,7 @@ export type Database = {
           components?: Json
           created_at?: string
           example_values?: Json | null
+          header_media_url?: string | null
           id?: string
           language?: string
           last_synced_at?: string | null

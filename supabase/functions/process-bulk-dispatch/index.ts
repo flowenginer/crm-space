@@ -394,12 +394,17 @@ async function sendMetaTemplateMessage(
     .sort(([a], [b]) => a.localeCompare(b));
 
   if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
-    // Media header: use header_media_url if provided by user, or header vars
-    const mediaUrl = headerMediaUrl || (headerVars.length > 0 ? headerVars[0][1] : null);
+    // Media header: use header_media_url from dispatch variables, or from template's stored permanent URL
+    let mediaUrl = headerMediaUrl || (headerVars.length > 0 ? headerVars[0][1] : null);
+
+    // Use permanent Storage URL from template if not provided by user
+    if (!mediaUrl && metaTemplate.header_media_url) {
+      mediaUrl = metaTemplate.header_media_url;
+      console.log(`[BulkDispatch] Using permanent Storage URL from template`);
+    }
 
     if (mediaUrl) {
-      // User provided a media URL → send it as header component
-      const mediaType = headerFormat.toLowerCase(); // 'image', 'video', 'document'
+      const mediaType = headerFormat.toLowerCase();
       components.push({
         type: 'header',
         parameters: [{
@@ -409,10 +414,8 @@ async function sendMetaTemplateMessage(
       });
       console.log(`[BulkDispatch] Header media (${mediaType}): ${mediaUrl.substring(0, 80)}...`);
     } else if (headerVarCount === 0) {
-      // No media URL provided AND no header variables → ERROR
-      // Meta ALWAYS requires the header component for media templates
-      console.log(`[BulkDispatch] ERROR: Media header template requires header_media_url but none provided`);
-      throw new Error(`Template com cabeçalho de mídia requer header_media_url`);
+      console.log(`[BulkDispatch] ERROR: Media header template requires media URL but none available`);
+      throw new Error(`Template com cabeçalho de mídia requer uma URL de mídia`);
     } else {
       console.log(`[BulkDispatch] WARNING: Media header has ${headerVarCount} variables but no media URL provided`);
     }

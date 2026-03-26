@@ -146,7 +146,6 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useUserDepartments } from '@/hooks/useUserDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { useUserChannels } from '@/hooks/useUserChannels';
-import { useInstagramChannels } from '@/hooks/useInstagramChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds, useAllSharedConversationIds, useMySharePermission } from '@/hooks/useSharedConversations';
 import { useSharedConversationsWithDetails } from '@/hooks/useSharedConversationsWithDetails';
@@ -166,6 +165,7 @@ import { RescueButton } from '@/components/rescue/RescueButton';
 import { RescueActiveAlert } from '@/components/rescue/RescueActiveAlert';
 import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
 import { BulkTagModal } from '@/components/conversations/BulkTagModal';
+import { BulkCloseModal } from '@/components/conversations/BulkCloseModal';
 import { useBulkReturnToOriginalAgent } from '@/hooks/useBulkConversationActions';
 import { use24hWindow, formatRemainingTime } from '@/hooks/use24hWindow';
 import type { Profile } from '@/types';
@@ -291,8 +291,16 @@ const formatWhatsAppText = (text: string): React.ReactNode => {
   });
 };
 
+// Mask undecryptable messages with friendly text
+const maskUndecryptable = (content: string): string => {
+  if (content.includes('[Undecryptable]') || content.includes('descriptografar')) {
+    return '📢 Mensagem inicial do lead (conteúdo criptografado - visualize no WhatsApp do celular)';
+  }
+  return content;
+};
+
 // Alias for backwards compatibility
-const linkifyText = formatWhatsAppText;
+const linkifyText = (text: string) => formatWhatsAppText(maskUndecryptable(text));
 
 // Mock Data for reference (will be replaced by real data)
 const mockConversations = [
@@ -605,24 +613,13 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
             {/* Channel Badge with Status */}
             <div className="flex items-center gap-1.5 flex-wrap">
               {(() => {
-                // Check if it's an Instagram conversation
-                const isInstagram = (conversation as any).channel_type === 'instagram' || (conversation as any).instagram_channel_id;
-                const channelData = isInstagram
-                  ? null
-                  : channels?.find(c => c.id === conversation.channel_id);
-                const igChannelData = isInstagram
-                  ? allInstagramChannels?.find(c => c.id === ((conversation as any).instagram_channel_id || conversation.channel_id))
-                  : null;
-
-                const isConnected = isInstagram
-                  ? igChannelData?.status === 'connected'
-                  : channelData?.status === 'connected';
-                const isOfficial = !isInstagram && (channelData as any)?.type === 'official';
+                const channelData = channels?.find(c => c.id === conversation.channel_id);
+                const isConnected = channelData?.status === 'connected';
+                const channelType = (channelData as any)?.type;
+                const isOfficial = channelType === 'official';
+                const isInstagram = channelType === 'instagram';
                 const statusLabel = isConnected ? 'Ativo' : 'Inativo';
-                const channelName = isInstagram
-                  ? (igChannelData?.name || `@${igChannelData?.instagram_username || 'Instagram'}`)
-                  : (conversation.channel?.name || 'Chat');
-
+                
                 return (
                   <>
                     <Tooltip>
@@ -630,45 +627,42 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
                         <div className={cn(
                           "flex items-center gap-1 px-2 py-0.5 rounded-full cursor-default",
                           isInstagram
-                            ? "bg-pink-500/20"
-                            : isOfficial
-                              ? "bg-blue-500/20"
+                            ? "bg-[#833AB4]/20"
+                            : isOfficial 
+                              ? "bg-blue-500/20" 
                               : isConnected ? "bg-green-500/20" : "bg-red-500/20"
                         )}>
-                          {isInstagram ? (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500">
-                              <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
-                              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-                              <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>
-                            </svg>
-                          ) : (
-                            <MessageCircle size={12} className={cn(
-                              isOfficial
-                                ? "text-blue-500"
+                          <MessageCircle size={12} className={cn(
+                            isInstagram
+                              ? "text-[#833AB4]"
+                              : isOfficial 
+                                ? "text-blue-500" 
                                 : isConnected ? "text-green-500" : "text-red-500"
-                            )} />
-                          )}
+                          )} />
                           <span className={cn(
                             "text-xs font-medium truncate max-w-[80px]",
                             isInstagram
-                              ? "text-pink-500"
-                              : isOfficial
-                                ? "text-blue-500"
+                              ? "text-[#833AB4]"
+                              : isOfficial 
+                                ? "text-blue-500" 
                                 : isConnected ? "text-green-500" : "text-red-500"
                           )}>
-                            {channelName}
+                            {conversation.channel?.name || 'Chat'}
                           </span>
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="top">
-                        <p>{isInstagram ? 'Instagram' : ''} {statusLabel}</p>
+                        <p>{statusLabel}</p>
                       </TooltipContent>
                     </Tooltip>
-
+                    
                     {/* Instagram Badge */}
                     {isInstagram && (
-                      <div className="flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-500/20 via-pink-500/20 to-orange-500/20 rounded-full">
-                        <span className="text-xs text-pink-600 font-semibold">Instagram</span>
+                      <div className="flex items-center gap-1 px-2 py-0.5 bg-[#E1306C]/20 rounded-full">
+                        <svg className="w-3 h-3 text-[#E1306C]" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                        </svg>
+                        <span className="text-xs text-[#E1306C] font-semibold">Instagram</span>
                       </div>
                     )}
 
@@ -1508,6 +1502,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
   const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
+  const [showBulkCloseModal, setShowBulkCloseModal] = useState(false);
   const [isBulkReturning, setIsBulkReturning] = useState(false);
   const [channelChangeDialog, setChannelChangeDialog] = useState<{
     open: boolean;
@@ -1657,7 +1652,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   }, [searchQuery]);
 
   const { data: allChannels = [] } = useChannels();
-  const { data: allInstagramChannels = [] } = useInstagramChannels();
   const userChannels = useUserChannels();
 
   // IDs dos canais permitidos para o usuário (para filtrar conversas)
@@ -2947,123 +2941,111 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   ) => {
     const channelId = selectedConversation?.channel_id;
     const contactPhone = selectedConversation?.contact?.phone;
-
+    
     if (!channelId || !contactPhone || !selectedConversationId) {
       toast.error('Dados insuficientes para enviar template');
       return;
     }
-
+    
     try {
-      // Usar components passados diretamente ou buscar do banco
-      let resolvedComponents = templateComponents;
-      if (!resolvedComponents || resolvedComponents.length === 0) {
-        const { data: fullTemplate } = await supabase
-          .from('meta_message_templates')
-          .select('components')
-          .eq('id', templateId)
-          .single();
-        resolvedComponents = (fullTemplate?.components as any[]) || [];
-      }
-
-      // Montar os componentes do template com as variáveis
-      const components: any[] = [];
-
-      // Detectar formato do header (IMAGE, VIDEO, DOCUMENT, TEXT)
-      const headerComp = resolvedComponents.find((c: any) => c.type === 'HEADER');
-      const headerFormat = headerComp?.format?.toUpperCase();
-
-      // Separar variáveis reais das meta-variáveis (header_media_url)
-      const userMediaUrl = variables['header_media_url'];
-      const variableEntries = Object.entries(variables)
-        .filter(([k]) => k !== 'header_media_url')
-        .sort(([a], [b]) => Number(a) - Number(b));
-
-      if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
-        // Header de mídia: priorizar URL fornecida pelo usuário, senão usar example do template
-        let mediaUrl = userMediaUrl || null;
-        if (!mediaUrl && headerComp?.example?.header_handle?.[0]) {
-          mediaUrl = headerComp.example.header_handle[0];
+      // Build components based on template structure
+      const components: Array<{type: string; parameters: Array<any>}> = [];
+      const variableEntries = Object.entries(variables).sort(([a], [b]) => Number(a) - Number(b));
+      
+      if (templateComponents && templateComponents.length > 0) {
+        // Determine header info
+        const headerComp = templateComponents.find((c: any) => c.type === 'HEADER');
+        const bodyComp = templateComponents.find((c: any) => c.type === 'BODY');
+        const headerFormat = headerComp?.format || 'TEXT';
+        const isMediaHeader = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat);
+        
+        // Count header text variables
+        let headerVarCount = 0;
+        if (headerComp?.text) {
+          const matches = headerComp.text.match(/\{\{(\d+)\}\}/g);
+          headerVarCount = matches ? matches.length : 0;
         }
-        if (mediaUrl) {
-          const mediaType = headerFormat.toLowerCase();
-          components.push({
-            type: 'header',
-            parameters: [{
-              type: mediaType,
-              [mediaType]: { link: mediaUrl },
-            }],
-          });
-        }
-      } else if (headerFormat === 'TEXT' && headerComp?.text) {
-        // Header de texto com variáveis
-        const headerMatches = headerComp.text.match(/\{\{\d+\}\}/g);
-        if (headerMatches && headerMatches.length > 0) {
-          // Header vars vêm antes das body vars na numeração
-          const headerParams = variableEntries.slice(0, headerMatches.length);
-          if (headerParams.length > 0) {
+        
+        // For media headers: always send header component with media link
+        if (isMediaHeader) {
+          let mediaUrl = variables['header_media_url'];
+          
+          // DO NOT fallback to header_handle URLs — they are temporary and expire
+          // The permanent URL should come from variables (set by UI from header_media_url column)
+          
+          if (mediaUrl) {
+            const mediaType = headerFormat.toLowerCase(); // 'image', 'video', 'document'
             components.push({
               type: 'header',
-              parameters: headerParams.map(([, v]) => ({ type: 'text', text: v })),
+              parameters: [{
+                type: mediaType,
+                [mediaType]: { link: mediaUrl }
+              }]
             });
+            // Remove from variableEntries so it's not sent as body var
+            const filteredEntries = variableEntries.filter(([k]) => k !== 'header_media_url');
+            if (filteredEntries.length > 0) {
+              components.push({
+                type: 'body',
+                parameters: filteredEntries.map(([_, value]) => ({
+                  type: 'text',
+                  text: value
+                }))
+              });
+            }
           }
-          // Body vars são as restantes
-          const bodyVars = variableEntries.slice(headerMatches.length);
+        } else if (headerVarCount > 0) {
+          // Text header with variables
+          const headerParams = variableEntries.slice(0, headerVarCount).map(([_, value]) => ({
+            type: 'text',
+            text: value
+          }));
+          if (headerParams.length > 0) {
+            components.push({ type: 'header', parameters: headerParams });
+          }
+          // Body variables (offset by headerVarCount)
+          const bodyVars = variableEntries.filter(([k]) => k !== 'header_media_url').slice(headerVarCount);
           if (bodyVars.length > 0) {
             components.push({
               type: 'body',
-              parameters: bodyVars.map(([, v]) => ({ type: 'text', text: v })),
+              parameters: bodyVars.map(([_, value]) => ({
+                type: 'text',
+                text: value
+              }))
             });
           }
         } else {
-          // Header sem variáveis, body normal
-          if (variableEntries.length > 0) {
+          // No header vars, no media — just body
+          const bodyVars = variableEntries.filter(([k]) => k !== 'header_media_url');
+          if (bodyVars.length > 0) {
             components.push({
               type: 'body',
-              parameters: variableEntries.map(([, v]) => ({ type: 'text', text: v })),
+              parameters: bodyVars.map(([_, value]) => ({
+                type: 'text',
+                text: value
+              }))
             });
           }
         }
       } else {
-        // Sem header especial: todas as variáveis vão pro body
+        // Fallback: all variables as body (legacy behavior)
         if (variableEntries.length > 0) {
           components.push({
             type: 'body',
-            parameters: variableEntries.map(([, v]) => ({ type: 'text', text: v })),
+            parameters: variableEntries.map(([_, value]) => ({
+              type: 'text',
+              text: value
+            }))
           });
         }
       }
-
-      // Para headers de mídia, body vars precisam ser adicionadas separadamente
-      if ((headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') && variableEntries.length > 0) {
-        components.push({
-          type: 'body',
-          parameters: variableEntries.map(([, v]) => ({ type: 'text', text: v })),
-        });
-      }
-
-      // Button variables (URL com sufixo dinâmico)
-      const buttonsComp = resolvedComponents.find((c: any) => c.type === 'BUTTONS');
-      if (buttonsComp?.buttons) {
-        buttonsComp.buttons.forEach((btn: any, idx: number) => {
-          if (btn.type === 'URL' && btn.url?.includes('{{')) {
-            components.push({
-              type: 'button',
-              sub_type: 'url',
-              index: idx,
-              parameters: [{ type: 'text', text: variables[`button_${idx}`] || '' }],
-            });
-          }
-        });
-      }
-      }
-
+      
       // Enviar via Cloud API
       const { data, error } = await supabase.functions.invoke('cloudapi-send-message', {
         body: {
           channelId,
           phone: contactPhone,
           type: 'template',
-          conversationId: selectedConversationId,
           template: {
             name: templateName,
             language: language,
@@ -3071,10 +3053,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           }
         }
       });
-
+      
       if (error) throw error;
-      if (data?.success === false) throw new Error(data?.error || 'Erro ao enviar template');
-
+      
       // Salvar no banco com o conteúdo real do template
       sendMessage.mutate({
         conversation_id: selectedConversationId,
@@ -3083,11 +3064,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         message_type: 'template',
         whatsapp_message_id: data?.messageId
       });
-
+      
       toast.success('Template enviado com sucesso!');
     } catch (error) {
       console.error('Erro ao enviar template Meta:', error);
-      toast.error(`Erro ao enviar template: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      toast.error('Erro ao enviar template');
     }
   }, [selectedConversation, selectedConversationId, sendMessage]);
 
@@ -3209,9 +3190,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         if (channelId && contactPhone) {
           try {
             const result = await sendWhatsAppMessage(
-              channelId,
-              contactPhone,
-              content,
+              channelId, 
+              contactPhone, 
+              content, 
               type as 'text' | 'image' | 'audio' | 'video' | 'document',
               mediaUrl,
               quotedMsgId,
@@ -3226,38 +3207,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             return result.messageId;
           } catch (whatsappError) {
             console.error('[WhatsApp Send Error]', whatsappError);
-            return undefined;
-          }
-        }
-        return undefined;
-      };
-
-      // Função auxiliar para enviar via Instagram
-      const isInstagramConversation = (selectedConv as any)?.channel_type === 'instagram' || (selectedConv as any)?.instagram_channel_id;
-      const instagramChannelId = (selectedConv as any)?.instagram_channel_id;
-      const contactInstagramId = (selectedConv?.contact as any)?.instagram_id;
-
-      const sendViaInstagram = async (content: string, type: string, mediaUrl?: string): Promise<string | undefined> => {
-        if (isInstagramConversation && instagramChannelId && contactInstagramId) {
-          try {
-            const { data, error } = await supabase.functions.invoke('instagram-send-message', {
-              body: {
-                channelId: instagramChannelId,
-                recipientId: contactInstagramId,
-                type: type as 'text' | 'image' | 'video' | 'audio',
-                content,
-                mediaUrl,
-                conversationId: selectedConversationId,
-              },
-            });
-            if (error || !data?.success) {
-              console.error('[Instagram Send Error]', error || data?.error);
-              toast.error('Erro ao enviar para Instagram: ' + (data?.error || error?.message || 'Erro desconhecido'));
-              return undefined;
-            }
-            return data.messageId;
-          } catch (igError) {
-            console.error('[Instagram Send Error]', igError);
             return undefined;
           }
         }
@@ -3282,19 +3231,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           message_type: 'text',
           reply_to_message_id: replyingTo?.id,
         }).then(async (savedMessage) => {
-          if (isInstagramConversation) {
-            // BACKGROUND: Send to Instagram
-            const igMessageId = await sendViaInstagram(contentWithSignature, 'text');
-            if (igMessageId && savedMessage?.id) {
-              await supabase.from('messages').update({ instagram_message_id: igMessageId, status: 'sent' }).eq('id', savedMessage.id);
-            }
-          } else {
-            // BACKGROUND: Send to WhatsApp with same content (already has signature)
-            const whatsAppId = await sendViaWhatsApp(contentWithSignature, 'text', undefined, quotedWhatsAppId);
-            // Update the message with the WhatsApp message ID for future reply linking
-            if (whatsAppId && savedMessage?.id) {
-              updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
-            }
+          // BACKGROUND: Send to WhatsApp with same content (already has signature)
+          const whatsAppId = await sendViaWhatsApp(contentWithSignature, 'text', undefined, quotedWhatsAppId);
+          
+          // Update the message with the WhatsApp message ID for future reply linking
+          if (whatsAppId && savedMessage?.id) {
+            updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
           }
         }).catch(console.error);
         
@@ -3345,26 +3287,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             media_mime_type: result.mimeType,
             reply_to_message_id: replyingTo?.id,
           }).then(async (savedMessage) => {
-            if (isInstagramConversation) {
-              // BACKGROUND: Send to Instagram
-              const igMessageId = await sendViaInstagram(messageContent, messageType, result.url);
-              if (igMessageId && savedMessage?.id) {
-                await supabase.from('messages').update({ instagram_message_id: igMessageId, status: 'sent' }).eq('id', savedMessage.id);
-              }
-            } else {
-              // BACKGROUND: Send to WhatsApp with caption for media or filename for documents
-              const contentToSend = captionForWhatsApp || (messageType === 'document' ? file.name : messageContent);
-              const whatsAppId = await sendViaWhatsApp(
-                contentToSend,
-                messageType,
-                result.url,
-                quotedWhatsAppId,
-                messageType === 'document' ? file.name : undefined
-              );
-              // Update the message with the WhatsApp message ID for future reply linking
-              if (whatsAppId && savedMessage?.id) {
-                updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
-              }
+            // BACKGROUND: Send to WhatsApp with caption for media or filename for documents
+            const contentToSend = captionForWhatsApp || (messageType === 'document' ? file.name : messageContent);
+            const whatsAppId = await sendViaWhatsApp(
+              contentToSend, 
+              messageType, 
+              result.url, 
+              quotedWhatsAppId,
+              messageType === 'document' ? file.name : undefined
+            );
+            
+            // Update the message with the WhatsApp message ID for future reply linking
+            if (whatsAppId && savedMessage?.id) {
+              updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
             }
           }).catch(console.error);
         }
@@ -3858,59 +3793,32 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           messageId: audioMessageId
         });
 
-        // Check if Instagram conversation
-        const isIgConv = (selectedConv as any)?.channel_type === 'instagram' || (selectedConv as any)?.instagram_channel_id;
-        const igChannelId = (selectedConv as any)?.instagram_channel_id;
-        const igContactId = (selectedConv?.contact as any)?.instagram_id;
-
-        if (isIgConv && igChannelId && igContactId) {
-          // Send via Instagram Edge Function
-          supabase.functions.invoke('instagram-send-message', {
-            body: {
-              channelId: igChannelId,
-              recipientId: igContactId,
-              type: 'audio',
-              mediaUrl: result.url,
-              conversationId: selectedConversationId,
-            },
-          }).then(async ({ data, error }) => {
-            if (error || !data?.success) {
-              console.error('[Audio Send] Instagram send failed:', error || data?.error);
-              if (audioMessageId) {
-                await supabase.from('messages').update({ status: 'failed' }).eq('id', audioMessageId);
-                queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
-              }
-              toast.error('Erro ao enviar áudio para o Instagram');
-            } else if (data?.messageId && audioMessageId) {
-              await supabase.from('messages').update({ instagram_message_id: data.messageId, status: 'sent' }).eq('id', audioMessageId);
-              queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
-            }
-          }).catch(async (error) => {
-            console.error('[Audio Send] Instagram error:', error);
-            if (audioMessageId) {
-              await supabase.from('messages').update({ status: 'failed' }).eq('id', audioMessageId);
-              queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
-            }
-            toast.error('Erro ao enviar áudio para o Instagram');
-          });
-        } else if (channelId && contactPhone) {
+        if (channelId && contactPhone) {
           sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url, undefined, undefined, selectedConversationId)
             .then(async (response) => {
               console.log('[Audio Send] WhatsApp response:', response);
               if (response.success && response.messageId) {
+                // Use status from response if available (UAZAPI can return delivered/read)
+                // Otherwise default to 'sent'
                 const messageStatus = (response as any).status || 'sent';
+                console.log('[Audio Send] Using status:', messageStatus);
+                
+                // Update the message with the WhatsApp ID using the saved message ID
                 const { error: updateError } = await supabase
                   .from('messages')
                   .update({ whatsapp_message_id: response.messageId, status: messageStatus })
                   .eq('id', audioMessageId);
-
+                
                 if (updateError) {
                   console.error('[Audio Send] Failed to update message with WhatsApp ID:', updateError);
                 } else {
+                  console.log('[Audio Send] Message updated with WhatsApp ID:', response.messageId, 'Status:', messageStatus);
+                  // Invalidate queries to refresh UI
                   queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
                 }
               } else if (!response.success) {
                 console.error('[Audio Send] WhatsApp send failed:', response.error);
+                // Mark message as failed
                 if (audioMessageId) {
                   await supabase
                     .from('messages')
@@ -3923,6 +3831,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             })
             .catch(async (error) => {
               console.error('[Audio Send] Failed to send audio via WhatsApp:', error);
+              // Mark message as failed
               if (audioMessageId) {
                 await supabase
                   .from('messages')
@@ -3933,7 +3842,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               toast.error('Erro ao enviar áudio para o WhatsApp');
             });
         } else {
-          console.error('[Audio Send] Missing channel data:', { channelId, contactPhone, igChannelId, igContactId });
+          console.error('[Audio Send] Missing channelId or contactPhone:', { channelId, contactPhone });
           toast.error('Não foi possível enviar o áudio: dados do canal incompletos');
         }
       }
@@ -4058,7 +3967,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       <div className="p-3 border-b border-border">
                         <h4 className="font-semibold flex items-center gap-2 text-sm">
                           <MessageCircle size={16} />
-                          Canais de Atendimento
+                          Canais WhatsApp
                         </h4>
                       </div>
                       <div className="max-h-64 overflow-y-auto">
@@ -4093,43 +4002,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             </div>
                           ))
                         )}
-                        {/* Instagram Channels */}
-                        {allInstagramChannels.length > 0 && (
-                          <>
-                            <div className="px-3 py-1.5 bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-orange-500/10 border-b border-border/50">
-                              <span className="text-xs font-medium text-pink-500">Instagram</span>
-                            </div>
-                            {allInstagramChannels.map(igChannel => (
-                              <div
-                                key={igChannel.id}
-                                className="flex items-center justify-between p-3 hover:bg-muted/50 border-b border-border/50 last:border-b-0"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className={cn(
-                                    "w-2 h-2 rounded-full flex-shrink-0",
-                                    igChannel.status === 'connected' ? "bg-pink-500" : "bg-red-500"
-                                  )} />
-                                  <div className="min-w-0">
-                                    <p className="font-medium text-sm truncate">{igChannel.name}</p>
-                                    <p className="text-xs text-muted-foreground">@{igChannel.instagram_username}</p>
-                                  </div>
-                                </div>
-                                <span className={cn(
-                                  "text-xs px-2 py-0.5 rounded-full flex-shrink-0",
-                                  igChannel.status === 'connected'
-                                    ? "bg-pink-500/20 text-pink-600"
-                                    : "bg-red-500/20 text-red-600"
-                                )}>
-                                  {igChannel.status === 'connected' ? 'Ativo' : 'Inativo'}
-                                </span>
-                              </div>
-                            ))}
-                          </>
-                        )}
                       </div>
                       <div className="p-3 border-t border-border bg-muted/30">
                         <span className="text-xs text-muted-foreground">
-                          {(userChannels?.filter(c => c.status === 'connected').length || 0) + allInstagramChannels.filter(c => c.status === 'connected').length} ativos · {(userChannels?.filter(c => c.status !== 'connected').length || 0) + allInstagramChannels.filter(c => c.status !== 'connected').length} inativos
+                          {userChannels?.filter(c => c.status === 'connected').length || 0} ativos · {userChannels?.filter(c => c.status !== 'connected').length || 0} inativos
                         </span>
                       </div>
                     </PopoverContent>
@@ -4792,6 +4668,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              onClick={() => setShowBulkCloseModal(true)}
+              disabled={selectedConversationIds.size === 0}
+              className="h-8 text-destructive border-destructive/30 hover:bg-destructive/10"
+            >
+              <XCircle size={16} className="mr-1" />
+              Fechar
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               onClick={cancelConversationSelection}
               className="h-8"
@@ -4822,6 +4708,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           }
           onSuccess={() => {
             setShowBulkTagModal(false);
+            setSelectedConversationIds(new Set());
+            setIsConversationSelectionMode(false);
+          }}
+        />
+
+        {/* Bulk Close Modal */}
+        <BulkCloseModal
+          open={showBulkCloseModal}
+          onClose={() => setShowBulkCloseModal(false)}
+          conversationIds={Array.from(selectedConversationIds)}
+          onSuccess={() => {
+            setShowBulkCloseModal(false);
             setSelectedConversationIds(new Set());
             setIsConversationSelectionMode(false);
           }}
