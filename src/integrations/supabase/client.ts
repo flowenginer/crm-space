@@ -5,6 +5,41 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+// Fetch com retry e timeout para redes instáveis (ex: Claro DOCSIS/CGN)
+const resilientFetch: typeof fetch = async (input, init) => {
+  const maxRetries = 3;
+  const timeout = 30000; // 30s timeout
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(input, {
+        ...init,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      const isLastAttempt = attempt === maxRetries - 1;
+      if (isLastAttempt) throw err;
+
+      // Retry apenas em erros de rede, não em aborts manuais
+      if (err.name === 'AbortError' && init?.signal?.aborted) throw err;
+
+      // Backoff exponencial: 1s, 2s, 4s
+      const delay = Math.pow(2, attempt) * 1000;
+      console.warn(`[Supabase] Tentativa ${attempt + 1}/${maxRetries} falhou, retentando em ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  // Fallback - nunca deve chegar aqui
+  return fetch(input, init);
+};
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
@@ -13,5 +48,8 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
+  global: {
+    fetch: resilientFetch,
+  },
 });

@@ -211,9 +211,9 @@ export function useAuth() {
   }, [setSession, setUser, setIsLoading, setProfile, setTenant, setTenantId, setRoles, loadUserData, reset]);
 
   const signIn = async (email: string, password: string) => {
-    // Timeout de 15s para evitar loading infinito em redes lentas
+    // Timeout de 30s para redes lentas/instáveis (ex: Claro CGN/DOCSIS)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
