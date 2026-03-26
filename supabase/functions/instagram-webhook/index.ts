@@ -583,6 +583,42 @@ async function processInstagramMessage(
       .eq('id', contactId)
       .single();
 
+    const { data: conversationData } = await supabase
+      .from('conversations')
+      .select('department_id, assigned_to, status, priority, unread_count, created_at')
+      .eq('id', conversationId)
+      .single();
+
+    let departmentData = null;
+    if (conversationData?.department_id) {
+      const { data: dept } = await supabase
+        .from('departments')
+        .select('id, name')
+        .eq('id', conversationData.department_id)
+        .single();
+      departmentData = dept;
+    }
+
+    let agentData = null;
+    if (conversationData?.assigned_to) {
+      const { data: agent } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('id', conversationData.assigned_to)
+        .single();
+      agentData = agent;
+    }
+
+    let channelData = null;
+    if (config.channel_id) {
+      const { data: ch } = await supabase
+        .from('instagram_channels')
+        .select('id, name, instagram_username')
+        .eq('id', config.channel_id)
+        .single();
+      channelData = ch;
+    }
+
     await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
       method: 'POST',
       headers: {
@@ -608,12 +644,35 @@ async function processInstagramMessage(
               name: contactData?.full_name || senderName,
               phone: contactData?.phone || igPhone,
               email: contactData?.email || null,
+              lead_status: contactData?.lead_status || null,
+              lead_score: contactData?.lead_score || null,
             },
-            conversation: { id: conversationId },
-            channel: { id: config.channel_id },
+            conversation: {
+              id: conversationId,
+              status: conversationData?.status || 'open',
+              priority: conversationData?.priority || null,
+              unread_count: conversationData?.unread_count || 0,
+              created_at: conversationData?.created_at || null,
+            },
+            department: {
+              id: conversationData?.department_id || null,
+              name: departmentData?.name || null,
+            },
+            channel: {
+              id: config.channel_id,
+              name: channelData?.name || null,
+              instagram_username: channelData?.instagram_username || null,
+            },
+            agent: agentData ? {
+              id: agentData.id,
+              name: agentData.full_name,
+              email: agentData.email,
+            } : null,
           },
           context: {
+            department: { id: conversationData?.department_id },
             channel: { id: config.channel_id },
+            assigned_to: conversationData?.assigned_to,
             tenant_id: config.tenant_id,
           },
         },

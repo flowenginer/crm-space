@@ -1849,6 +1849,120 @@ serve(async (req) => {
       }
 
       console.log(`[Webhook] FromMe message from other device saved for conversation ${conversation.id}`);
+
+      // =====================================================
+      // DISPATCH CUSTOM WEBHOOK (message.sent) for fromMe
+      // Envia para webhooks configurados pelo cliente
+      // =====================================================
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+        const { data: contactData } = await supabase
+          .from('contacts')
+          .select('id, full_name, phone, email, lead_status, lead_score')
+          .eq('id', contact.id)
+          .single();
+
+        const { data: conversationData } = await supabase
+          .from('conversations')
+          .select('department_id, assigned_to, status, priority, unread_count, created_at')
+          .eq('id', conversation.id)
+          .single();
+
+        let departmentData = null;
+        if (conversationData?.department_id) {
+          const { data: dept } = await supabase
+            .from('departments')
+            .select('id, name')
+            .eq('id', conversationData.department_id)
+            .single();
+          departmentData = dept;
+        }
+
+        let agentData = null;
+        if (conversationData?.assigned_to) {
+          const { data: agent } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .eq('id', conversationData.assigned_to)
+            .single();
+          agentData = agent;
+        }
+
+        let channelData = null;
+        if (channel.id) {
+          const { data: ch } = await supabase
+            .from('whatsapp_channels')
+            .select('id, name, phone')
+            .eq('id', channel.id)
+            .single();
+          channelData = ch;
+        }
+
+        await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
+            action: 'dispatch',
+            event: {
+              type: 'message.sent',
+              data: {
+                message: {
+                  id: normalizedMessage.id,
+                  whatsapp_message_id: normalizedMessage.originalId,
+                  type: normalizedMessage.type,
+                  content: normalizedMessage.content,
+                  media_url: finalMediaUrl || null,
+                  timestamp: normalizedMessage.timestamp.toISOString(),
+                },
+                contact: {
+                  id: contact.id,
+                  name: contactData?.full_name || contact.full_name,
+                  phone: contactData?.phone || contact.phone,
+                  email: contactData?.email || null,
+                  lead_status: contactData?.lead_status || null,
+                  lead_score: contactData?.lead_score || null,
+                },
+                conversation: {
+                  id: conversation.id,
+                  status: conversationData?.status || 'open',
+                  priority: conversationData?.priority || null,
+                  unread_count: conversationData?.unread_count || 0,
+                  created_at: conversationData?.created_at || null,
+                },
+                department: {
+                  id: conversationData?.department_id || null,
+                  name: departmentData?.name || null,
+                },
+                channel: {
+                  id: channel.id,
+                  name: channelData?.name || null,
+                  phone_number: channelData?.phone || null,
+                },
+                agent: agentData ? {
+                  id: agentData.id,
+                  name: agentData.full_name,
+                  email: agentData.email,
+                } : null,
+              },
+              context: {
+                department: { id: conversationData?.department_id },
+                channel: { id: channel.id },
+                assigned_to: conversationData?.assigned_to,
+                tenant_id: channel.tenant_id,
+              },
+            },
+          }),
+        });
+        console.log('[Webhook] Webhook dispatched for message.sent (fromMe)');
+      } catch (webhookError) {
+        console.error('[Webhook] Error dispatching custom webhook (fromMe):', webhookError);
+      }
+
       return new Response(JSON.stringify({ success: true, message: "FromMe message saved (other device)" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -3761,6 +3875,122 @@ serve(async (req) => {
     }
 
     console.log(`[Webhook] Message saved successfully for conversation ${conversation.id}`);
+
+    // =====================================================
+    // DISPATCH CUSTOM WEBHOOK (message.received)
+    // Envia para webhooks configurados pelo cliente
+    // =====================================================
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+      // Fetch enriched contact data
+      const { data: contactData } = await supabase
+        .from('contacts')
+        .select('id, full_name, phone, email, lead_status, lead_score')
+        .eq('id', contact.id)
+        .single();
+
+      // Fetch conversation data with department
+      const { data: conversationData } = await supabase
+        .from('conversations')
+        .select('department_id, assigned_to, status, priority, unread_count, created_at')
+        .eq('id', conversation.id)
+        .single();
+
+      let departmentData = null;
+      if (conversationData?.department_id) {
+        const { data: dept } = await supabase
+          .from('departments')
+          .select('id, name')
+          .eq('id', conversationData.department_id)
+          .single();
+        departmentData = dept;
+      }
+
+      let agentData = null;
+      if (conversationData?.assigned_to) {
+        const { data: agent } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('id', conversationData.assigned_to)
+          .single();
+        agentData = agent;
+      }
+
+      let channelData = null;
+      if (channel.id) {
+        const { data: ch } = await supabase
+          .from('whatsapp_channels')
+          .select('id, name, phone')
+          .eq('id', channel.id)
+          .single();
+        channelData = ch;
+      }
+
+      await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({
+          action: 'dispatch',
+          event: {
+            type: 'message.received',
+            data: {
+              message: {
+                id: normalizedMessage.id,
+                whatsapp_message_id: normalizedMessage.originalId,
+                type: normalizedMessage.type,
+                content: normalizedMessage.content,
+                media_url: finalMediaUrl || null,
+                timestamp: normalizedMessage.timestamp.toISOString(),
+              },
+              contact: {
+                id: contact.id,
+                name: contactData?.full_name || contact.full_name,
+                phone: contactData?.phone || contact.phone,
+                email: contactData?.email || null,
+                lead_status: contactData?.lead_status || null,
+                lead_score: contactData?.lead_score || null,
+              },
+              conversation: {
+                id: conversation.id,
+                status: conversationData?.status || 'open',
+                priority: conversationData?.priority || null,
+                unread_count: conversationData?.unread_count || 0,
+                created_at: conversationData?.created_at || null,
+              },
+              department: {
+                id: conversationData?.department_id || null,
+                name: departmentData?.name || null,
+              },
+              channel: {
+                id: channel.id,
+                name: channelData?.name || null,
+                phone_number: channelData?.phone || null,
+              },
+              agent: agentData ? {
+                id: agentData.id,
+                name: agentData.full_name,
+                email: agentData.email,
+              } : null,
+            },
+            context: {
+              department: { id: conversationData?.department_id },
+              channel: { id: channel.id },
+              assigned_to: conversationData?.assigned_to,
+              tenant_id: channel.tenant_id,
+            },
+          },
+        }),
+      });
+      console.log('[Webhook] Webhook dispatched for message.received');
+    } catch (webhookError) {
+      // Non-critical - log but don't fail the webhook
+      console.error('[Webhook] Error dispatching custom webhook:', webhookError);
+    }
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
