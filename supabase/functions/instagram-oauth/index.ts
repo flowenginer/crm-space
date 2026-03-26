@@ -147,7 +147,9 @@ serve(async (req) => {
       const longLivedData = await longLivedRes.json();
       const accessToken = longLivedData.access_token || tokenData.access_token;
 
-      console.log('[Instagram OAuth] Long-lived token obtained, expires_in:', longLivedData.expires_in);
+      const tokenExpiresIn = longLivedData.expires_in || 5184000; // 60 dias padrão
+      const tokenExpiresAt = new Date(Date.now() + tokenExpiresIn * 1000).toISOString();
+      console.log('[Instagram OAuth] Long-lived token obtained, expires_in:', tokenExpiresIn, 'expires_at:', tokenExpiresAt);
 
       // Step 3: Get Instagram user info
       console.log('[Instagram OAuth] Fetching user info...');
@@ -169,6 +171,7 @@ serve(async (req) => {
         page_id: userData.user_id || userData.id,
         page_name: userData.name || userData.username,
         page_access_token: accessToken,
+        token_expires_at: tokenExpiresAt,
         instagram_account_id: userData.user_id || userData.id,
         instagram_username: userData.username || 'N/A',
         instagram_name: userData.name || userData.username || 'Instagram',
@@ -199,6 +202,7 @@ serve(async (req) => {
         page_id,
         page_name,
         page_access_token,
+        token_expires_at,
         instagram_account_id,
         instagram_username,
         instagram_name,
@@ -269,6 +273,7 @@ serve(async (req) => {
           tenant_id: tenantId,
           page_id: page_id || instagram_account_id,
           page_access_token,
+          token_expires_at: token_expires_at || null,
           instagram_account_id,
           channel_id: channelId,
           is_active: true,
