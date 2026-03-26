@@ -65,11 +65,10 @@ serve(async (req) => {
 
     // Buscar canal Instagram
     const { data: channel, error: channelError } = await supabase
-      .from('instagram_channels')
-      .select('id, page_id, page_access_token, instagram_account_id, tenant_id, department_id')
+      .from('instagram_configs')
+      .select('id, page_id, page_access_token, instagram_account_id, tenant_id, channel_id')
       .eq('id', channelId)
       .eq('is_active', true)
-      .eq('is_deleted', false)
       .single();
 
     if (channelError || !channel) {
@@ -163,12 +162,11 @@ serve(async (req) => {
 
     const instagramMessageId = result.message_id || null;
 
-    // Atualizar estatísticas do canal
+    // Atualizar timestamp do canal
     await supabase
-      .from('instagram_channels')
+      .from('instagram_configs')
       .update({
-        messages_sent: (channel as any).messages_sent ? (channel as any).messages_sent + 1 : 1,
-        last_sync_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
       .eq('id', channel.id);
 

@@ -612,8 +612,8 @@ async function processInstagramMessage(
     let channelData = null;
     if (config.channel_id) {
       const { data: ch } = await supabase
-        .from('instagram_channels')
-        .select('id, name, instagram_username')
+        .from('whatsapp_channels')
+        .select('id, name')
         .eq('id', config.channel_id)
         .single();
       channelData = ch;
