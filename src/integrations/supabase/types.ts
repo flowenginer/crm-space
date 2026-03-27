@@ -12511,6 +12511,12 @@ export type Database = {
           received_messages_count: number
           referral_source_app: string
           referral_source_url: string
+          creative_name: string
+          ad_headline: string
+          campaign_name: string
+          adset_name: string
+          ad_body: string
+          source_id: string
           sent_messages_count: number
           status: string
           tag_ids: string

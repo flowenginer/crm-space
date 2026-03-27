@@ -70,6 +70,12 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'contact_origin', label: 'Origem', enabled: true },
   { key: 'referral_source_app', label: 'Plataforma Anúncio', enabled: true },
   { key: 'referral_source_url', label: 'URL Anúncio', enabled: true },
+  { key: 'creative_name', label: 'Nome do Criativo', enabled: true },
+  { key: 'ad_headline', label: 'Título do Anúncio', enabled: false },
+  { key: 'campaign_name', label: 'Campanha', enabled: true },
+  { key: 'adset_name', label: 'Conjunto de Anúncio', enabled: false },
+  { key: 'ad_body', label: 'Texto do Anúncio', enabled: false },
+  { key: 'source_id', label: 'ID do Anúncio', enabled: false },
   { key: 'contact_lead_status', label: 'Status do Lead', enabled: true },
   { key: 'channel_name', label: 'Canal', enabled: true },
   { key: 'agent_name', label: 'Agente', enabled: true },
@@ -176,6 +182,12 @@ function getFieldValue(conv: any, key: string): any {
     case 'contact_origin': return formatOrigin(conv.contact?.origin);
     case 'referral_source_app': return conv.referral_source_app || '';
     case 'referral_source_url': return conv.referral_source_url || '';
+    case 'creative_name': return conv.creative_name || '';
+    case 'ad_headline': return conv.ad_headline || '';
+    case 'campaign_name': return conv.campaign_name || '';
+    case 'adset_name': return conv.adset_name || '';
+    case 'ad_body': return conv.ad_body || '';
+    case 'source_id': return conv.source_id || '';
     case 'contact_lead_status': return conv.contact?.lead_status || '';
     case 'channel_name': return conv.channel?.name || '';
     case 'agent_name': return conv.assigned_user?.full_name || '';
@@ -414,6 +426,12 @@ export default function ConversationReportPage() {
         received_messages_count: row.received_messages_count,
         referral_source_app: row.referral_source_app || '',
         referral_source_url: row.referral_source_url || '',
+        creative_name: row.creative_name || '',
+        ad_headline: row.ad_headline || '',
+        campaign_name: row.campaign_name || '',
+        adset_name: row.adset_name || '',
+        ad_body: row.ad_body || '',
+        source_id: row.source_id || '',
         internal_notes_text: row.internal_notes_text || '',
         contact: {
           full_name: row.contact_full_name,
@@ -572,6 +590,12 @@ export default function ConversationReportPage() {
           received_messages_count: row.received_messages_count,
           referral_source_app: row.referral_source_app || '',
           referral_source_url: row.referral_source_url || '',
+          creative_name: row.creative_name || '',
+          ad_headline: row.ad_headline || '',
+          campaign_name: row.campaign_name || '',
+          adset_name: row.adset_name || '',
+          ad_body: row.ad_body || '',
+          source_id: row.source_id || '',
           internal_notes_text: row.internal_notes_text || '',
           contact: { full_name: row.contact_full_name, phone: row.contact_phone, lead_status: row.contact_lead_status, origin: row.contact_origin, lead_score: row.contact_lead_score },
           channel: { name: row.channel_name },
