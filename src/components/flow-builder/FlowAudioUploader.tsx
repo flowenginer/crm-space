@@ -99,9 +99,9 @@ export function FlowAudioUploader({ value, onChange, onRemove }: FlowAudioUpload
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const allowedTypes = ['audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/m4a', 'audio/webm'];
+    const allowedTypes = ['audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/m4a'];
     if (!allowedTypes.some(type => file.type.includes(type.split('/')[1]))) {
-      toast({ title: 'Formato não suportado', description: 'Use MP3, OGG, WAV, M4A ou WEBM', variant: 'destructive' });
+      toast({ title: 'Formato não suportado', description: 'Use MP3, OGG, WAV ou M4A', variant: 'destructive' });
       return;
     }
 
