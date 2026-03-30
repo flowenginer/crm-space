@@ -739,37 +739,21 @@ function AudioRecorderInline({
   const [isUploading, setIsUploading] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+
+  const mp3RecorderRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      const { Mp3Recorder } = await import('@/lib/audio/mp3-recorder');
+      mp3RecorderRef.current = new Mp3Recorder();
+      await mp3RecorderRef.current.start();
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await uploadAudio(audioBlob);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
-      
+
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
@@ -778,30 +762,37 @@ function AudioRecorderInline({
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+  const stopRecording = async () => {
+    if (!mp3RecorderRef.current || !isRecording) return;
+
+    setIsRecording(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    try {
+      const mp3Blob = mp3RecorderRef.current.stop();
+      mp3RecorderRef.current = null;
+      await uploadAudio(mp3Blob);
+    } catch (error) {
+      toast.error('Erro ao finalizar gravação');
     }
   };
 
   const uploadAudio = async (blob: Blob) => {
     setIsUploading(true);
     try {
-      const fileName = `marketing_audio_${Date.now()}.webm`;
+      const fileName = `marketing_audio_${Date.now()}.mp3`;
       const { data, error } = await supabase.storage
         .from('conversation-attachments')
-        .upload(fileName, blob, { contentType: 'audio/webm', upsert: true });
-      
+        .upload(fileName, blob, { contentType: 'audio/mpeg', upsert: true });
+
       if (error) throw error;
-      
+
       const { data: urlData } = supabase.storage
         .from('conversation-attachments')
         .getPublicUrl(fileName);
-      
+
       onAudioChange(urlData.publicUrl);
       toast.success('Áudio salvo!');
     } catch (error) {
