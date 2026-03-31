@@ -253,11 +253,11 @@ serve(async (req) => {
             throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
           }
           
-          const contentType = audioResponse.headers.get('content-type') || 'audio/mpeg';
+          const contentType = audioResponse.headers.get('content-type') || 'audio/ogg; codecs=opus';
           const audioBuffer = await audioResponse.arrayBuffer();
           
-          let finalMimeType = 'audio/mpeg';
-          let extension = 'mp3';
+          let finalMimeType = 'audio/ogg; codecs=opus';
+          let extension = 'ogg';
           
           if (contentType.includes('mpeg') || contentType.includes('mp3')) {
             finalMimeType = 'audio/mpeg';
@@ -268,6 +268,9 @@ serve(async (req) => {
           } else if (contentType.includes('mp4') || contentType.includes('m4a')) {
             finalMimeType = 'audio/mp4';
             extension = 'm4a';
+          } else if (contentType.includes('webm')) {
+            finalMimeType = 'audio/ogg; codecs=opus';
+            extension = 'ogg';
           }
           
           const formData = new FormData();
@@ -290,9 +293,9 @@ serve(async (req) => {
             throw new Error(mediaUploadResult.error?.message || 'Failed to upload audio');
           }
           
-          messagePayload.audio = { id: mediaUploadResult.id, voice: true };
+          messagePayload.audio = { id: mediaUploadResult.id };
         } else {
-          messagePayload.audio = { id: mediaUrl, voice: true };
+          messagePayload.audio = { id: mediaUrl };
         }
         break;
 
