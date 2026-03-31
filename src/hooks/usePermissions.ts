@@ -168,6 +168,13 @@ export function usePermissions() {
     editTemplates: () => hasPermission('templates', 'update'),
     deleteTemplates: () => hasPermission('templates', 'delete'),
     
+    // Meta Templates
+    viewMetaTemplates: () => hasPermission('meta_templates', 'view'),
+    sendMetaTemplates: () => hasPermission('meta_templates', 'send'),
+    createMetaTemplates: () => hasPermission('meta_templates', 'create'),
+    editMetaTemplates: () => hasPermission('meta_templates', 'update'),
+    deleteMetaTemplates: () => hasPermission('meta_templates', 'delete'),
+    
     // Channels
     viewChannels: () => hasPermission('channels', 'read'),
     connectChannels: () => hasPermission('channels', 'connect'),

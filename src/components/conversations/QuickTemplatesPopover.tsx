@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useTemplates, useIncrementTemplateUsage, type MessageTemplate, type ContentBlock } from '@/hooks/useTemplates';
 import { useUserContext } from '@/hooks/useUserContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useChatbotFlows } from '@/hooks/useChatbotFlows';
 import { useUserQuickTemplates, useAddQuickTemplate } from '@/hooks/useQuickTemplates';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -97,8 +98,8 @@ export function QuickTemplatesPopover({
   
   // Get user context for role-based filtering
   const { profile } = useUserContext();
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'supervisor';
-  const canUseMetaTemplates = isAdmin || profile?.role === 'sac';
+  const { can } = usePermissions();
+  const canUseMetaTemplates = can.viewMetaTemplates();
 
   // Fetch templates
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
@@ -245,7 +246,7 @@ export function QuickTemplatesPopover({
     setSearchQuery(e.target.value);
   }, []);
 
-  // Filter categories based on permissions - Meta only for admin/supervisor/sac
+  // Filter categories based on permissions - Meta only for users with meta_templates.view permission
   const visibleCategories = useMemo(() => {
     return CATEGORIES.filter(cat => {
       if (cat.id === 'meta') {

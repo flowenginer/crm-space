@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useMenuHierarchy, MenuItem } from '@/hooks/useMenuConfig';
 import * as LucideIcons from 'lucide-react';
@@ -41,6 +41,15 @@ function getAllChildPermissions(item: MenuItem): string[] {
   }
   return keys;
 }
+
+// Definição das permissões de Meta Templates
+const META_TEMPLATE_PERMISSIONS = [
+  { key: 'meta_templates.view', label: 'Ver' },
+  { key: 'meta_templates.send', label: 'Enviar' },
+  { key: 'meta_templates.create', label: 'Criar' },
+  { key: 'meta_templates.update', label: 'Editar' },
+  { key: 'meta_templates.delete', label: 'Excluir' },
+];
 
 // Componente de item de menu recursivo
 function MenuItemRow({
@@ -191,6 +200,7 @@ function MenuItemRow({
 export function MenuPermissionsTree({ permissions, onChange, color }: MenuPermissionsTreeProps) {
   const { data: menuHierarchy = [], isLoading } = useMenuHierarchy();
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [metaExpanded, setMetaExpanded] = useState(true);
 
   // Expandir itens pai por padrão
   useEffect(() => {
@@ -241,14 +251,25 @@ export function MenuPermissionsTree({ permissions, onChange, color }: MenuPermis
         allKeys[key] = enable;
       });
     });
+    // Incluir meta_templates nas ações globais
+    META_TEMPLATE_PERMISSIONS.forEach(perm => {
+      allKeys[perm.key] = enable;
+    });
     onChange(allKeys);
   };
 
-  // Contar total de permissões
+  // Contar total de permissões (incluindo meta_templates)
   const allPermKeys = menuHierarchy.flatMap(item => getAllChildPermissions(item));
-  const enabledCount = allPermKeys.filter(k => permissions[k] === true).length;
-  const totalCount = allPermKeys.length;
+  const allMetaKeys = META_TEMPLATE_PERMISSIONS.map(p => p.key);
+  const allKeys = [...allPermKeys, ...allMetaKeys];
+  const enabledCount = allKeys.filter(k => permissions[k] === true).length;
+  const totalCount = allKeys.length;
   const allEnabled = enabledCount === totalCount && totalCount > 0;
+
+  // Contar meta templates habilitados
+  const metaEnabledCount = allMetaKeys.filter(k => permissions[k] === true).length;
+  const metaTotalCount = allMetaKeys.length;
+  const allMetaEnabled = metaEnabledCount === metaTotalCount;
 
   if (isLoading) {
     return (
@@ -294,6 +315,98 @@ export function MenuPermissionsTree({ permissions, onChange, color }: MenuPermis
             color={color}
           />
         ))}
+
+        {/* Seção: Templates Meta */}
+        <div className="w-full mt-2">
+          <div
+            className="flex items-center justify-between py-2 px-3 rounded-lg transition-colors bg-muted/30"
+          >
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <button
+                type="button"
+                onClick={() => setMetaExpanded(!metaExpanded)}
+                className="p-0.5 hover:bg-muted rounded transition-colors"
+              >
+                {metaExpanded ? (
+                  <ChevronDown size={16} className="text-muted-foreground" />
+                ) : (
+                  <ChevronRight size={16} className="text-muted-foreground" />
+                )}
+              </button>
+              
+              <div
+                className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                style={{ backgroundColor: color ? `${color}15` : 'hsl(var(--muted))' }}
+              >
+                <MessageSquare size={14} style={{ color: color || 'hsl(var(--muted-foreground))' }} />
+              </div>
+              
+              <span className="text-sm font-medium truncate">
+                Templates Meta
+              </span>
+              
+              <span className="text-xs text-muted-foreground ml-1">
+                ({metaEnabledCount}/{metaTotalCount})
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const changes: Record<string, boolean> = {};
+                  META_TEMPLATE_PERMISSIONS.forEach(perm => {
+                    changes[perm.key] = !allMetaEnabled;
+                  });
+                  onChange({ ...permissions, ...changes });
+                }}
+                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                  allMetaEnabled
+                    ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+                    : 'bg-primary/10 text-primary hover:bg-primary/20'
+                }`}
+              >
+                {allMetaEnabled ? 'Desmarcar' : 'Marcar Todos'}
+              </button>
+            </div>
+          </div>
+          
+          {/* Filhos: permissões individuais */}
+          {metaExpanded && (
+            <div className="border-l-2 border-border/50 ml-6">
+              {META_TEMPLATE_PERMISSIONS.map(perm => (
+                <div
+                  key={perm.key}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg transition-colors hover:bg-muted/20"
+                  style={{ paddingLeft: `${12 + 24}px` }}
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="w-5" />
+                    <div
+                      className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: color ? `${color}15` : 'hsl(var(--muted))' }}
+                    >
+                      <MessageSquare size={14} style={{ color: color || 'hsl(var(--muted-foreground))' }} />
+                    </div>
+                    <span className="text-sm truncate">{perm.label}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Switch
+                      checked={permissions[perm.key] === true}
+                      onCheckedChange={(checked) => {
+                        onChange({
+                          ...permissions,
+                          [perm.key]: checked,
+                        });
+                      }}
+                      className="data-[state=checked]:bg-primary"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
