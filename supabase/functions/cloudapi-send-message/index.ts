@@ -175,7 +175,7 @@ serve(async (req) => {
             throw new Error(`Failed to fetch audio: HTTP ${audioResponse.status}`);
           }
           
-          let contentType = audioResponse.headers.get('content-type') || 'audio/mpeg';
+          let contentType = audioResponse.headers.get('content-type') || 'audio/ogg; codecs=opus';
           console.log('[CloudAPI] Audio content-type from storage:', contentType);
           
           // Force correct content-type for octet-stream based on URL extension
@@ -190,6 +190,9 @@ serve(async (req) => {
             } else if (urlLower.endsWith('.m4a')) {
               contentType = 'audio/mp4';
               console.log('[CloudAPI] Forced content-type to audio/mp4 based on .m4a extension');
+            } else if (urlLower.endsWith('.webm')) {
+              contentType = 'audio/ogg; codecs=opus';
+              console.log('[CloudAPI] Forced content-type to audio/ogg based on .webm extension');
             }
           }
           
@@ -209,7 +212,7 @@ serve(async (req) => {
           
           // Determine file extension and mime type
           let finalMimeType = contentType;
-          let extension = 'mp3';
+          let extension = 'ogg';
           
           if (contentType.includes('mpeg') || contentType.includes('mp3')) {
             finalMimeType = 'audio/mpeg';
@@ -223,6 +226,9 @@ serve(async (req) => {
           } else if (contentType.includes('aac')) {
             finalMimeType = 'audio/aac';
             extension = 'aac';
+          } else if (contentType.includes('webm')) {
+            finalMimeType = 'audio/ogg; codecs=opus';
+            extension = 'ogg';
           }
           
           console.log('[CloudAPI] Final mime type:', finalMimeType, 'extension:', extension);
@@ -270,10 +276,10 @@ serve(async (req) => {
             throw new Error(mediaUploadResult?.error?.message || 'Failed to upload audio to Meta after retries');
           }
           
-          // Use the uploaded media ID - voice: true sends as native PTT (Push To Talk)
-          messagePayload.audio = { id: mediaUploadResult.id, voice: true };
+          // Use the uploaded media ID
+          messagePayload.audio = { id: mediaUploadResult.id };
         } else {
-          messagePayload.audio = { id: mediaUrl, voice: true };
+          messagePayload.audio = { id: mediaUrl };
         }
         break;
 
