@@ -1,26 +1,20 @@
 
 
-## Plano: Filtro de Agentes por Canal no Relatório
+## Plano: Corrigir Erros de Build + Debounce no Envio de Áudio
 
-### Problema
-Quando se filtra por canal "Master Leads", aparecem agentes como "Rainy" que pertencem ao canal "Emprega Mais". Isso acontece porque a Rainy foi atribuída a conversas no canal Master Leads (antes da restrição ou via transferência). O dado é tecnicamente correto, mas operacionalmente confuso.
+### 1. Corrigir erros de tipo no `cross-reference-sales/index.ts`
+**Linha 445**: `error` é do tipo `unknown`. Corrigir com cast: `(error as Error).message`
 
-### Solução Proposta
-Duas melhorias complementares:
+### 2. Corrigir erros de tipo no `whatsapp-webhook/index.ts`
+**Linha 1138**: O `select("id, phone")` do contato não inclui `full_name`. O código na linha 1924 tenta acessar `contact.full_name` e `contact.phone` — `phone` existe mas `full_name` não. Solução: já existe `contactData` como fallback, basta remover as referências a `contact.full_name` e `contact.phone` nesse bloco (usar só `contactData`).
 
-#### 1. Filtro de Agentes contextual por canal selecionado
-**Arquivo:** `src/pages/ConversationReport.tsx`
+**Linha 2148**: O tipo explícito `{ id: any; full_name: any; phone: any; department_id: any; }` não inclui `lead_status`. Solução: adicionar `lead_status` ao tipo e ao `select` da query que popula esse contato.
 
-Quando um canal é selecionado no filtro, o dropdown de **Agentes** passa a mostrar apenas agentes que possuem conversas naquele canal (em vez de listar todos os agentes do tenant). Isso é feito filtrando os agentes disponíveis com base nos dados já retornados ou com uma query auxiliar.
+### 3. Debounce no envio de áudio (Conversations.tsx)
+O guard `isSendingRef.current` já existe na linha 3691, mas é setado apenas na linha 3706 — há uma janela entre a verificação e a atribuição onde cliques rápidos passam. Solução: mover `isSendingRef.current = true` para imediatamente após a verificação (linha 3692), antes de qualquer operação assíncrona.
 
-#### 2. Filtro de Agentes por `user_channels` (opcional, mais restritivo)
-Alternativamente, filtrar o dropdown de agentes com base na tabela `user_channels` — só mostra agentes que estão configurados para aquele canal. Isso impediria ver dados de agentes "intrusos" mesmo que tenham atendido leads no canal.
-
-### Recomendação
-A opção 1 é mais pragmática: mostra apenas agentes que realmente têm conversas no canal filtrado, sem esconder dados históricos. A opção 2 é mais restritiva mas pode ocultar dados válidos.
-
-### Alteração Técnica (Opção 1)
-**Arquivo único:** `src/pages/ConversationReport.tsx`
-- No carregamento da lista de agentes para o dropdown, quando `selectedChannels` contiver um canal, fazer uma query para buscar apenas `assigned_to` distintos das conversas daquele canal
-- Isso faz o dropdown de agentes ficar contextual ao canal selecionado
+### Arquivos alterados
+- `supabase/functions/cross-reference-sales/index.ts` — cast de error
+- `supabase/functions/whatsapp-webhook/index.ts` — corrigir tipos do contact
+- `src/pages/Conversations.tsx` — mover guard do debounce
 
