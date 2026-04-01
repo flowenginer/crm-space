@@ -2145,7 +2145,7 @@ serve(async (req) => {
     
     // Selecionar o melhor contato: priorizar telefone com 13 dígitos (55 + DDD + 9 + 8)
     // Isso evita duplicatas onde um contato tem o 9º dígito e outro não
-    let contact: { id: any; full_name: any; phone: any; department_id: any; } | null = null;
+    let contact: { id: any; full_name: any; phone: any; department_id: any; lead_status: any; } | null = null;
     if (contactMatches && contactMatches.length > 0) {
       if (contactMatches.length === 1) {
         contact = contactMatches[0];

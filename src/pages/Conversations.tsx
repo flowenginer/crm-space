@@ -3689,6 +3689,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const stopRecording = async () => {
     // Prevent duplicate sends
     if (isSendingRef.current) return;
+    isSendingRef.current = true;
     
     const isOfficialChannel = isOfficialRecordingRef.current;
     
