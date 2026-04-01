@@ -2138,7 +2138,7 @@ serve(async (req) => {
     // IMPORTANTE: Buscar TODOS os matches para depois escolher o melhor (priorizar telefone com 13 dígitos)
     let { data: contactMatches } = await supabase
       .from("contacts")
-      .select("id, full_name, phone, department_id")
+      .select("id, full_name, phone, department_id, lead_status")
       .in("phone", phoneVariations)
       .eq("tenant_id", channel.tenant_id)
       .limit(10);
