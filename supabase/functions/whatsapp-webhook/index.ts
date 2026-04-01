@@ -1135,7 +1135,7 @@ serve(async (req) => {
       // Tentar buscar contato por QUALQUER variação do telefone (FILTRAR POR TENANT!)
       const { data: directContact } = await supabase
         .from("contacts")
-        .select("id, phone")
+        .select("id, phone, full_name")
         .in("phone", phoneVariations)
         .eq("tenant_id", channel.tenant_id)
         .limit(1)
