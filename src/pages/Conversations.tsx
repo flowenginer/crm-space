@@ -3704,7 +3704,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
     
     try {
-      isSendingRef.current = true;
       setIsUploading(true);
       
       let audioFile: File;
