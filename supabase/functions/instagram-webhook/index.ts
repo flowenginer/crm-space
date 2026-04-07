@@ -237,7 +237,126 @@ async function processMessagingEvent(supabase: any, event: any, pageId: string) 
   }
 }
 
-async function processInstagramMessage(
+// Process echo messages (sent by page via Meta Business Suite or other external tools)
+async function processInstagramEchoMessage(
+  supabase: any,
+  config: any,
+  contactIgsid: string,
+  message: any,
+  timestamp: Date
+) {
+  // Extract content
+  let content = message.text || '';
+  let messageType = 'text';
+  let mediaUrl: string | null = null;
+
+  if (message.attachments && message.attachments.length > 0) {
+    const attachment = message.attachments[0];
+    messageType = attachment.type || 'image';
+    mediaUrl = attachment.payload?.url || null;
+    if (!content) {
+      const typeLabels: Record<string, string> = { image: '📷 Imagem', video: '🎥 Vídeo', audio: '🎵 Áudio', file: '📎 Arquivo' };
+      content = typeLabels[messageType] || `📎 ${messageType}`;
+    }
+  }
+
+  // Check for duplicate
+  const { data: existingMsg } = await supabase
+    .from('messages')
+    .select('id')
+    .eq('whatsapp_message_id', message.mid)
+    .maybeSingle();
+
+  if (existingMsg) {
+    console.log('[Instagram] Echo message already exists:', message.mid);
+    return;
+  }
+
+  // Find contact by IGSID
+  const igPhone = `ig:${contactIgsid}`;
+  const { data: contact } = await supabase
+    .from('contacts')
+    .select('id')
+    .eq('phone', igPhone)
+    .eq('tenant_id', config.tenant_id)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!contact) {
+    console.log('[Instagram] Echo: contact not found for', igPhone);
+    return;
+  }
+
+  // Find open/pending conversation
+  const channelId = config.channel_id;
+  let conversationId: string | null = null;
+
+  if (channelId) {
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('contact_id', contact.id)
+      .eq('channel_id', channelId)
+      .in('status', ['open', 'pending'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    conversationId = conv?.id || null;
+  }
+
+  if (!conversationId) {
+    const { data: anyConv } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('contact_id', contact.id)
+      .eq('tenant_id', config.tenant_id)
+      .in('status', ['open', 'pending'])
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    conversationId = anyConv?.id || null;
+  }
+
+  if (!conversationId) {
+    console.log('[Instagram] Echo: no open conversation for contact', contact.id);
+    return;
+  }
+
+  // Insert message as is_from_me: true
+  const { data: inserted, error } = await supabase.from('messages').insert({
+    conversation_id: conversationId,
+    contact_id: contact.id,
+    tenant_id: config.tenant_id,
+    content,
+    message_type: messageType,
+    media_url: mediaUrl,
+    is_from_me: true,
+    status: 'sent',
+    whatsapp_message_id: message.mid,
+  }).select('id').single();
+
+  if (error) {
+    console.error('[Instagram] Error saving echo message:', error);
+    return;
+  }
+
+  console.log('[Instagram] ✅ Echo message saved as is_from_me:', inserted?.id);
+
+  // Update conversation metadata
+  const preview = messageType === 'text' ? content.substring(0, 100) : `📎 ${messageType}`;
+  await supabase
+    .from('conversations')
+    .update({
+      last_message_at: timestamp.toISOString(),
+      last_message_preview: preview,
+      last_message_is_from_me: true,
+      updated_at: timestamp.toISOString(),
+    })
+    .eq('id', conversationId);
+}
+
+
   supabase: any,
   config: any,
   senderId: string,
