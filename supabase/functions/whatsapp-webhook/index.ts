@@ -1220,7 +1220,7 @@ serve(async (req) => {
           // Fallback: buscar existente por variações
           const { data: existingContact } = await supabase
             .from("contacts")
-            .select("id")
+            .select("id, phone, full_name")
             .in("phone", phoneVariations)
             .eq("tenant_id", channel.tenant_id)
             .limit(1)
@@ -2214,7 +2214,7 @@ serve(async (req) => {
           onConflict: 'phone,tenant_id',
           ignoreDuplicates: false
         })
-        .select("id, full_name, phone, department_id")
+        .select("id, full_name, phone, department_id, lead_status")
         .single();
 
       if (contactError) {
@@ -2223,7 +2223,7 @@ serve(async (req) => {
           console.log(`[Webhook] Contact already exists (race condition handled), fetching...`);
           const { data: existingContact } = await supabase
             .from("contacts")
-            .select("id, full_name, phone, department_id")
+            .select("id, full_name, phone, department_id, lead_status")
             .in("phone", phoneVariations)
             .eq("tenant_id", channel.tenant_id)
             .limit(1)
