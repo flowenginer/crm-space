@@ -105,7 +105,8 @@ export async function sendWhatsAppMessage(
   mediaUrl?: string,
   quotedMessageId?: string,
   filename?: string,
-  conversationId?: string
+  conversationId?: string,
+  existingMessageId?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     console.log('[Instance Creator] Sending message:', { channelId, phone, type, quotedMessageId, filename, conversationId });
@@ -156,6 +157,8 @@ export async function sendWhatsAppMessage(
           mediaUrl,
           conversationId,
           mimeType: type === 'audio' ? 'audio/wav' : undefined,
+          skipDbInsert: !!existingMessageId,
+          frontendMessageId: existingMessageId,
         },
       });
 

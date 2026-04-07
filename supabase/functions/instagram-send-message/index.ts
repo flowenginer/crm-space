@@ -18,6 +18,8 @@ interface SendMessagePayload {
   conversationId?: string;
   mimeType?: string; // MIME type do arquivo, para validação de formato
   quickReplies?: Array<{ title: string; payload: string }>;
+  skipDbInsert?: boolean; // Se true, não insere na tabela messages (frontend já salvou)
+  frontendMessageId?: string; // ID da mensagem já salva pelo frontend
 }
 
 // Formatos de áudio aceitos pelo Instagram Messaging API
@@ -385,8 +387,22 @@ serve(async (req) => {
       console.warn('[Instagram Send] Contact not found for igPhone:', igPhone);
     }
 
-    // Inserir mensagem na tabela messages
-    if (resolvedConversationId) {
+    // Inserir mensagem na tabela messages (pular se frontend já salvou)
+    const skipInsert = payload.skipDbInsert === true;
+    const frontendMsgId = payload.frontendMessageId;
+
+    if (skipInsert && frontendMsgId && instagramMessageId) {
+      // Frontend já salvou — apenas atualizar com o ID do Instagram
+      const { error: updErr } = await supabase
+        .from('messages')
+        .update({ whatsapp_message_id: instagramMessageId, status: 'sent' })
+        .eq('id', frontendMsgId);
+      if (updErr) {
+        console.error('[Instagram Send] Error updating frontend message:', updErr);
+      } else {
+        console.log('[Instagram Send] ✅ Updated frontend message', frontendMsgId, 'with IG ID:', instagramMessageId);
+      }
+    } else if (!skipInsert && resolvedConversationId) {
       const messageContent = type === 'text' ? (content || '') : '';
       const messageMediaUrl = type !== 'text' ? (mediaUrl || content || null) : null;
 
