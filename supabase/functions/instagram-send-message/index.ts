@@ -192,13 +192,8 @@ serve(async (req) => {
         break;
 
       case 'audio':
-        messagePayload = {
-          attachment: {
-            type: 'audio',
-            payload: { url: mediaUrl || content, is_reusable: true },
-          },
-        };
-        break;
+        // Instagram API does not support audio attachments
+        throw new Error('O Instagram não suporta envio de áudio. Envie uma mensagem de texto, imagem ou vídeo.');
 
       default:
         messagePayload = { text: content || '' };

@@ -145,6 +145,10 @@ export async function sendWhatsAppMessage(
       return data as { success: boolean; messageId?: string; error?: string };
     } else if (channelType === 'instagram') {
       // Instagram Direct uses instagram-send-message
+      // Instagram API does not support audio attachments
+      if (type === 'audio') {
+        return { success: false, error: 'O Instagram não suporta envio de áudio. Envie uma mensagem de texto, imagem ou vídeo.' };
+      }
       const igType = type === 'document' ? 'file' : type;
       const { data, error } = await supabase.functions.invoke('instagram-send-message', {
         body: {
