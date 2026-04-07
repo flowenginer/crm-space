@@ -1,20 +1,41 @@
 
 
-## Plano: Corrigir Erros de Build + Debounce no Envio de Áudio
+## Plano: Restaurar salvamento de mensagens Instagram + Corrigir erros de build
 
-### 1. Corrigir erros de tipo no `cross-reference-sales/index.ts`
-**Linha 445**: `error` é do tipo `unknown`. Corrigir com cast: `(error as Error).message`
+### Diagnóstico
 
-### 2. Corrigir erros de tipo no `whatsapp-webhook/index.ts`
-**Linha 1138**: O `select("id, phone")` do contato não inclui `full_name`. O código na linha 1924 tenta acessar `contact.full_name` e `contact.phone` — `phone` existe mas `full_name` não. Solução: já existe `contactData` como fallback, basta remover as referências a `contact.full_name` e `contact.phone` nesse bloco (usar só `contactData`).
+**Por que a mensagem enviada não apareceu no frontend:**
+O último deploy removeu acidentalmente o bloco de código em `instagram-send-message/index.ts` que salvava a mensagem enviada na tabela `messages`. Sem esse insert, a mensagem é enviada ao Instagram com sucesso, mas nunca aparece no CRM.
 
-**Linha 2148**: O tipo explícito `{ id: any; full_name: any; phone: any; department_id: any; }` não inclui `lead_status`. Solução: adicionar `lead_status` ao tipo e ao `select` da query que popula esse contato.
+**Erros de build (whatsapp-webhook):**
+4 erros de tipo causados por selects inconsistentes:
+- Linha 1128: `let contact = null` — em um branch (linha 1223) o select é `"id"` apenas, mas no uso posterior (linha 1924) acessa `.full_name` e `.phone`
+- Linha 2231/2251: selects retornam `{id, full_name, phone, department_id}` sem `lead_status`, mas o tipo exige `lead_status`
 
-### 3. Debounce no envio de áudio (Conversations.tsx)
-O guard `isSendingRef.current` já existe na linha 3691, mas é setado apenas na linha 3706 — há uma janela entre a verificação e a atribuição onde cliques rápidos passam. Solução: mover `isSendingRef.current = true` para imediatamente após a verificação (linha 3692), antes de qualquer operação assíncrona.
+---
+
+### Alterações
+
+#### 1. Restaurar salvamento de mensagem no Instagram (`supabase/functions/instagram-send-message/index.ts`)
+
+Após o bloco que atualiza `instagram_configs.updated_at` (linha 287-293), reinserir a lógica removida:
+- Buscar contato pelo IGSID (`ig:{recipientId}`) na tabela `contacts`
+- Se não tiver `conversationId`, buscar conversa aberta/pendente do contato
+- Inserir registro na tabela `messages` com `is_from_me: true`
+- Atualizar metadados da conversa (`last_message_at`, `last_message_preview`, etc.)
+
+#### 2. Corrigir tipo do contact no fromMe (`supabase/functions/whatsapp-webhook/index.ts`)
+
+- **Linha 1223**: Alterar select de `"id"` para `"id, phone, full_name"` para ficar consistente com o branch principal (linha 1138)
+- **Linha 2217**: Alterar select para incluir `lead_status`: `"id, full_name, phone, department_id, lead_status"`
+- **Linha 2226**: Alterar select para incluir `lead_status`: `"id, full_name, phone, department_id, lead_status"`
+
+#### 3. Deploy das Edge Functions
+- Redeployar `instagram-send-message` e `whatsapp-webhook`
+
+---
 
 ### Arquivos alterados
-- `supabase/functions/cross-reference-sales/index.ts` — cast de error
-- `supabase/functions/whatsapp-webhook/index.ts` — corrigir tipos do contact
-- `src/pages/Conversations.tsx` — mover guard do debounce
+- `supabase/functions/instagram-send-message/index.ts`
+- `supabase/functions/whatsapp-webhook/index.ts`
 
