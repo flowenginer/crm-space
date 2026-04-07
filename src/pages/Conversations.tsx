@@ -3626,9 +3626,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
   // Audio recording - conditional based on channel type
   // Official API (cloudapi): uses Mp3Recorder for MP3 format
-  // Non-official APIs (zapi, uazapi, evolution): uses native MediaRecorder for OGG/WebM
+  // Instagram: uses native MediaRecorder → converts to WAV (Meta accepts wav, aac, m4a, mp4)
+  // Non-official APIs (zapi, uazapi, evolution): uses native MediaRecorder → converts to MP3
   const mp3RecorderRef = useRef<any>(null);
   const isOfficialRecordingRef = useRef<boolean>(false);
+  const isInstagramRecordingRef = useRef<boolean>(false);
   
   const startRecording = async () => {
     // Prevent starting if already recording (avoid multiple intervals)
@@ -3642,9 +3644,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       const selectedConv = conversations?.find(c => c.id === selectedConversationId);
       const channelData = allChannels?.find(c => c.id === selectedConv?.channel_id);
       const isOfficialChannel = (channelData as any)?.type === 'official';
+      const isInstagramChannel = (channelData as any)?.type === 'instagram';
       isOfficialRecordingRef.current = isOfficialChannel;
+      isInstagramRecordingRef.current = isInstagramChannel;
       
-      console.log('[Audio] Starting recording, channel type:', isOfficialChannel ? 'official (MP3)' : 'non-official (OGG)');
+      console.log('[Audio] Starting recording, channel type:', isOfficialChannel ? 'official (MP3)' : isInstagramChannel ? 'instagram (WAV)' : 'non-official (MP3)');
       
       if (isOfficialChannel) {
         // Official API: use Mp3Recorder for MP3 format
@@ -3652,7 +3656,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         mp3RecorderRef.current = new Mp3Recorder();
         await mp3RecorderRef.current.start();
       } else {
-        // Non-official API: use native MediaRecorder for OGG/WebM
+        // Instagram + non-official APIs: use native MediaRecorder
+        // Instagram will be converted to WAV later; others to MP3
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorderRef.current = new MediaRecorder(stream);
         audioChunksRef.current = [];
