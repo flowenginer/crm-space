@@ -156,6 +156,8 @@ export async function sendWhatsAppMessage(
           mediaUrl,
           conversationId,
           mimeType: type === 'audio' ? 'audio/wav' : undefined,
+          skipDbInsert: !!messageId,
+          frontendMessageId: messageId,
         },
       });
 
