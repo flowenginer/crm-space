@@ -3825,7 +3825,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         });
 
         if (channelId && contactPhone) {
-          sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url, undefined, undefined, selectedConversationId)
+          sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url, undefined, undefined, selectedConversationId, audioMessageId)
             .then(async (response) => {
               console.log('[Audio Send] WhatsApp response:', response);
               if (response.success && response.messageId) {
