@@ -3626,9 +3626,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
   // Audio recording - conditional based on channel type
   // Official API (cloudapi): uses Mp3Recorder for MP3 format
-  // Non-official APIs (zapi, uazapi, evolution): uses native MediaRecorder for OGG/WebM
+  // Instagram: uses native MediaRecorder → converts to WAV (Meta accepts wav, aac, m4a, mp4)
+  // Non-official APIs (zapi, uazapi, evolution): uses native MediaRecorder → converts to MP3
   const mp3RecorderRef = useRef<any>(null);
   const isOfficialRecordingRef = useRef<boolean>(false);
+  const isInstagramRecordingRef = useRef<boolean>(false);
   
   const startRecording = async () => {
     // Prevent starting if already recording (avoid multiple intervals)
@@ -3642,9 +3644,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       const selectedConv = conversations?.find(c => c.id === selectedConversationId);
       const channelData = allChannels?.find(c => c.id === selectedConv?.channel_id);
       const isOfficialChannel = (channelData as any)?.type === 'official';
+      const isInstagramChannel = (channelData as any)?.type === 'instagram';
       isOfficialRecordingRef.current = isOfficialChannel;
+      isInstagramRecordingRef.current = isInstagramChannel;
       
-      console.log('[Audio] Starting recording, channel type:', isOfficialChannel ? 'official (MP3)' : 'non-official (OGG)');
+      console.log('[Audio] Starting recording, channel type:', isOfficialChannel ? 'official (MP3)' : isInstagramChannel ? 'instagram (WAV)' : 'non-official (MP3)');
       
       if (isOfficialChannel) {
         // Official API: use Mp3Recorder for MP3 format
@@ -3652,7 +3656,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         mp3RecorderRef.current = new Mp3Recorder();
         await mp3RecorderRef.current.start();
       } else {
-        // Non-official API: use native MediaRecorder for OGG/WebM
+        // Instagram + non-official APIs: use native MediaRecorder
+        // Instagram will be converted to WAV later; others to MP3
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorderRef.current = new MediaRecorder(stream);
         audioChunksRef.current = [];
@@ -3692,6 +3697,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     isSendingRef.current = true;
     
     const isOfficialChannel = isOfficialRecordingRef.current;
+    const isInstagramChannel = isInstagramRecordingRef.current;
     
     // Check if we have a valid recorder
     if (isOfficialChannel && !mp3RecorderRef.current) return;
@@ -3717,7 +3723,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         mp3RecorderRef.current = null;
         console.log('[Audio] MP3 recorded for official API, size:', mp3Blob.size);
       } else if (mediaRecorderRef.current) {
-        // Non-official API: get audio from native MediaRecorder and convert to MP3
+        // Non-official or Instagram: get audio from native MediaRecorder
         await new Promise<void>((resolve) => {
           mediaRecorderRef.current!.onstop = () => resolve();
           mediaRecorderRef.current!.stop();
@@ -3737,28 +3743,53 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           throw new Error('Empty raw audio recording');
         }
         
-        // Convert to MP3 for universal WhatsApp compatibility
-        let mp3Blob: Blob;
-        try {
-          const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
-          mp3Blob = await encodeToMp3(rawBlob);
-          console.log('[Audio] MP3 conversion successful, size:', mp3Blob.size);
-        } catch (encodeError) {
-          console.error('[Audio] MP3 conversion failed:', encodeError);
-          toast.error('Erro na conversão do áudio. Tente novamente.');
-          throw encodeError;
+        if (isInstagramChannel) {
+          // Instagram: convert to WAV (Meta accepts wav, aac, m4a, mp4 — NOT mp3)
+          let wavBlob: Blob;
+          try {
+            const { encodeToWav } = await import('@/lib/audio/wav-encoder');
+            wavBlob = await encodeToWav(rawBlob);
+            console.log('[Audio] WAV conversion successful, size:', wavBlob.size);
+          } catch (encodeError) {
+            console.error('[Audio] WAV conversion failed:', encodeError);
+            toast.error('Erro na conversão do áudio. Tente novamente.');
+            throw encodeError;
+          }
+          
+          if (wavBlob.size === 0) {
+            console.error('[Audio] WAV conversion resulted in empty file');
+            toast.error('Áudio vazio após conversão. Tente gravar novamente.');
+            throw new Error('Empty WAV after conversion');
+          }
+          
+          const audioFileName = `audio_${Date.now()}.wav`;
+          audioFile = new File([wavBlob], audioFileName, { type: 'audio/wav' });
+          mimeType = 'audio/wav';
+          console.log('[Audio] Created WAV file for Instagram:', audioFileName, 'size:', wavBlob.size, 'bytes');
+        } else {
+          // Non-official WhatsApp: convert to MP3
+          let mp3Blob: Blob;
+          try {
+            const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
+            mp3Blob = await encodeToMp3(rawBlob);
+            console.log('[Audio] MP3 conversion successful, size:', mp3Blob.size);
+          } catch (encodeError) {
+            console.error('[Audio] MP3 conversion failed:', encodeError);
+            toast.error('Erro na conversão do áudio. Tente novamente.');
+            throw encodeError;
+          }
+          
+          if (mp3Blob.size === 0) {
+            console.error('[Audio] MP3 conversion resulted in empty file');
+            toast.error('Áudio vazio após conversão. Tente gravar novamente.');
+            throw new Error('Empty MP3 after conversion');
+          }
+          
+          const audioFileName = `audio_${Date.now()}.mp3`;
+          audioFile = new File([mp3Blob], audioFileName, { type: 'audio/mpeg' });
+          mimeType = 'audio/mpeg';
+          console.log('[Audio] Created MP3 file:', audioFileName, 'size:', mp3Blob.size, 'bytes');
         }
-        
-        if (mp3Blob.size === 0) {
-          console.error('[Audio] MP3 conversion resulted in empty file');
-          toast.error('Áudio vazio após conversão. Tente gravar novamente.');
-          throw new Error('Empty MP3 after conversion');
-        }
-        
-        const audioFileName = `audio_${Date.now()}.mp3`;
-        audioFile = new File([mp3Blob], audioFileName, { type: 'audio/mpeg' });
-        mimeType = 'audio/mpeg';
-        console.log('[Audio] Created MP3 file:', audioFileName, 'size:', mp3Blob.size, 'bytes');
       } else {
         throw new Error('No recorder available');
       }

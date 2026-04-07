@@ -16,8 +16,17 @@ interface SendMessagePayload {
   content?: string;
   mediaUrl?: string;
   conversationId?: string;
+  mimeType?: string; // MIME type do arquivo, para validação de formato
   quickReplies?: Array<{ title: string; payload: string }>;
 }
+
+// Formatos de áudio aceitos pelo Instagram Messaging API
+// Ref: https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message
+const INSTAGRAM_SUPPORTED_AUDIO_MIMES = [
+  'audio/aac', 'audio/m4a', 'audio/x-m4a', 'audio/mp4',
+  'audio/wav', 'audio/x-wav', 'audio/wave',
+];
+const INSTAGRAM_REJECTED_AUDIO_EXTENSIONS = ['mp3', 'ogg', 'webm', 'opus'];
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -57,7 +66,7 @@ serve(async (req) => {
     }
 
     const payload: SendMessagePayload = await req.json();
-    const { channelId, type, content, mediaUrl, conversationId, quickReplies } = payload;
+    const { channelId, type, content, mediaUrl, conversationId, quickReplies, mimeType } = payload;
     // Strip "ig:" prefix from recipientId — contacts store Instagram IDs as "ig:123"
     // but the Instagram Graph API expects the raw numeric IGSID
     let recipientId = payload.recipientId;
@@ -191,11 +200,47 @@ serve(async (req) => {
         };
         break;
 
-      case 'audio':
-        // Instagram API does not support audio attachments
-        throw new Error('O Instagram não suporta envio de áudio. Envie uma mensagem de texto, imagem ou vídeo.');
-
-      default:
+      case 'audio': {
+        // Instagram supports audio in aac, m4a, wav, mp4 (max 25MB)
+        // Validate format before calling Meta API
+        const audioUrl = mediaUrl || content;
+        if (!audioUrl) {
+          throw new Error('URL do áudio é obrigatória');
+        }
+        
+        // Check by mimeType if provided
+        if (mimeType) {
+          const isSupported = INSTAGRAM_SUPPORTED_AUDIO_MIMES.includes(mimeType.toLowerCase());
+          if (!isSupported) {
+            throw new Error(
+              `Formato de áudio "${mimeType}" não é aceito pelo Instagram. ` +
+              `Formatos aceitos: AAC, M4A, WAV, MP4. ` +
+              `Para mais informações: https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message`
+            );
+          }
+        }
+        
+        // Check by file extension as fallback
+        if (!mimeType && audioUrl) {
+          const urlPath = audioUrl.split('?')[0].toLowerCase();
+          const hasRejectedExt = INSTAGRAM_REJECTED_AUDIO_EXTENSIONS.some(ext => urlPath.endsWith(`.${ext}`));
+          if (hasRejectedExt) {
+            throw new Error(
+              `Esse formato de áudio não é aceito pelo Instagram. ` +
+              `Formatos aceitos: AAC, M4A, WAV, MP4. ` +
+              `Para mais informações: https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message`
+            );
+          }
+        }
+        
+        messagePayload = {
+          attachment: {
+            type: 'audio',
+            payload: { url: audioUrl, is_reusable: true },
+          },
+        };
+        break;
+      }
         messagePayload = { text: content || '' };
     }
 

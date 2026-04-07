@@ -145,10 +145,7 @@ export async function sendWhatsAppMessage(
       return data as { success: boolean; messageId?: string; error?: string };
     } else if (channelType === 'instagram') {
       // Instagram Direct uses instagram-send-message
-      // Instagram API does not support audio attachments
-      if (type === 'audio') {
-        return { success: false, error: 'O Instagram não suporta envio de áudio. Envie uma mensagem de texto, imagem ou vídeo.' };
-      }
+      // Instagram supports audio in aac, m4a, wav, mp4 (NOT mp3)
       const igType = type === 'document' ? 'file' : type;
       const { data, error } = await supabase.functions.invoke('instagram-send-message', {
         body: {
@@ -158,6 +155,7 @@ export async function sendWhatsAppMessage(
           content,
           mediaUrl,
           conversationId,
+          mimeType: type === 'audio' ? 'audio/wav' : undefined,
         },
       });
 
