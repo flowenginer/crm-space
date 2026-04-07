@@ -206,9 +206,12 @@ async function processMessagingEvent(supabase: any, event: any, pageId: string) 
     tenant_id: activeConfig.tenant_id,
   });
 
-  // Skip echo messages (messages sent by the page itself)
-  if (isEcho) {
-    console.log('[Instagram] Skipping echo message');
+  // Handle echo messages (messages sent by the page via Meta Business Suite or other tools)
+  // Save them as is_from_me: true so they appear in the CRM
+  if (isEcho && event.message) {
+    console.log('[Instagram] Processing echo message (sent from external tool)');
+    const echoSenderId = recipientId; // The recipient of the echo is the contact
+    await processInstagramEchoMessage(supabase, activeConfig, echoSenderId, event.message, timestamp);
     return;
   }
 
