@@ -292,8 +292,97 @@ serve(async (req) => {
       })
       .eq('id', channel.id);
 
-    // Atualizar metadados da conversa se conversationId foi fornecido
-    if (conversationId) {
+    // Salvar mensagem enviada na tabela messages para aparecer no CRM
+    let resolvedConversationId = conversationId || null;
+    let resolvedContactId: string | null = null;
+
+    // Buscar contato pelo IGSID (armazenado como "ig:{recipientId}" no campo phone)
+    const igPhone = `ig:${recipientId}`;
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('phone', igPhone)
+      .eq('tenant_id', channel.tenant_id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (contact) {
+      resolvedContactId = contact.id;
+
+      // Se não temos conversationId, buscar conversa aberta/pendente do contato
+      if (!resolvedConversationId) {
+        const { data: existingConv } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_id', contact.id)
+          .eq('channel_id', channel.channel_id || channelId)
+          .in('status', ['open', 'pending'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingConv) {
+          resolvedConversationId = existingConv.id;
+        } else {
+          // Fallback: buscar qualquer conversa aberta/pendente do contato no tenant
+          const { data: anyConv } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('contact_id', contact.id)
+            .eq('tenant_id', channel.tenant_id)
+            .in('status', ['open', 'pending'])
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (anyConv) {
+            resolvedConversationId = anyConv.id;
+          }
+        }
+      }
+    } else {
+      console.warn('[Instagram Send] Contact not found for igPhone:', igPhone);
+    }
+
+    // Inserir mensagem na tabela messages
+    if (resolvedConversationId) {
+      const messageContent = type === 'text' ? (content || '') : '';
+      const messageMediaUrl = type !== 'text' ? (mediaUrl || content || null) : null;
+
+      const { error: msgError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: resolvedConversationId,
+          contact_id: resolvedContactId,
+          tenant_id: channel.tenant_id,
+          content: messageContent,
+          message_type: type,
+          media_url: messageMediaUrl,
+          is_from_me: true,
+          status: 'sent',
+          whatsapp_message_id: instagramMessageId,
+        });
+
+      if (msgError) {
+        console.error('[Instagram Send] Error saving message to DB:', msgError);
+      } else {
+        console.log('[Instagram Send] ✅ Message saved to DB for conversation:', resolvedConversationId);
+      }
+
+      // Atualizar metadados da conversa
+      const preview = type === 'text' ? (content || '').substring(0, 100) : `📎 ${type}`;
+      await supabase
+        .from('conversations')
+        .update({
+          last_message_at: now,
+          last_message_preview: preview,
+          last_message_is_from_me: true,
+          updated_at: now,
+        })
+        .eq('id', resolvedConversationId);
+    } else if (conversationId) {
+      // Fallback: se conversationId foi passado mas não encontramos contato
       const preview = type === 'text' ? (content || '').substring(0, 100) : `📎 ${type}`;
       await supabase
         .from('conversations')
@@ -304,6 +393,8 @@ serve(async (req) => {
           updated_at: now,
         })
         .eq('id', conversationId);
+    } else {
+      console.warn('[Instagram Send] Could not save message to DB: no conversation found for recipient', recipientId);
     }
 
     return new Response(
