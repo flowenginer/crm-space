@@ -43,9 +43,10 @@ export const INSTAGRAM_REJECTED_AUDIO_MIMES = [
  * Verifica se um MIME type é suportado pelo Instagram para o tipo de mensagem
  */
 export function isInstagramSupportedMime(messageType: string, mimeType: string): boolean {
-  const rules = INSTAGRAM_SUPPORTED_FORMATS[messageType as keyof typeof INSTAGRAM_SUPPORTED_FORMATS];
+  const key = messageType as keyof typeof INSTAGRAM_SUPPORTED_FORMATS;
+  const rules = INSTAGRAM_SUPPORTED_FORMATS[key];
   if (!rules) return true; // text e outros tipos sem restrição de formato
-  return rules.mimeTypes.includes(mimeType.toLowerCase());
+  return (rules.mimeTypes as readonly string[]).includes(mimeType.toLowerCase());
 }
 
 /**
