@@ -237,7 +237,17 @@ async function processMessagingEvent(supabase: any, event: any, pageId: string) 
   }
 }
 
-// Process echo messages (sent by page via Meta Business Suite or other external tools)
+// Process echo messages.
+// Meta envia echo pra TODA msg outbound — tanto as enviadas pela nossa edge
+// function quanto as de ferramentas externas (Meta Business Suite, etc).
+// Dedupe agora segue 3 camadas para evitar duplicação:
+//   1) Já existe row com whatsapp_message_id = mid? → skip (idempotência pura)
+//   2) Existe row recente (±60s) no mesmo conversation+content com whatsapp_message_id NULL?
+//      → é a row otimista do frontend OU a row inserida pela nossa edge antes da resposta Meta chegar.
+//      Fazer UPDATE preenchendo o mid e retornar.
+//   3) Nenhum match? → é um echo de ferramenta externa. INSERT novo.
+const ECHO_MATCH_WINDOW_MS = 60 * 1000;
+
 async function processInstagramEchoMessage(
   supabase: any,
   config: any,
@@ -260,16 +270,18 @@ async function processInstagramEchoMessage(
     }
   }
 
-  // Check for duplicate
-  const { data: existingMsg } = await supabase
-    .from('messages')
-    .select('id')
-    .eq('whatsapp_message_id', message.mid)
-    .maybeSingle();
+  // ========== DEDUPE LAYER 1: exact mid match ==========
+  if (message.mid) {
+    const { data: existingMsg } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('whatsapp_message_id', message.mid)
+      .maybeSingle();
 
-  if (existingMsg) {
-    console.log('[Instagram] Echo message already exists:', message.mid);
-    return;
+    if (existingMsg) {
+      console.log('[Instagram] Echo dedupe L1 — mid already exists:', message.mid);
+      return;
+    }
   }
 
   // Find contact by IGSID
@@ -323,7 +335,38 @@ async function processInstagramEchoMessage(
     return;
   }
 
-  // Insert message as is_from_me: true
+  // ========== DEDUPE LAYER 2: recent outbound match ==========
+  // Busca row outbound recente no mesmo conversation com mesmo content, sem mid.
+  // É o caso mais comum: frontend insere otimisticamente, edge function envia pra Meta,
+  // Meta ecoa via webhook antes do update com mid completar → race.
+  const windowStart = new Date(Date.now() - ECHO_MATCH_WINDOW_MS).toISOString();
+  const { data: recentOutbound } = await supabase
+    .from('messages')
+    .select('id, whatsapp_message_id')
+    .eq('conversation_id', conversationId)
+    .eq('is_from_me', true)
+    .eq('content', content)
+    .is('whatsapp_message_id', null)
+    .gte('created_at', windowStart)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (recentOutbound) {
+    // Match: completar a row existente com o mid. Não inserir duplicata.
+    const { error: updErr } = await supabase
+      .from('messages')
+      .update({ whatsapp_message_id: message.mid, status: 'sent' })
+      .eq('id', recentOutbound.id);
+    if (updErr) {
+      console.error('[Instagram] Echo L2 — error updating recent row:', updErr);
+      return;
+    }
+    console.log('[Instagram] Echo dedupe L2 — merged mid into existing row:', recentOutbound.id);
+    return;
+  }
+
+  // ========== DEDUPE LAYER 3: inserir como nova (echo de ferramenta externa) ==========
   const { data: inserted, error } = await supabase.from('messages').insert({
     conversation_id: conversationId,
     contact_id: contact.id,
@@ -341,9 +384,9 @@ async function processInstagramEchoMessage(
     return;
   }
 
-  console.log('[Instagram] ✅ Echo message saved as is_from_me:', inserted?.id);
+  console.log('[Instagram] Echo L3 — new row inserted (external tool echo):', inserted?.id);
 
-  // Update conversation metadata
+  // Update conversation metadata (só no caso L3, pois L2 já disparou o trigger no insert original)
   const preview = messageType === 'text' ? content.substring(0, 100) : `📎 ${messageType}`;
   await supabase
     .from('conversations')

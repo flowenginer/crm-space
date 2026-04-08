@@ -214,11 +214,16 @@ export function useSendMessage() {
       reply_to_message_id?: string;
       whatsapp_message_id?: string;
     }) => {
+      // Popular sender_id para auditoria. Sem isso, 100% das mensagens outbound
+      // ficavam com sender_id NULL, tornando impossível saber qual atendente enviou.
+      const { data: { user } } = await supabase.auth.getUser();
+
       const { data, error } = await supabase
         .from('messages')
         .insert({
           conversation_id: message.conversation_id,
           content: message.content,
+          sender_id: user?.id ?? null,
           is_from_me: message.is_from_me ?? true,
           message_type: message.message_type || 'text',
           media_url: message.media_url || null,

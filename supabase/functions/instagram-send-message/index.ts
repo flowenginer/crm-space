@@ -22,6 +22,11 @@ interface SendMessagePayload {
   frontendMessageId?: string; // ID da mensagem já salva pelo frontend
 }
 
+// Janela da Meta para responder DMs sem message tag: 24h desde a última msg do usuário
+const META_24H_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Timeout do fetch pra Meta Graph API
+const META_FETCH_TIMEOUT_MS = 15_000;
+
 // Formatos de áudio aceitos pelo Instagram Messaging API
 // Ref: https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message
 const INSTAGRAM_SUPPORTED_AUDIO_MIMES = [
@@ -112,45 +117,47 @@ serve(async (req) => {
       }
     }
 
-    // 3. Fallback: busca via whatsapp_channels do tipo instagram e vincula
+    // 3. Fallback: busca via whatsapp_channels do tipo instagram e vincula.
+    //    SEMPRE filtrando por tenant_id do canal — nunca pegar config de outro tenant.
     if (!channel) {
       const { data: waChannel } = await supabase
         .from('whatsapp_channels')
-        .select('id, phone, type')
+        .select('id, tenant_id, phone, type')
         .eq('id', channelId)
         .eq('type', 'instagram')
         .single();
 
       if (waChannel) {
-        // Busca instagram_configs por page_id ou instagram_account_id
-        // O phone do canal instagram pode conter o username com prefixo "ig:"
+        // 3a. Config sem channel_id vinculado, MAS do mesmo tenant — vincular automaticamente
         const { data: configByPhone } = await supabase
           .from('instagram_configs')
           .select(configFields)
+          .eq('tenant_id', waChannel.tenant_id)
           .eq('is_active', true)
           .is('channel_id', null)
           .limit(1);
 
         if (configByPhone && configByPhone.length > 0) {
-          // Encontrou config sem channel_id vinculado - vincular automaticamente
           channel = configByPhone[0];
-          console.log(`[Instagram Send] Auto-linking instagram_config ${channel.id} to whatsapp_channel ${channelId}`);
+          console.log(`[Instagram Send] Auto-linking instagram_config ${channel.id} to whatsapp_channel ${channelId} (tenant ${waChannel.tenant_id})`);
           await supabase
             .from('instagram_configs')
             .update({ channel_id: channelId, updated_at: new Date().toISOString() })
             .eq('id', channel.id);
           channel.channel_id = channelId;
         } else {
-          // Busca qualquer config ativa do mesmo tenant
+          // 3b. Qualquer config ativa do MESMO tenant (fallback de último recurso).
+          //     Filtrar por tenant_id é crítico pra não vazar config entre tenants.
           const { data: anyConfig } = await supabase
             .from('instagram_configs')
             .select(configFields)
+            .eq('tenant_id', waChannel.tenant_id)
             .eq('is_active', true)
             .limit(1);
 
           if (anyConfig && anyConfig.length > 0) {
             channel = anyConfig[0];
-            console.log(`[Instagram Send] Found instagram_config ${channel.id} for channel ${channelId} (channel_id mismatch, using tenant fallback)`);
+            console.log(`[Instagram Send] Using tenant-scoped fallback config ${channel.id} for channel ${channelId} (tenant ${waChannel.tenant_id})`);
           }
         }
       }
@@ -163,6 +170,14 @@ serve(async (req) => {
 
     if (!channel.page_access_token) {
       throw new Error('Page access token not configured');
+    }
+
+    // Hardening: page_id vem do DB mas é interpolado direto em URL da Graph API.
+    // Validar que é só dígitos evita qualquer tentativa de path traversal caso
+    // a config seja corrompida ou manipulada por vetor externo futuro.
+    if (!/^\d+$/.test(String(channel.page_id))) {
+      console.error('[Instagram Send] Invalid page_id format:', channel.page_id);
+      throw new Error('Configuração Instagram inválida: page_id mal formatado');
     }
 
     // Construir payload da mensagem para a Instagram Send API
@@ -209,7 +224,7 @@ serve(async (req) => {
         if (!audioUrl) {
           throw new Error('URL do áudio é obrigatória');
         }
-        
+
         // Check by mimeType if provided
         if (mimeType) {
           const isSupported = INSTAGRAM_SUPPORTED_AUDIO_MIMES.includes(mimeType.toLowerCase());
@@ -221,7 +236,7 @@ serve(async (req) => {
             );
           }
         }
-        
+
         // Check by file extension as fallback
         if (!mimeType && audioUrl) {
           const urlPath = audioUrl.split('?')[0].toLowerCase();
@@ -234,7 +249,7 @@ serve(async (req) => {
             );
           }
         }
-        
+
         messagePayload = {
           attachment: {
             type: 'audio',
@@ -243,7 +258,53 @@ serve(async (req) => {
         };
         break;
       }
-        messagePayload = { text: content || '' };
+    }
+
+    // ============================================================
+    // Verificação da janela 24h da Meta.
+    // A Meta só permite enviar mensagem livre (sem message tag) se o
+    // usuário enviou alguma msg nas últimas 24h. Fora disso, a API
+    // retorna erro genérico — é melhor bloquear ANTES de chamar.
+    // Pular se mensagem já for parte de uma automação usando message tag
+    // (não implementado ainda, mas a estrutura fica pronta).
+    // ============================================================
+    if (recipientId) {
+      const contactIgPhone = `ig:${recipientId}`;
+      const { data: contactForWindow } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('phone', contactIgPhone)
+        .eq('tenant_id', channel.tenant_id)
+        .maybeSingle();
+
+      if (contactForWindow) {
+        const { data: lastInbound } = await supabase
+          .from('messages')
+          .select('created_at')
+          .eq('contact_id', contactForWindow.id)
+          .eq('is_from_me', false)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lastInbound?.created_at) {
+          const lastInboundMs = new Date(lastInbound.created_at).getTime();
+          const ageMs = Date.now() - lastInboundMs;
+          if (ageMs > META_24H_WINDOW_MS) {
+            const hoursOld = Math.round(ageMs / 3_600_000);
+            console.warn(`[Instagram Send] 24h window closed — last inbound ${hoursOld}h ago for contact ${contactForWindow.id}`);
+            return new Response(
+              JSON.stringify({
+                success: false,
+                error: 'Janela de 24h da Meta expirada. O Instagram só permite responder mensagens enviadas pelo contato nas últimas 24 horas.',
+                errorCode: 'OUTSIDE_24H_WINDOW',
+                hoursSinceLastInbound: hoursOld,
+              }),
+              { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+      }
     }
 
     // Enviar via Instagram Send API (usa Page ID, não Instagram Account ID)
@@ -253,72 +314,92 @@ serve(async (req) => {
       channelId: channel.id,
     });
 
-    let accessToken = channel.page_access_token;
+    const accessToken = channel.page_access_token;
 
-    const sendToInstagram = async (token: string) => {
-      return fetch(
-        `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${channel.page_id}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            recipient: { id: recipientId },
-            message: messagePayload,
-          }),
-        }
-      );
+    // fetch com AbortController pra não segurar a edge function em caso de
+    // hang de rede. Meta normalmente responde em <2s; 15s é margem generosa.
+    const sendToInstagram = async (token: string): Promise<Response> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), META_FETCH_TIMEOUT_MS);
+      try {
+        return await fetch(
+          `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${channel.page_id}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              recipient: { id: recipientId },
+              message: messagePayload,
+            }),
+            signal: controller.signal,
+          }
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
     };
 
-    let response = await sendToInstagram(accessToken);
-    let result = await response.json();
-
-    // Se o token estiver inválido, tentar renovar automaticamente
-    if (!response.ok && result.error?.code === 190 || result.error?.message?.includes('access token')) {
-      console.log('[Instagram Send] Token inválido, tentando renovar...');
-
-      try {
-        const refreshRes = await fetch(
-          `https://graph.instagram.com/refresh_access_token?` +
-          `grant_type=ig_refresh_token` +
-          `&access_token=${accessToken}`
-        );
-        const refreshData = await refreshRes.json();
-
-        if (refreshData.access_token) {
-          accessToken = refreshData.access_token;
-          const tokenExpiresAt = new Date(
-            Date.now() + (refreshData.expires_in || 5184000) * 1000
-          ).toISOString();
-
-          // Salvar novo token no banco
-          await supabase
-            .from('instagram_configs')
-            .update({
-              page_access_token: accessToken,
-              token_expires_at: tokenExpiresAt,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', channel.id);
-
-          console.log('[Instagram Send] Token renovado, reenviando mensagem...');
-
-          // Reenviar com novo token
-          response = await sendToInstagram(accessToken);
-          result = await response.json();
-        } else {
-          console.error('[Instagram Send] Falha ao renovar token:', refreshData.error);
-        }
-      } catch (refreshErr) {
-        console.error('[Instagram Send] Erro ao renovar token:', refreshErr);
+    // Um único retry em caso de erro transiente (timeout ou 5xx).
+    // Não retenta 4xx — erros de negócio (token ruim, janela fechada, payload inválido).
+    let response: Response;
+    let result: { message_id?: string; error?: { code?: number; message?: string; fbtrace_id?: string; error_subcode?: number; type?: string } };
+    try {
+      response = await sendToInstagram(accessToken);
+      result = await response.json();
+      if (!response.ok && response.status >= 500) {
+        console.warn(`[Instagram Send] Meta returned ${response.status}, retrying once after 1s...`);
+        await new Promise((r) => setTimeout(r, 1000));
+        response = await sendToInstagram(accessToken);
+        result = await response.json();
       }
+    } catch (netErr) {
+      const msg = netErr instanceof Error ? netErr.message : 'network error';
+      console.warn(`[Instagram Send] Network/timeout error (${msg}), retrying once after 1s...`);
+      await new Promise((r) => setTimeout(r, 1000));
+      response = await sendToInstagram(accessToken);
+      result = await response.json();
+    }
+
+    // Token inválido (code 190): NÃO tentar refresh automático.
+    // O endpoint ig_refresh_token é pra long-lived USER token, não pra PAGE access token.
+    // Page access tokens precisam ser re-emitidos via OAuth — disparar alerta e falhar.
+    const isTokenError =
+      !response.ok &&
+      (result.error?.code === 190 ||
+        (typeof result.error?.message === 'string' && result.error.message.toLowerCase().includes('access token')));
+
+    if (isTokenError) {
+      console.error('[Instagram Send] Page access token inválido/expirado. Re-autenticação via OAuth necessária.', {
+        channelId: channel.id,
+        errorCode: result.error?.code,
+        errorMessage: result.error?.message,
+        fbtraceId: result.error?.fbtrace_id,
+      });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Token do Instagram expirado. É necessário reconectar a página no painel de canais.',
+          errorCode: 'IG_TOKEN_EXPIRED',
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (!response.ok || result.error) {
-      console.error('[Instagram Send] Error:', result.error || result);
-      throw new Error(result.error?.message || 'Failed to send Instagram message');
+      console.error('[Instagram Send] Error from Meta Graph API:', {
+        status: response.status,
+        errorCode: result.error?.code,
+        errorSubcode: result.error?.error_subcode,
+        errorType: result.error?.type,
+        errorMessage: result.error?.message,
+        fbtraceId: result.error?.fbtrace_id,
+        channelId: channel.id,
+        recipientId,
+      });
+      throw new Error(result.error?.message || `Failed to send Instagram message (status ${response.status})`);
     }
 
     console.log('[Instagram Send] ✅ Message sent:', result);
@@ -390,12 +471,22 @@ serve(async (req) => {
     // Inserir mensagem na tabela messages (pular se frontend já salvou)
     const skipInsert = payload.skipDbInsert === true;
     const frontendMsgId = payload.frontendMessageId;
+    // sender_id: usa o user autenticado pra auditoria. Fica NULL se a chamada for
+    // via service_role (automações) — aceitável porque automações não têm "autor humano".
+    const senderUserId = user?.id || null;
 
     if (skipInsert && frontendMsgId && instagramMessageId) {
-      // Frontend já salvou — apenas atualizar com o ID do Instagram
+      // Frontend já salvou — apenas atualizar com o ID do Instagram e o sender_id
+      // (caso o frontend não tenha populado).
+      const updatePayload: { whatsapp_message_id: string; status: string; sender_id?: string } = {
+        whatsapp_message_id: instagramMessageId,
+        status: 'sent',
+      };
+      if (senderUserId) updatePayload.sender_id = senderUserId;
+
       const { error: updErr } = await supabase
         .from('messages')
-        .update({ whatsapp_message_id: instagramMessageId, status: 'sent' })
+        .update(updatePayload)
         .eq('id', frontendMsgId);
       if (updErr) {
         console.error('[Instagram Send] Error updating frontend message:', updErr);
@@ -412,6 +503,7 @@ serve(async (req) => {
           conversation_id: resolvedConversationId,
           contact_id: resolvedContactId,
           tenant_id: channel.tenant_id,
+          sender_id: senderUserId,
           content: messageContent,
           message_type: type,
           media_url: messageMediaUrl,

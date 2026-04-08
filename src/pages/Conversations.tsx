@@ -3184,29 +3184,42 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         return content;
       };
       
-      // Função auxiliar para enviar via WhatsApp (Edge Function - sem CORS)
-      // NOTE: Content should already have signature added before calling this
-      const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string, quotedMsgId?: string, filename?: string): Promise<string | undefined> => {
+      // Função auxiliar para enviar via WhatsApp/Instagram (Edge Function - sem CORS)
+      // NOTE: Content should already have signature added before calling this.
+      // existingMessageId: ID da row já inserida otimisticamente pelo frontend.
+      // Quando fornecido, a edge function (no branch Instagram) vai ATUALIZAR essa row
+      // em vez de inserir uma nova — evitando duplicação.
+      const isInstagramChannel = contactPhone?.startsWith('ig:') === true;
+      const channelLabel = isInstagramChannel ? 'Instagram' : 'WhatsApp';
+      const sendViaWhatsApp = async (
+        content: string,
+        type: string,
+        mediaUrl?: string,
+        quotedMsgId?: string,
+        filename?: string,
+        existingMessageId?: string
+      ): Promise<string | undefined> => {
         if (channelId && contactPhone) {
           try {
             const result = await sendWhatsAppMessage(
-              channelId, 
-              contactPhone, 
-              content, 
+              channelId,
+              contactPhone,
+              content,
               type as 'text' | 'image' | 'audio' | 'video' | 'document',
               mediaUrl,
               quotedMsgId,
               filename,
-              selectedConversationId // Pass conversationId for webhook dispatch
+              selectedConversationId, // 8º: conversationId for webhook dispatch
+              existingMessageId       // 9º: ativa skipDbInsert na edge Instagram
             );
             if (!result.success) {
-              console.error('[WhatsApp Send Error]', result.error);
-              toast.error('Erro ao enviar para WhatsApp: ' + (result.error || 'Erro desconhecido'));
+              console.error(`[${channelLabel} Send Error]`, result.error);
+              toast.error(`Erro ao enviar para ${channelLabel}: ` + (result.error || 'Erro desconhecido'));
               return undefined;
             }
             return result.messageId;
-          } catch (whatsappError) {
-            console.error('[WhatsApp Send Error]', whatsappError);
+          } catch (sendError) {
+            console.error(`[${channelLabel} Send Error]`, sendError);
             return undefined;
           }
         }
@@ -3231,15 +3244,25 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           message_type: 'text',
           reply_to_message_id: replyingTo?.id,
         }).then(async (savedMessage) => {
-          // BACKGROUND: Send to WhatsApp with same content (already has signature)
-          const whatsAppId = await sendViaWhatsApp(contentWithSignature, 'text', undefined, quotedWhatsAppId);
-          
-          // Update the message with the WhatsApp message ID for future reply linking
+          // BACKGROUND: Send to WhatsApp/Instagram with same content (already has signature).
+          // Passa savedMessage.id como 6º arg → no branch Instagram, evita insert duplicado.
+          const whatsAppId = await sendViaWhatsApp(
+            contentWithSignature,
+            'text',
+            undefined,
+            quotedWhatsAppId,
+            undefined,
+            savedMessage?.id
+          );
+
+          // Update the message with the WhatsApp message ID for future reply linking.
+          // No Instagram isso já foi feito pela própria edge function (skipDbInsert update),
+          // mas repetir é idempotente e mantém compat com WhatsApp.
           if (whatsAppId && savedMessage?.id) {
             updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
           }
         }).catch(console.error);
-        
+
         // Clear input immediately for better UX
         setMessageInput('');
         setReplyingTo(null);
@@ -3290,13 +3313,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             // BACKGROUND: Send to WhatsApp with caption for media or filename for documents
             const contentToSend = captionForWhatsApp || (messageType === 'document' ? file.name : messageContent);
             const whatsAppId = await sendViaWhatsApp(
-              contentToSend, 
-              messageType, 
-              result.url, 
+              contentToSend,
+              messageType,
+              result.url,
               quotedWhatsAppId,
-              messageType === 'document' ? file.name : undefined
+              messageType === 'document' ? file.name : undefined,
+              savedMessage?.id
             );
-            
+
             // Update the message with the WhatsApp message ID for future reply linking
             if (whatsAppId && savedMessage?.id) {
               updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
@@ -3317,8 +3341,15 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             message_type: 'text',
           }).then(async (savedMessage) => {
             // BACKGROUND: Send to WhatsApp with same content (already has signature)
-            const whatsAppId = await sendViaWhatsApp(contentWithSignature, 'text', undefined, undefined);
-            
+            const whatsAppId = await sendViaWhatsApp(
+              contentWithSignature,
+              'text',
+              undefined,
+              undefined,
+              undefined,
+              savedMessage?.id
+            );
+
             // Update the message with the WhatsApp message ID for future reply linking
             if (whatsAppId && savedMessage?.id) {
               updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
