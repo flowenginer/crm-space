@@ -323,6 +323,15 @@ export async function updateMessageWhatsAppId(
   if (error) console.error('Error updating whatsapp_message_id:', error);
 }
 
+export async function updateMessageStatus(messageId: string, status: string) {
+  const { error } = await supabase
+    .from('messages')
+    .update({ status })
+    .eq('id', messageId);
+
+  if (error) console.error('Error updating message status:', error);
+}
+
 export function useDeleteMessage() {
   const queryClient = useQueryClient();
 

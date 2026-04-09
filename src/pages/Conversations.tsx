@@ -119,7 +119,7 @@ import { SearchResultsList } from '@/components/conversations/SearchResultsList'
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
-import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
+import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, updateMessageStatus, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { usePaginatedConversations, useSortFilterCounts, type SortFilter, type SortOrder, type StatusFiltersSelected, type ConversationFilters, type StatusFilter, type AssignmentFilterExtended } from '@/hooks/usePaginatedConversations';
 import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, useNoTagCount, useLeadStatusCounts, type CountFilters } from '@/hooks/useConversationCounts';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
@@ -3260,6 +3260,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           // mas repetir é idempotente e mantém compat com WhatsApp.
           if (whatsAppId && savedMessage?.id) {
             updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+          } else if (!whatsAppId && savedMessage?.id) {
+            // Send failed (e.g. Instagram 24h window expired) — mark as failed
+            updateMessageStatus(savedMessage.id, 'failed');
           }
         }).catch(console.error);
 
@@ -3324,10 +3327,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             // Update the message with the WhatsApp message ID for future reply linking
             if (whatsAppId && savedMessage?.id) {
               updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+            } else if (!whatsAppId && savedMessage?.id) {
+              updateMessageStatus(savedMessage.id, 'failed');
             }
           }).catch(console.error);
         }
-        
+
         // Send text separately ONLY if it wasn't used as a caption
         if (hasText && !captionUsed) {
           const textContent = messageInput.trim();
@@ -3353,10 +3358,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             // Update the message with the WhatsApp message ID for future reply linking
             if (whatsAppId && savedMessage?.id) {
               updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+            } else if (!whatsAppId && savedMessage?.id) {
+              updateMessageStatus(savedMessage.id, 'failed');
             }
           }).catch(console.error);
         }
-        
+
         setMessageInput('');
         setReplyingTo(null);
         clearSelectedFiles();
@@ -5635,18 +5642,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               const isAdmin = canAccessAllConversations;
               const canSendMessages = isOwner || isAdmin || sharePermission.canEdit || !sharePermission.isShared;
 
-              // Check 24h/72h window for official channels
+              // Check 24h/72h window for official channels and Instagram
               const channelData = allChannels?.find(c => c.id === selectedConversation?.channel_id);
               const isOfficialChannel = (channelData as any)?.type === 'official';
+              const isInstagramChannel = (channelData as any)?.type === 'instagram';
               const lastClientMessage = (selectedConversation as any)?.last_client_message_at;
               const isCTWA = (selectedConversation as any)?.referral_source === 'ctwa_ad';
-              const windowHours = isCTWA ? 72 : 24;
-              
-              // Calculate window status
+              const windowHours = isCTWA ? 72 : 24; // Instagram is always 24h
+
+              // Calculate window status (applies to official WhatsApp AND Instagram channels)
               const windowExpired = (() => {
-                if (!isOfficialChannel) return false;
+                if (!isOfficialChannel && !isInstagramChannel) return false;
                 if (!lastClientMessage) return true; // No client message = expired
-                
+
                 const lastMsg = new Date(lastClientMessage);
                 const windowEnd = new Date(lastMsg.getTime() + windowHours * 60 * 60 * 1000);
                 return new Date() > windowEnd;
@@ -5661,6 +5669,25 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       <span className="text-sm text-muted-foreground">
                         Você tem acesso apenas para visualização desta conversa
                       </span>
+                    </div>
+                  </div>
+                );
+              }
+
+              // 24h window expired for Instagram channel - show blocked state (no templates available)
+              if (windowExpired && isInstagramChannel) {
+                return (
+                  <div className="bg-card border-t border-border px-4 md:px-6 py-4">
+                    <div className="flex flex-col items-center justify-center gap-3 p-4 bg-[#E1306C]/10 rounded-xl border border-[#E1306C]/30">
+                      <div className="flex items-center gap-2">
+                        <Clock size={20} className="text-[#E1306C]" />
+                        <span className="text-sm font-medium text-[#E1306C]">
+                          Janela de 24 horas do Instagram expirada
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground text-center max-w-md">
+                        O Instagram só permite responder mensagens enviadas pelo contato nas últimas 24 horas. Aguarde uma nova mensagem ou entre em contato pelo WhatsApp.
+                      </p>
                     </div>
                   </div>
                 );
