@@ -1211,7 +1211,7 @@ serve(async (req) => {
             onConflict: "phone,tenant_id",
             ignoreDuplicates: false
           })
-          .select("id")
+          .select("id, phone, full_name")
           .single();
         
         if (contactError) {
