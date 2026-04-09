@@ -5650,6 +5650,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               const isCTWA = (selectedConversation as any)?.referral_source === 'ctwa_ad';
               const windowHours = isInstagramChannel ? 24 : (isCTWA ? 72 : 24);
 
+              // DEBUG: Temporary logging to diagnose 24h banner issue
+              console.log('[24h-debug]', {
+                channelId: selectedConversation?.channel_id,
+                channelDataType: (channelData as any)?.type,
+                channelDataFound: !!channelData,
+                allChannelsLen: allChannels?.length,
+                isOfficialChannel,
+                isInstagramChannel,
+                lastClientMessage,
+                canSendMessages,
+              });
+
               // Calculate window status (applies to official WhatsApp AND Instagram channels)
               const windowExpired = (() => {
                 if (!isOfficialChannel && !isInstagramChannel) return false;
@@ -5659,6 +5671,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 const windowEnd = new Date(lastMsg.getTime() + windowHours * 60 * 60 * 1000);
                 return new Date() > windowEnd;
               })();
+
+              // DEBUG: Log window result
+              console.log('[24h-debug] windowExpired:', windowExpired);
 
               if (!canSendMessages) {
                 // View-only access - show disabled state
