@@ -165,7 +165,16 @@ export async function sendWhatsAppMessage(
       console.log('[Instance Creator] Instagram Send Response:', data, error);
 
       if (error) {
-        return { success: false, error: error.message || 'Erro ao enviar mensagem via Instagram' };
+        // supabase.functions.invoke returns generic "Edge Function returned a non-2xx status code"
+        // but the actual error details may be in `data` (parsed response body)
+        const errorBody = data as { error?: string; errorCode?: string } | null;
+        if (errorBody?.errorCode === 'OUTSIDE_24H_WINDOW') {
+          return { success: false, error: 'Janela de 24h do Instagram expirada. O contato precisa enviar uma nova mensagem para você poder responder.' };
+        }
+        if (errorBody?.errorCode === 'IG_TOKEN_EXPIRED') {
+          return { success: false, error: 'Token do Instagram expirado. Reconecte a página no painel de canais.' };
+        }
+        return { success: false, error: errorBody?.error || error.message || 'Erro ao enviar mensagem via Instagram' };
       }
 
       return data as { success: boolean; messageId?: string; error?: string };
