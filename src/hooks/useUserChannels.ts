@@ -76,9 +76,9 @@ export function useUserChannels(): WhatsAppChannel[] {
       userDeptIds.add(profile.department_id);
     }
 
-    // Filtrar: canais do departamento do usuário OU sem departamento (globais)
+    // Filtrar: canais do departamento do usuário OU sem departamento (globais) OU tipo instagram
     return allChannels.filter(channel =>
-      !channel.department_id || userDeptIds.has(channel.department_id)
+      !channel.department_id || userDeptIds.has(channel.department_id) || channel.type === 'instagram'
     );
   }, [allChannels, userDepartments, profile?.department_id, isAdmin, isSupervisor, userChannelIds]);
 }
