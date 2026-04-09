@@ -1,18 +1,44 @@
 
 
-## Plano: Corrigir build + Tornar canal Instagram visível para vendedores
+## Plano: Corrigir mensagens duplicadas em canais Instagram
 
-### Problema 1: Erro de build no `whatsapp-webhook/index.ts`
-**Linha 1214**: O upsert de contato faz `.select("id")`, mas depois o código acessa `contact.full_name` e `contact.phone` (linha 1924-1925).
+### Diagnóstico confirmado
 
-**Correção**: Alterar linha 1214 de `.select("id")` para `.select("id, phone, full_name")`.
+O banco de dados contém mensagens duplicadas reais (duas rows distintas, timestamps com 3ms de diferença, ambas com `whatsapp_message_id: NULL`). O problema **não é visual** — são inserções duplas no banco.
 
-### Problema 2: Canal Instagram não aparece para vendedores
-O hook `useUserChannels` filtra canais por departamento para vendedores. O canal do Instagram provavelmente tem um `department_id` atribuído que não coincide com o departamento dos vendedores — por isso só aparece para admins.
+**Causa raiz**: Existem **múltiplos caminhos de envio** de mensagens no `Conversations.tsx`. O fluxo principal (`handleSendMessage`, linha 3240) foi corrigido para passar `existingMessageId` à edge function, ativando `skipDbInsert=true`. Porém, os fluxos de **templates e respostas rápidas** (linhas ~5698, ~5944, ~6022, ~6034) fazem dupla inserção:
 
-**Correção**: No `useUserChannels.ts`, na lógica de fallback por departamento (linha 80), adicionar uma exceção para canais do tipo `instagram` — eles devem sempre aparecer no filtro para todos os usuários, independente do departamento.
+1. `sendMessage.mutate(...)` → insere row no banco (frontend)
+2. `sendWhatsAppMessage(...)` → sem `existingMessageId` → edge function `instagram-send-message` recebe `skipDbInsert=false` → insere **outra** row no banco
+
+Para WhatsApp isso não duplica porque a edge function de WhatsApp não insere no banco. Mas a de Instagram sim.
+
+### Correção
+
+#### 1. Unificar todos os caminhos de envio para Instagram (`src/pages/Conversations.tsx`)
+
+Em **todos** os fluxos de template/quick-reply que fazem `sendMessage.mutate` + `sendWhatsAppMessage`:
+
+- Trocar `sendMessage.mutate` por `sendMessage.mutateAsync` para capturar o `savedMessage.id`
+- Passar esse ID como `existingMessageId` para `sendWhatsAppMessage`
+- Isso ativa `skipDbInsert=true` na edge function, que faz UPDATE em vez de INSERT
+
+**Locais afetados** (5 trechos):
+- Linha ~5698: Template simples (onSelectTemplate)
+- Linha ~5944: Content blocks — bloco de texto
+- Linha ~5960: Content blocks — bloco de mídia
+- Linha ~6022: sendTextMessage helper
+- Linha ~6034: sendMediaMessage helper
+
+#### 2. Limpar duplicatas existentes no banco (opcional, recomendado)
+
+Executar query SQL para remover rows duplicadas já existentes, mantendo apenas a mais antiga de cada par.
 
 ### Arquivos alterados
-- `supabase/functions/whatsapp-webhook/index.ts` — linha 1214: expandir select do upsert
-- `src/hooks/useUserChannels.ts` — linha 80: incluir canais Instagram no filtro de todos os perfis
+- `src/pages/Conversations.tsx` — 5 trechos de envio de template/quick-reply
+
+### Resultado esperado
+- Templates e respostas rápidas enviados por Instagram criam apenas 1 row no banco
+- O fluxo de WhatsApp continua inalterado
+- Nenhuma mensagem duplicada no frontend
 
