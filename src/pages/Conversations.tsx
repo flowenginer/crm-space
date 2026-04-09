@@ -5694,16 +5694,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           }
 
                           try {
-                            // Send via WhatsApp as template
-                            await sendWhatsAppMessage(channelId, contactPhone, content, 'text');
-                            
-                            // Save to database
-                            sendMessage.mutate({
+                            // Save to database first to get the message ID
+                            const savedMsg = await sendMessage.mutateAsync({
                               conversation_id: selectedConversationId,
                               content: content,
                               is_from_me: true,
                               message_type: 'text',
                             });
+                            
+                            // Send via WhatsApp/Instagram as template, passing existingMessageId to avoid duplicate insert
+                            await sendWhatsAppMessage(channelId, contactPhone, content, 'text', undefined, undefined, undefined, savedMsg?.id);
                             
                             toast.success('Template enviado!');
                           } catch (error) {
@@ -5941,23 +5941,23 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                                 textContent = `*${sigName}*:\n${block.content}`;
                               }
                               
-                              // Save to database
-                              sendMessage.mutate({
+                              // Save to database first to get message ID
+                              const savedTextMsg = await sendMessage.mutateAsync({
                                 conversation_id: selectedConversationId,
                                 content: textContent,
                                 is_from_me: true,
                                 message_type: 'text',
                               });
                               
-                              // Send via WhatsApp
+                              // Send via WhatsApp/Instagram with existingMessageId
                               if (channelId && contactPhone) {
-                                await sendWhatsAppMessage(channelId, contactPhone, textContent, 'text');
+                                await sendWhatsAppMessage(channelId, contactPhone, textContent, 'text', undefined, undefined, undefined, savedTextMsg?.id);
                               }
                             } else if (block.type === 'media' && block.media_url) {
                               const fullUrl = getFullMediaUrl(block.media_url);
                               const msgType = getMessageType(block.media_type);
                               
-                              sendMessage.mutate({
+                              const savedMediaBlockMsg = await sendMessage.mutateAsync({
                                 conversation_id: selectedConversationId,
                                 content: '',
                                 is_from_me: true,
@@ -5967,7 +5967,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                               });
                               
                               if (channelId && contactPhone) {
-                                await sendWhatsAppMessage(channelId, contactPhone, '', msgType, fullUrl);
+                                await sendWhatsAppMessage(channelId, contactPhone, '', msgType, fullUrl, undefined, undefined, savedMediaBlockMsg?.id);
                               }
                             }
                             
@@ -5982,7 +5982,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             const fullMediaUrl = getFullMediaUrl(mediaUrl);
                             const messageType = getMessageType(mediaType);
                             
-                            sendMessage.mutate({
+                            const savedAttachMsg = await sendMessage.mutateAsync({
                               conversation_id: selectedConversationId,
                               content: '',
                               is_from_me: true,
@@ -5992,7 +5992,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             });
                             
                             if (channelId && contactPhone) {
-                              await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl, undefined, mediaName || undefined);
+                              await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl, undefined, mediaName || undefined, savedAttachMsg?.id);
                             }
                           }
                           toast.success('Mensagens enviadas!');
@@ -6019,7 +6019,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             textContent = `*${sigName}*:\n${content}`;
                           }
                           
-                          sendMessage.mutate({
+                          const savedTxt = await sendMessage.mutateAsync({
                             conversation_id: selectedConversationId!,
                             content: textContent,
                             is_from_me: true,
@@ -6027,12 +6027,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           });
                           
                           if (channelId && contactPhone) {
-                            await sendWhatsAppMessage(channelId, contactPhone, textContent, 'text');
+                            await sendWhatsAppMessage(channelId, contactPhone, textContent, 'text', undefined, undefined, undefined, savedTxt?.id);
                           }
                         };
                         
                         const sendMediaMessage = async () => {
-                          sendMessage.mutate({
+                          const savedMedia = await sendMessage.mutateAsync({
                             conversation_id: selectedConversationId!,
                             content: '',
                             is_from_me: true,
@@ -6042,7 +6042,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           });
                           
                           if (channelId && contactPhone) {
-                            await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl, undefined, mediaName || undefined);
+                            await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl, undefined, mediaName || undefined, savedMedia?.id);
                           }
                         };
                         
