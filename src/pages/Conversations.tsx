@@ -5648,7 +5648,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               const isInstagramChannel = (channelData as any)?.type === 'instagram';
               const lastClientMessage = (selectedConversation as any)?.last_client_message_at;
               const isCTWA = (selectedConversation as any)?.referral_source === 'ctwa_ad';
-              const windowHours = isCTWA ? 72 : 24; // Instagram is always 24h
+              const windowHours = isInstagramChannel ? 24 : (isCTWA ? 72 : 24);
 
               // Calculate window status (applies to official WhatsApp AND Instagram channels)
               const windowExpired = (() => {
