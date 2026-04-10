@@ -240,18 +240,6 @@ export function useRealtimeConversations() {
       });
     }, 300);
 
-    // OTIMIZAÇÃO: Debounce de UPDATE mantido em 800ms
-    const invalidateConversations = debounce(() => {
-      queryClient.invalidateQueries({ 
-        queryKey: ['conversations-paginated'],
-        refetchType: 'active'
-      });
-      queryClient.invalidateQueries({ 
-        queryKey: ['conversation-total-counts'],
-        refetchType: 'active'
-      });
-    }, 800);
-
     // Helper para obter o ID do usuário atual
     const getCurrentUserId = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -418,15 +406,58 @@ export function useRealtimeConversations() {
                 }
               );
               // Atualizar detalhes da conversa (sidebar) sem invalidar a lista
-              queryClient.invalidateQueries({ 
+              queryClient.invalidateQueries({
                 queryKey: ['conversation-details', conversationId],
                 refetchType: 'active'
               });
               return;
             }
 
-            invalidateConversations();
-            queryClient.invalidateQueries({ 
+            // last_message_at mudou: atualizar cache local e mover conversa pro topo
+            // sem refetch completo (preserva posição do scroll da lista)
+            const newPayload = payload.new as any;
+            queryClient.setQueriesData(
+              { queryKey: ['conversations-paginated'] },
+              (oldData: any) => {
+                if (!oldData?.pages) return oldData;
+
+                // Encontrar e remover a conversa da posição atual
+                let targetConv: any = null;
+                const newPages = oldData.pages.map((page: any) => ({
+                  ...page,
+                  conversations: (page.conversations || []).filter((c: any) => {
+                    if (c.id === conversationId) {
+                      targetConv = {
+                        ...c,
+                        last_message_at: newPayload.last_message_at,
+                        last_message_preview: newPayload.last_message_preview ?? c.last_message_preview,
+                        last_message_is_from_me: newPayload.last_message_is_from_me ?? c.last_message_is_from_me,
+                        is_unread: newPayload.is_unread ?? c.is_unread,
+                        unread_count: newPayload.unread_count ?? c.unread_count,
+                      };
+                      return false;
+                    }
+                    return true;
+                  })
+                }));
+
+                // Inserir no topo da primeira página
+                if (targetConv && newPages[0]) {
+                  newPages[0] = {
+                    ...newPages[0],
+                    conversations: [targetConv, ...newPages[0].conversations]
+                  };
+                }
+
+                return { ...oldData, pages: newPages };
+              }
+            );
+            // Atualizar contagens
+            queryClient.invalidateQueries({
+              queryKey: ['conversation-total-counts'],
+              refetchType: 'active'
+            });
+            queryClient.invalidateQueries({
               queryKey: ['conversation-details', conversationId],
               refetchType: 'active'
             });

@@ -1528,8 +1528,6 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
-  // Sistema simples de preservação de scroll - salva apenas o scrollTop
-  const savedScrollTopRef = useRef<number | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   // Set persistente de conversas que NÃO devem ser auto-marcadas como lidas
   // A proteção só é removida por ação EXPLÍCITA do usuário (clicar na conversa ou enviar mensagem)
@@ -2469,27 +2467,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     return filtered;
   }, [conversations, channelFilter, sortOrder, statusFiltersSelected, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, allSharedConversationIds]);
 
-  // Restaurar scroll após lista atualizar (sistema simples - mantém posição exata)
-  useEffect(() => {
-    if (savedScrollTopRef.current === null || !conversationListRef.current) return;
-    
-    const targetScrollTop = savedScrollTopRef.current;
-    
-    // Agendar restauração após DOM estabilizar
-    const restoreTimeout = setTimeout(() => {
-      if (!conversationListRef.current) return;
-      
-      // Aplicar o scrollTop salvo diretamente
-      conversationListRef.current.scrollTop = targetScrollTop;
-      console.log('[Scroll] Restored scrollTop:', targetScrollTop);
-      
-      // Limpar após restaurar
-      savedScrollTopRef.current = null;
-    }, 100);
-    
-    return () => clearTimeout(restoreTimeout);
-  }, [filteredConversations]);
-
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
     const pinnedIds = new Set(pinnedConversations.map(p => p.conversation_id));
@@ -2871,12 +2848,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
     // ============ FIM DA VERIFICAÇÃO ============
     
-    // Salvar posição do scroll antes de mudar de conversa
-    if (conversationListRef.current) {
-      savedScrollTopRef.current = conversationListRef.current.scrollTop;
-      console.log('[Scroll] Saved scrollTop on conversation click:', savedScrollTopRef.current);
-    }
-    
     // Marcar como clique EXPLÍCITO do usuário (para limpar proteção de "marcar como não lida")
     userClickedConversationRef.current = conv.id;
     console.log('[Auto-read] Usuário clicou explicitamente na conversa:', conv.id);
@@ -3077,12 +3048,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     
     // Prevent duplicate sends
     if (isSendingRef.current) return;
-    
-    // Salvar posição do scroll antes de enviar (para restaurar após reordenação da lista)
-    if (conversationListRef.current) {
-      savedScrollTopRef.current = conversationListRef.current.scrollTop;
-      console.log('[Scroll] Saved scrollTop:', savedScrollTopRef.current);
-    }
     
     // Check if we have either text or files
     const hasText = messageInput.trim().length > 0;

@@ -292,8 +292,46 @@ export function useSendMessage() {
       queryClient.invalidateQueries({ queryKey: ['messages', variables.conversation_id] });
       queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversation_id] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
-      
+
+      // UPDATE OTIMISTA: mover conversa pro topo no cache local em vez de invalidar
+      // Isso evita refetch completo que reseta a paginação e perde a posição do scroll
+      queryClient.setQueriesData(
+        { queryKey: ['conversations-paginated'] },
+        (oldData: any) => {
+          if (!oldData?.pages) return oldData;
+
+          // Encontrar a conversa em todas as páginas
+          let targetConv: any = null;
+          const newPages = oldData.pages.map((page: any) => ({
+            ...page,
+            conversations: (page.conversations || []).filter((c: any) => {
+              if (c.id === variables.conversation_id) {
+                targetConv = {
+                  ...c,
+                  last_message_at: new Date().toISOString(),
+                  last_message_preview: variables.content ? variables.content.substring(0, 100) : c.last_message_preview,
+                  last_message_is_from_me: true,
+                  is_unread: false,
+                  unread_count: 0,
+                };
+                return false; // remove da posição atual
+              }
+              return true;
+            })
+          }));
+
+          // Inserir no topo da primeira página
+          if (targetConv && newPages[0]) {
+            newPages[0] = {
+              ...newPages[0],
+              conversations: [targetConv, ...newPages[0].conversations]
+            };
+          }
+
+          return { ...oldData, pages: newPages };
+        }
+      );
+
       // Invalidar contadores de "aguardando resposta" para atualização instantânea
       // Real-time tem latência, então invalidamos diretamente após ações do próprio usuário
       queryClient.invalidateQueries({ queryKey: ['my-waiting-count'] });
