@@ -1,4 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  buildTemplateComponentsPayload,
+  type TemplateComponent,
+  type TemplatePayloadComponent,
+} from '../_shared/meta-template-payload.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,6 +54,13 @@ interface ScheduledMessage {
   attempts: number
   created_by: string | null
   contact: { id: string; full_name: string; phone: string } | null
+  // Meta template fields (when message_type === 'template')
+  meta_template_id?: string | null
+  template_name?: string | null
+  template_language?: string | null
+  template_components?: TemplateComponent[] | null
+  template_header_media_url?: string | null
+  variables?: Record<string, string> | null
 }
 
 interface WhatsAppProvider {
@@ -472,6 +484,152 @@ Deno.serve(async (req) => {
         const typedChannel = channel as WhatsAppChannel
         const channelType = typedChannel.type
         const isCloudAPI = channelType === 'cloudapi' || channelType === 'official'
+        const isTemplateMessage = scheduled.message_type === 'template'
+
+        // =====================================================
+        // META TEMPLATE: requires CloudAPI channel. Short-circuit here.
+        // =====================================================
+        if (isTemplateMessage) {
+          if (!isCloudAPI) {
+            console.error(`[Scheduled] Template message ${scheduled.id} on non-CloudAPI channel (${channelType})`)
+            await supabase
+              .from('scheduled_messages')
+              .update({
+                status: 'failed',
+                error_message: 'Templates Meta só podem ser enviados em canais Cloud API oficial',
+                attempts: (scheduled.attempts || 0) + 1,
+              })
+              .eq('id', scheduled.id)
+            errorCount++
+            results.push({ id: scheduled.id, status: 'failed', error: 'Template requires CloudAPI channel' })
+            continue
+          }
+
+          const contactPhoneTpl = scheduled.contact?.phone
+          if (!contactPhoneTpl) {
+            await supabase
+              .from('scheduled_messages')
+              .update({
+                status: 'failed',
+                error_message: 'Telefone do contato não encontrado',
+                attempts: (scheduled.attempts || 0) + 1,
+              })
+              .eq('id', scheduled.id)
+            errorCount++
+            results.push({ id: scheduled.id, status: 'failed', error: 'Contact phone not found' })
+            continue
+          }
+
+          const components = scheduled.template_components || []
+          const variables = scheduled.variables || {}
+
+          // Apply dynamic variable replacement inside each variable value (e.g. {{nome}})
+          const expandedVars: Record<string, string> = {}
+          let tplAgentName = ''
+          if (scheduled.created_by) {
+            const { data: agentProfile } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', scheduled.created_by)
+              .single()
+            tplAgentName = agentProfile?.full_name || ''
+          }
+          for (const [k, v] of Object.entries(variables)) {
+            expandedVars[k] = replaceVariables(
+              String(v ?? ''),
+              {
+                full_name: scheduled.contact?.full_name,
+                phone: scheduled.contact?.phone,
+                email: (scheduled.contact as { email?: string } | null)?.email,
+              },
+              tplAgentName,
+            )
+          }
+
+          let templatePayload: TemplatePayloadComponent[]
+          try {
+            templatePayload = buildTemplateComponentsPayload(
+              components,
+              expandedVars,
+              scheduled.template_header_media_url || null,
+            )
+          } catch (buildError) {
+            console.error(`[Scheduled] Template build error:`, buildError)
+            await supabase
+              .from('scheduled_messages')
+              .update({
+                status: 'failed',
+                error_message: buildError instanceof Error ? buildError.message : 'Erro ao montar template',
+                attempts: (scheduled.attempts || 0) + 1,
+              })
+              .eq('id', scheduled.id)
+            errorCount++
+            results.push({ id: scheduled.id, status: 'failed', error: 'Template build error' })
+            continue
+          }
+
+          try {
+            console.log(`[Scheduled] Sending template ${scheduled.template_name} via CloudAPI...`)
+            const cloudResponse = await fetch(`${supabaseUrl}/functions/v1/cloudapi-send-message`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                channelId: scheduled.channel_id,
+                phone: contactPhoneTpl,
+                type: 'template',
+                conversationId: scheduled.conversation_id,
+                template: {
+                  name: scheduled.template_name,
+                  language: scheduled.template_language || 'pt_BR',
+                  components: templatePayload,
+                },
+              }),
+            })
+
+            const cloudResult = await cloudResponse.json()
+            if (cloudResponse.ok && cloudResult.success) {
+              console.log(`[Scheduled] Template sent! ID: ${cloudResult.messageId}`)
+              await supabase
+                .from('scheduled_messages')
+                .update({
+                  status: 'sent',
+                  sent_at: new Date().toISOString(),
+                  attempts: (scheduled.attempts || 0) + 1,
+                })
+                .eq('id', scheduled.id)
+              processedCount++
+              results.push({ id: scheduled.id, status: 'sent' })
+            } else {
+              const errMsg = cloudResult.error || 'Erro ao enviar template via CloudAPI'
+              await supabase
+                .from('scheduled_messages')
+                .update({
+                  status: 'failed',
+                  error_message: errMsg,
+                  attempts: (scheduled.attempts || 0) + 1,
+                })
+                .eq('id', scheduled.id)
+              errorCount++
+              results.push({ id: scheduled.id, status: 'failed', error: errMsg })
+            }
+          } catch (cloudError) {
+            console.error(`[Scheduled] Template send error:`, cloudError)
+            await supabase
+              .from('scheduled_messages')
+              .update({
+                status: 'failed',
+                error_message: cloudError instanceof Error ? cloudError.message : 'Erro de rede CloudAPI',
+                attempts: (scheduled.attempts || 0) + 1,
+              })
+              .eq('id', scheduled.id)
+            errorCount++
+            results.push({ id: scheduled.id, status: 'failed', error: 'Network error' })
+          }
+          continue
+        }
         
         // Para canais CloudAPI, não precisamos de provider tradicional
         // Provider pode vir como array ou objeto único

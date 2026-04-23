@@ -1,18 +1,41 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Calendar, Clock, Mic, MicOff, Paperclip, Smile, FileText,
-  Send, X, Loader2, Trash2
+  Send, X, Loader2, Trash2, MessageSquare, ImageIcon, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import EmojiPicker from 'emoji-picker-react';
+import {
+  useApprovedMetaTemplates,
+  type MetaMessageTemplate,
+  getTemplateBody,
+  getTemplateHeader,
+  getTemplateFooter,
+  extractDetailedVariables,
+} from '@/hooks/useMetaTemplates';
+import {
+  buildTemplateComponentsPayload,
+  countTotalTemplateVariables,
+  renderTemplatePreview,
+} from '@/lib/scheduled-template-utils';
+
+type ScheduleMode = 'free' | 'template';
 
 interface ScheduleMessageModalProps {
   open: boolean;
@@ -54,7 +77,13 @@ export function ScheduleMessageModal({
   
   // Tab state
   const [activeTab, setActiveTab] = useState('new');
-  
+
+  // Template mode state
+  const [mode, setMode] = useState<ScheduleMode>('free');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [templateVars, setTemplateVars] = useState<Record<string, string>>({});
+  const [templateHeaderMediaUrl, setTemplateHeaderMediaUrl] = useState('');
+
   const queryClient = useQueryClient();
 
   // Reset form when modal opens
@@ -67,6 +96,10 @@ export function ScheduleMessageModal({
       setAudioUrl(null);
       setAttachedFiles([]);
       setActiveTab('new');
+      setMode('free');
+      setSelectedTemplateId('');
+      setTemplateVars({});
+      setTemplateHeaderMediaUrl('');
     }
   }, [open]);
 
@@ -100,6 +133,34 @@ export function ScheduleMessageModal({
     },
     enabled: !!contactId && open
   });
+
+  // Approved Meta templates for template mode
+  const { data: approvedTemplates = [], isLoading: isLoadingTemplates } = useApprovedMetaTemplates();
+
+  const selectedTemplate = useMemo<MetaMessageTemplate | null>(() => {
+    if (!selectedTemplateId) return null;
+    return approvedTemplates.find((t) => t.id === selectedTemplateId) || null;
+  }, [selectedTemplateId, approvedTemplates]);
+
+  const templateVarCount = useMemo(() => {
+    if (!selectedTemplate) return 0;
+    return countTotalTemplateVariables(selectedTemplate.components);
+  }, [selectedTemplate]);
+
+  const templateDetails = useMemo(() => {
+    if (!selectedTemplate) return null;
+    return extractDetailedVariables(selectedTemplate.components, selectedTemplate.header_media_url);
+  }, [selectedTemplate]);
+
+  const needsTemplateMediaUrl =
+    !!templateDetails?.hasMediaHeader &&
+    templateDetails.headerVarCount === 0 &&
+    !templateDetails.headerMediaUrl;
+
+  const templatePreview = useMemo(() => {
+    if (!selectedTemplate) return '';
+    return renderTemplatePreview(selectedTemplate, templateVars);
+  }, [selectedTemplate, templateVars]);
 
   // ============================================
   // AUDIO RECORDING with Mp3Recorder (direct MP3)
@@ -206,6 +267,123 @@ export function ScheduleMessageModal({
   // ============================================
   const handleTemplateSelect = (template: any) => {
     setMessage(template.content);
+  };
+
+  // ============================================
+  // TEMPLATE VAR CHANGE
+  // ============================================
+  const handleTemplateVarChange = (key: string, value: string) => {
+    setTemplateVars((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // ============================================
+  // SCHEDULE TEMPLATE
+  // ============================================
+  const handleScheduleTemplate = async () => {
+    if (!selectedTemplate) {
+      toast.error('Selecione um template');
+      return;
+    }
+    if (!scheduledDate || !scheduledTime) {
+      toast.error('Selecione data e hora');
+      return;
+    }
+    const scheduledFor = new Date(`${scheduledDate}T${scheduledTime}`);
+    if (scheduledFor <= new Date()) {
+      toast.error('A data deve ser no futuro');
+      return;
+    }
+    for (let i = 1; i <= templateVarCount; i++) {
+      if (!templateVars[String(i)]?.trim()) {
+        toast.error(`Preencha a variável {{${i}}}`);
+        return;
+      }
+    }
+    if (needsTemplateMediaUrl && !templateHeaderMediaUrl.trim()) {
+      toast.error('Informe a URL da mídia do cabeçalho');
+      return;
+    }
+
+    // Validate payload will build correctly before insert
+    try {
+      buildTemplateComponentsPayload(
+        selectedTemplate,
+        templateVars,
+        needsTemplateMediaUrl ? templateHeaderMediaUrl.trim() : null,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao montar template');
+      return;
+    }
+
+    // Resolve channel
+    let finalChannelId = channelId;
+    if (!finalChannelId) {
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('channel_id')
+        .eq('id', conversationId)
+        .single();
+      finalChannelId = conversation?.channel_id;
+    }
+    if (!finalChannelId) {
+      toast.error('Nenhum canal disponível');
+      return;
+    }
+
+    // Warn if channel is not CloudAPI (templates Meta only work on official channels)
+    const { data: channelRow } = await supabase
+      .from('whatsapp_channels')
+      .select('type')
+      .eq('id', finalChannelId)
+      .single();
+    const channelType = channelRow?.type;
+    if (channelType !== 'cloudapi' && channelType !== 'official') {
+      toast.error('Templates Meta só podem ser enviados em canais Cloud API oficial');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const effectiveMediaUrl = needsTemplateMediaUrl
+        ? templateHeaderMediaUrl.trim()
+        : (selectedTemplate.header_media_url || null);
+
+      const { error } = await supabase.from('scheduled_messages').insert({
+        contact_id: contactId,
+        conversation_id: conversationId,
+        channel_id: finalChannelId,
+        content: templatePreview,
+        message_type: 'template',
+        meta_template_id: selectedTemplate.id,
+        template_name: selectedTemplate.name,
+        template_language: selectedTemplate.language,
+        template_components: selectedTemplate.components,
+        template_header_media_url: effectiveMediaUrl,
+        variables: templateVars,
+        scheduled_for: scheduledFor.toISOString(),
+        status: 'scheduled',
+        created_by: user?.id,
+      });
+      if (error) throw error;
+
+      toast.success('Template agendado!');
+      queryClient.invalidateQueries({ queryKey: ['scheduled-messages', contactId] });
+
+      // Reset template form
+      setSelectedTemplateId('');
+      setTemplateVars({});
+      setTemplateHeaderMediaUrl('');
+      setScheduledDate('');
+      setScheduledTime('');
+      setActiveTab('scheduled');
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao agendar template');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // ============================================
@@ -410,6 +588,21 @@ export function ScheduleMessageModal({
           </TabsList>
 
           <TabsContent value="new" className="flex-1 overflow-y-auto space-y-4 mt-0">
+            {/* Mode toggle */}
+            <ToggleGroup
+              type="single"
+              value={mode}
+              onValueChange={(v) => v && setMode(v as ScheduleMode)}
+              className="justify-start"
+            >
+              <ToggleGroupItem value="free" aria-label="Mensagem livre" className="gap-2">
+                <MessageSquare size={14} /> Mensagem Livre
+              </ToggleGroupItem>
+              <ToggleGroupItem value="template" aria-label="Template Meta" className="gap-2">
+                <Sparkles size={14} /> Template Meta
+              </ToggleGroupItem>
+            </ToggleGroup>
+
             {/* Date and Time */}
             <div className="flex gap-3">
               <div className="flex-1">
@@ -438,6 +631,8 @@ export function ScheduleMessageModal({
               </div>
             </div>
 
+            {mode === 'free' && (
+            <>
             {/* Message Input with Toolbar */}
             <div className="bg-muted rounded-xl border border-border overflow-hidden">
               {/* Toolbar */}
@@ -613,6 +808,116 @@ export function ScheduleMessageModal({
               )}
               Agendar Mensagem
             </Button>
+            </>
+            )}
+
+            {mode === 'template' && (
+            <>
+              {/* Template selector */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-muted-foreground">Template aprovado</Label>
+                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                  <SelectTrigger className="bg-muted border-border">
+                    <SelectValue placeholder={isLoadingTemplates ? 'Carregando...' : 'Selecione um template'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {approvedTemplates.length === 0 && !isLoadingTemplates && (
+                      <div className="p-3 text-sm text-muted-foreground text-center">
+                        Nenhum template aprovado. Sincronize em Configurações &gt; Meta Templates.
+                      </div>
+                    )}
+                    {approvedTemplates.map((tpl) => (
+                      <SelectItem key={tpl.id} value={tpl.id}>
+                        <span className="font-medium">{tpl.name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          {tpl.language} · {tpl.category}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Media URL (when required) */}
+              {needsTemplateMediaUrl && (
+                <div className="space-y-2 rounded-lg border border-border bg-muted p-3">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <ImageIcon size={14} />
+                    URL da {templateDetails?.headerFormat === 'IMAGE' ? 'imagem' : templateDetails?.headerFormat === 'VIDEO' ? 'vídeo' : 'documento'} do cabeçalho
+                    <span className="text-xs text-destructive">*obrigatório</span>
+                  </Label>
+                  <Input
+                    placeholder="https://exemplo.com/imagem.jpg"
+                    value={templateHeaderMediaUrl}
+                    onChange={(e) => setTemplateHeaderMediaUrl(e.target.value)}
+                    className="bg-background border-border"
+                  />
+                </div>
+              )}
+
+              {/* Variables */}
+              {selectedTemplate && templateVarCount > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Preencha as variáveis</Label>
+                  <div className="grid gap-2">
+                    {Array.from({ length: templateVarCount }, (_, i) => i + 1).map((num) => (
+                      <div key={num} className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground w-12">{`{{${num}}}`}</span>
+                        <Input
+                          placeholder={num === 1 && contactName ? contactName : `Valor para {{${num}}}`}
+                          value={templateVars[String(num)] || ''}
+                          onChange={(e) => handleTemplateVarChange(String(num), e.target.value)}
+                          className="flex-1 bg-muted border-border"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Preview */}
+              {selectedTemplate && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Preview</Label>
+                  <div className="bg-muted/50 rounded-lg p-4 border border-border">
+                    <div className="bg-[#dcf8c6] dark:bg-green-800/30 rounded-lg p-3 max-w-sm ml-auto shadow-sm">
+                      {(templateDetails?.hasMediaHeader) && (
+                        <div className="mb-2 text-xs text-muted-foreground italic flex items-center gap-1">
+                          <ImageIcon size={12} />
+                          Mídia do cabeçalho
+                        </div>
+                      )}
+                      <p className="text-sm whitespace-pre-wrap">{templatePreview}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Info */}
+              <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-2 border border-border">
+                Templates Meta podem ser enviados mesmo fora da janela de 24 horas.
+                Requerem canal WhatsApp Cloud API oficial.
+              </div>
+
+              <Button
+                onClick={handleScheduleTemplate}
+                disabled={
+                  isLoading ||
+                  !selectedTemplate ||
+                  !scheduledDate ||
+                  !scheduledTime
+                }
+                className="w-full gap-2"
+              >
+                {isLoading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Send size={18} />
+                )}
+                Agendar Template
+              </Button>
+            </>
+            )}
           </TabsContent>
 
           <TabsContent value="scheduled" className="flex-1 overflow-y-auto mt-0">
@@ -639,6 +944,11 @@ export function ScheduleMessageModal({
                           hour: '2-digit',
                           minute: '2-digit'
                         })}
+                        {msg.message_type === 'template' && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] uppercase tracking-wide">
+                            <Sparkles size={10} /> Template
+                          </span>
+                        )}
                       </div>
                       <button
                         onClick={() => cancelScheduledMessage.mutate(msg.id)}
