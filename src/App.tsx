@@ -67,6 +67,7 @@ import GamificationSettings from "@/pages/gamification/Settings";
 import TenantSettings from "@/pages/TenantSettings";
 import AcceptInvite from "@/pages/AcceptInvite";
 import SuperAdminPanel from "@/pages/SuperAdminPanel";
+import MinhaConta from "@/pages/MinhaConta";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import NotFound from "@/pages/NotFound";
 import MetaOAuthCallback from "@/pages/MetaOAuthCallback";
@@ -411,6 +412,11 @@ const App = () => (
               <Route path="/sales-analysis" element={
                 <ProtectedRoute permission="reports.view">
                   <SalesAnalysis />
+                </ProtectedRoute>
+              } />
+              <Route path="/minha-conta" element={
+                <ProtectedRoute>
+                  <MinhaConta />
                 </ProtectedRoute>
               } />
             </Route>

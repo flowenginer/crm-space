@@ -4,6 +4,84 @@ Registro cronológico das alterações significativas. Sessão mais recente no t
 
 ---
 
+## 2026-05-04 — Troca de Senha pelo Vendedor (autoatendimento)
+
+**Problema:** Vendedores não tinham como trocar a própria senha. Toda definição/troca passava pelo admin (Ricardo Grion), que precisava saber a senha — fricção operacional + de privacidade.
+
+**Decisão:** Página dedicada `/minha-conta` com seção "Trocar Senha". Sem pedir senha atual (UX simplificada, trade-off aceito explicitamente). Política forte: 8 chars + maiúscula + minúscula + número + símbolo. Sem edge function — usar `supabase.auth.updateUser` direto (o JWT da sessão atual já autoriza a troca pra si mesmo).
+
+**Spec:** `docs/spec-troca-senha-vendedor.md` (versão original com decisões já tomadas)
+
+### O que mudou
+
+**Validação compartilhada (`src/lib/passwordValidation.ts`):**
+- `passwordSchema` (Zod): regex em sequência cobrindo 5 critérios com mensagens em PT-BR
+- `changePasswordSchema`: combina nova + confirmação, com `refine` validando igualdade
+- `evaluatePassword(password)`: retorna os 5 critérios anotados com `met: boolean` — alimenta a UI em tempo real
+- `translateSupabaseAuthError(message)`: mapeia mensagens conhecidas da Supabase Auth pra PT-BR ("New password should be different from the old password" → "A nova senha precisa ser diferente da atual"). Cobre 5 famílias de erro + fallback que retorna a mensagem original
+
+**Página (`src/pages/MinhaConta.tsx`):**
+- Cabeçalho "Minha Conta" + descrição
+- Card "Dados Pessoais" (read-only): nome (`profile.full_name`), e-mail (do `auth.users`), perfil (`profile.role`), departamento (query separada via `useQuery` em `departments`)
+- Card "Trocar Senha":
+  - Inputs `Nova senha` + `Confirmar nova senha` com toggle olho (Eye/EyeOff)
+  - Lista de critérios em tempo real com Check (verde) ou X (cinza) por item — `data-testid` por critério pra testar
+  - Estado visual da confirmação (border verde/vermelho conforme bate)
+  - Botão `Salvar nova senha` desabilitado até `allCriteriaMet && passwordsMatch && !isLoading`
+- Submit: `supabase.auth.updateUser({ password })` → `toast.success` + `setTimeout(() => navigate('/'), 1500)`. Erro → `toast.error(translateSupabaseAuthError(error.message))` mantendo form preenchido
+
+**Rota (`src/App.tsx`):**
+- `<Route path="/minha-conta" element={<ProtectedRoute><MinhaConta /></ProtectedRoute>} />` dentro do bloco `MainLayout`
+- Sem `permission` específica — qualquer user logado com tenant acessa
+
+**Sidebar (`src/components/layout/Sidebar.tsx`):**
+- Avatar + nome do usuário no footer agora envolvidos por `<button onClick={() => navigate('/minha-conta')}>` com `hover:opacity-80` e `focus-visible:ring`. Funciona tanto no estado expandido quanto no collapsed
+- Botões "bell" e "logout" continuam separados à direita (não viram parte do botão de navegação)
+- Sem item de menu novo (decisão da spec: manter sidebar limpo)
+
+### Testes (33 novos, todos passando)
+
+- `src/lib/__tests__/passwordValidation.test.ts` — 22 testes
+  - 6 testes do `passwordSchema` (cada critério individual + senha forte completa)
+  - 3 testes do `changePasswordSchema` (mismatch, fraca, válida)
+  - 6 testes de `evaluatePassword` (vazia, cada critério individual, todas atendidas, contagem de critérios)
+  - 7 testes de `translateSupabaseAuthError` (5 famílias mapeadas + fallback)
+- `src/pages/__tests__/MinhaConta.test.tsx` — 11 testes
+  - Render: dados pessoais, critérios pendentes inicialmente, botão desabilitado
+  - Validação tempo real: critérios marcam conforme digita, botão habilita/desabilita conforme regras
+  - Toggle olho: alterna `type=password` ↔ `type=text`
+  - Submit: sucesso + redirect, mensagem traduzida em erro conhecido, form mantido após erro
+
+**Resultado:** 33/33 novos passando. Suite total: 100 passing + 7 falhas pré-existentes em Bling (intocadas — `usePreOrderBling`, `PreOrderBlingModal`, `blingSync`). `tsc -b` limpo.
+
+### Decisões que ficaram fora (da spec original, intencionalmente)
+
+- Reset por email ("Esqueci minha senha")
+- Forçar troca no primeiro login
+- Painel admin com lista/auditoria de senhas — **NUNCA**: senha em hash bcrypt no Auth, expor viola LGPD
+- Impersonate (admin entrar como vendedor)
+- Pedir senha atual antes de trocar — explicitamente decidido por simplicity-first; risco aceito (alguém com aba aberta consegue trocar). Pode ser reconsiderado no futuro
+
+### Pendência operacional (não-código)
+
+- Confirmar no painel Supabase Auth (`Auth > Policies > Password requirements`) que o mínimo nativo está em 8 caracteres ou menos. As regras de complexidade (maiúscula/minúscula/número/símbolo) são validadas só pelo frontend — o backend Supabase aceita qualquer senha que passe no mínimo dele
+
+### Arquivos tocados
+
+Novos:
+- `docs/spec-troca-senha-vendedor.md` (spec original, restaurada e tracked)
+- `src/lib/passwordValidation.ts`
+- `src/lib/__tests__/passwordValidation.test.ts`
+- `src/pages/MinhaConta.tsx`
+- `src/pages/__tests__/MinhaConta.test.tsx`
+
+Modificados:
+- `src/App.tsx` (import + rota)
+- `src/components/layout/Sidebar.tsx` (`useNavigate` + avatar/nome envolvidos por `<button>`)
+- `PROGRESS.md` (este arquivo)
+
+---
+
 ## 2026-04-23 — Templates Meta em Mensagens Agendadas
 
 **Problema:** O modal de agendamento (icone calendario na barra de conversas) suportava texto, audio, imagem, video e documento, mas nao templates Meta. Quando a data agendada caia fora da janela de 24h do WhatsApp, o envio falhava porque so templates aprovados podem reabrir conversa.

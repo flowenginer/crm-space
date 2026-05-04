@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import {
   Bell,
@@ -52,6 +52,7 @@ function DynamicIcon({ name, className }: { name: string; className?: string }) 
 
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const isMobile = useIsMobile();
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
@@ -640,35 +641,46 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             'flex items-center',
             isCollapsed ? 'flex-col gap-2' : 'gap-3'
           )}>
-            {/* Avatar with notification badge */}
-            <div className="relative">
-              <div className={cn(
-                "flex h-11 w-11 items-center justify-center rounded-full font-semibold text-sm border-2 shadow-lg",
-                isDark 
-                  ? "bg-primary text-primary-foreground border-primary" 
-                  : "bg-white text-purple-600 border-white"
-              )}>
-              {getInitials(profile?.full_name)}
+            {/* Avatar + nome (clicável → /minha-conta) */}
+            <button
+              type="button"
+              onClick={() => navigate('/minha-conta')}
+              className={cn(
+                'flex items-center gap-3 rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                isCollapsed ? 'flex-col gap-2 p-1' : 'flex-1 min-w-0 p-1 -m-1 text-left'
+              )}
+              title="Minha Conta"
+              aria-label="Abrir minha conta"
+            >
+              <div className="relative">
+                <div className={cn(
+                  "flex h-11 w-11 items-center justify-center rounded-full font-semibold text-sm border-2 shadow-lg",
+                  isDark
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-white text-purple-600 border-white"
+                )}>
+                  {getInitials(profile?.full_name)}
+                </div>
               </div>
-            </div>
 
-            {!isCollapsed && (
-              <div className="flex-1 min-w-0">
-                <p className={cn(
-                  "truncate text-sm font-semibold",
-                  isDark ? "text-foreground" : "text-white"
-                )}>
-                  {profile?.full_name || 'Usuário'}
-                </p>
-                <p className={cn(
-                  "truncate text-xs flex items-center gap-1",
-                  isDark ? "text-muted-foreground" : "text-purple-200"
-                )}>
-                  <span className="h-2 w-2 rounded-full bg-green-400"></span>
-                  Online
-                </p>
-              </div>
-            )}
+              {!isCollapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className={cn(
+                    "truncate text-sm font-semibold",
+                    isDark ? "text-foreground" : "text-white"
+                  )}>
+                    {profile?.full_name || 'Usuário'}
+                  </p>
+                  <p className={cn(
+                    "truncate text-xs flex items-center gap-1",
+                    isDark ? "text-muted-foreground" : "text-purple-200"
+                  )}>
+                    <span className="h-2 w-2 rounded-full bg-green-400"></span>
+                    Online
+                  </p>
+                </div>
+              )}
+            </button>
 
             {!isCollapsed && (
               <div className="flex gap-1">
