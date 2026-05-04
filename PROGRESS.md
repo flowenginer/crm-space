@@ -4,6 +4,51 @@ Registro cronológico das alterações significativas. Sessão mais recente no t
 
 ---
 
+## 2026-05-04 — Pause manual da chegada de mensagens do Instagram
+
+**Motivo:** solicitação de restauração do CRM. Pause temporário e reversível da entrada de DMs do Instagram no CRM enquanto o processo de restauração roda.
+
+**O que foi feito (apenas operacional, sem código nem deploy):**
+
+```sql
+UPDATE public.instagram_configs
+SET is_active = false,
+    updated_at = now()
+WHERE id = 'c2a962c5-8523-4a7b-9a12-36b639f50c1a';
+```
+
+- Config afetada: tenant `00000000-0000-0000-0000-000000000001`, `page_id = 17841414609286312` (única IG real em produção).
+- Stub `51d18ab0-5416-4d63-9549-f37cefea30cc` (`PENDING_PAGE_ID`) **não foi tocado** — segue `is_active=true` mas nunca teve tráfego; deletar é tarefa separada.
+- Aplicado em `2026-05-04 21:53:39 UTC` via MCP `mcp__up-supa__execute_sql` no projeto Supabase `lkxrmjqrzhaivviuuamp`.
+
+**Como o pause funciona sem mexer em código:**
+
+A edge `instagram-webhook` busca config com `.eq('is_active', true)` antes de processar qualquer evento (`supabase/functions/instagram-webhook/index.ts`, função `processMessagingEvent`). Sem config ativa pro `recipient_id` ou `sender_id`, ela loga `[Instagram] No config found for page:` e faz `return` cedo, sem inserir em `messages`, sem registrar em `instagram_webhook_logs`, sem disparar `dispatch-webhook` nem `process-flow-triggers`.
+
+A resposta HTTP do POST continua **200 OK** pro Meta porque o `return` está dentro do loop `for` de eventos, e a resposta `200` é fora dele — então **Meta não desinscreve o webhook nem marca como unhealthy** enquanto durar o pause.
+
+**Limitação importante:**
+
+DMs que chegarem **durante o pause são perdidas pro CRM**. Meta não retransmite webhooks que voltaram 200. Quando reativar, só mensagens novas a partir daquele momento entram. Não há replay automático.
+
+**Como reverter (quando a restauração for aprovada):**
+
+```sql
+UPDATE public.instagram_configs
+SET is_active = true,
+    updated_at = now()
+WHERE id = 'c2a962c5-8523-4a7b-9a12-36b639f50c1a';
+
+-- conferir
+SELECT id, page_id, is_active, updated_at
+FROM public.instagram_configs
+ORDER BY updated_at DESC;
+```
+
+**Arquivos tocados no repo:** nenhum (só `PROGRESS.md`). A mudança é uma row do banco — não exige rebuild, redeploy de edge, nem alteração de variável de ambiente.
+
+---
+
 ## 2026-05-04 — Troca de Senha pelo Vendedor (autoatendimento)
 
 **Problema:** Vendedores não tinham como trocar a própria senha. Toda definição/troca passava pelo admin (Ricardo Grion), que precisava saber a senha — fricção operacional + de privacidade.
