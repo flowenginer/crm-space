@@ -4,48 +4,56 @@ Registro cronológico das alterações significativas. Sessão mais recente no t
 
 ---
 
-## 2026-05-04 — Pause manual da chegada de mensagens do Instagram
+## 2026-05-04 — Pause da edge `instagram-webhook` via stub (restauração do CRM)
 
-**Motivo:** solicitação de restauração do CRM. Pause temporário e reversível da entrada de DMs do Instagram no CRM enquanto o processo de restauração roda.
+**Motivo:** solicitação de restauração do CRM. Meta já está bloqueado (não envia webhooks pra esse app), mas optamos por pausar a edge `instagram-webhook` mesmo assim — pra garantir que o endpoint não processe nada enquanto durar a restauração, mesmo se algum tráfego (teste, ping, ferramenta de monitoramento, etc) chegar nela.
 
-**O que foi feito (apenas operacional, sem código nem deploy):**
+**O que foi feito:**
 
-```sql
-UPDATE public.instagram_configs
-SET is_active = false,
-    updated_at = now()
-WHERE id = 'c2a962c5-8523-4a7b-9a12-36b639f50c1a';
+- Backup do código deployado (versão 36) salvo em `docs/backups/instagram-webhook-index-2026-05-04.ts` — fora da pasta da function pra Supabase não tentar bundlear.
+- `supabase/functions/instagram-webhook/index.ts` substituído por um **stub** que retorna 503 imediato pra qualquer GET ou POST, sem ler config, sem rodar lógica, sem logar evento em `instagram_webhook_logs`.
+- Redeploy via `mcp__up-supa__deploy_edge_function` no projeto Supabase `lkxrmjqrzhaivviuuamp` (`verify_jwt=false`, igual ao original).
+
+**Stub deployado:**
+
+```ts
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+serve(() =>
+  new Response("Webhook desativado para restauracao do CRM", {
+    status: 503,
+    headers: { "Content-Type": "text/plain" },
+  })
+);
 ```
-
-- Config afetada: tenant `00000000-0000-0000-0000-000000000001`, `page_id = 17841414609286312` (única IG real em produção).
-- Stub `51d18ab0-5416-4d63-9549-f37cefea30cc` (`PENDING_PAGE_ID`) **não foi tocado** — segue `is_active=true` mas nunca teve tráfego; deletar é tarefa separada.
-- Aplicado em `2026-05-04 21:53:39 UTC` via MCP `mcp__up-supa__execute_sql` no projeto Supabase `lkxrmjqrzhaivviuuamp`.
-
-**Como o pause funciona sem mexer em código:**
-
-A edge `instagram-webhook` busca config com `.eq('is_active', true)` antes de processar qualquer evento (`supabase/functions/instagram-webhook/index.ts`, função `processMessagingEvent`). Sem config ativa pro `recipient_id` ou `sender_id`, ela loga `[Instagram] No config found for page:` e faz `return` cedo, sem inserir em `messages`, sem registrar em `instagram_webhook_logs`, sem disparar `dispatch-webhook` nem `process-flow-triggers`.
-
-A resposta HTTP do POST continua **200 OK** pro Meta porque o `return` está dentro do loop `for` de eventos, e a resposta `200` é fora dele — então **Meta não desinscreve o webhook nem marca como unhealthy** enquanto durar o pause.
-
-**Limitação importante:**
-
-DMs que chegarem **durante o pause são perdidas pro CRM**. Meta não retransmite webhooks que voltaram 200. Quando reativar, só mensagens novas a partir daquele momento entram. Não há replay automático.
 
 **Como reverter (quando a restauração for aprovada):**
 
-```sql
-UPDATE public.instagram_configs
-SET is_active = true,
-    updated_at = now()
-WHERE id = 'c2a962c5-8523-4a7b-9a12-36b639f50c1a';
+1. Copiar o conteúdo de `docs/backups/instagram-webhook-index-2026-05-04.ts` (a partir do `import { serve }`) para `supabase/functions/instagram-webhook/index.ts`, sobrescrevendo o stub.
+2. Redeploy:
+   ```
+   mcp__up-supa__deploy_edge_function({
+     project_id: 'lkxrmjqrzhaivviuuamp',
+     name: 'instagram-webhook',
+     entrypoint_path: 'index.ts',
+     verify_jwt: false,
+     files: [{ name: 'index.ts', content: <conteúdo do backup> }]
+   })
+   ```
+3. Validar via `mcp__up-supa__get_edge_function` que a versão nova está `ACTIVE`.
+4. Adicionar entrada nova neste PROGRESS.md anotando a reversão.
 
--- conferir
-SELECT id, page_id, is_active, updated_at
-FROM public.instagram_configs
-ORDER BY updated_at DESC;
-```
+**Histórico desta sessão (descartado):**
 
-**Arquivos tocados no repo:** nenhum (só `PROGRESS.md`). A mudança é uma row do banco — não exige rebuild, redeploy de edge, nem alteração de variável de ambiente.
+O commit anterior (`dd6444b`) tinha registrado um pause via `UPDATE instagram_configs SET is_active=false`. Foi revertido logo em seguida (`is_active=true` de volta às 22:01 UTC) porque a abordagem não atendia o objetivo: a edge function continuava recebendo a requisição, só não achava config ativa e fazia early return. O que se queria era a edge **em si** não processar nada — daí o stub.
+
+**Arquivos tocados no repo:**
+
+Novos:
+- `docs/backups/instagram-webhook-index-2026-05-04.ts` (snapshot do código original)
+
+Modificados:
+- `supabase/functions/instagram-webhook/index.ts` (substituído por stub)
+- `PROGRESS.md` (este arquivo — entrada antiga substituída)
 
 ---
 
