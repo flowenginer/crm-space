@@ -1,0 +1,300 @@
+{
+  "name": "CRM-Space — Import Leads + Distribuição",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-import-leads",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000001",
+      "name": "Webhook In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [200, 300],
+      "webhookId": "crm-import-leads"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "leads",
+              "value": "={{ Array.isArray($json.body) ? $json.body : (Array.isArray($json) ? $json : [$json]) }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000002",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "leads",
+        "options": {}
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000003",
+      "name": "Split Leads",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000004",
+      "name": "Loop Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "igsid",
+              "value": "={{ $json.igsid || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "nome_contato",
+              "value": "={{ $json.nome_contato && $json.nome_contato !== 'undefined' ? $json.nome_contato : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "relacao_contato",
+              "value": "={{ $json.relacao_contato && $json.relacao_contato !== 'undefined' ? $json.relacao_contato : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c4",
+              "name": "relacao_descricao",
+              "value": "={{ $json.relacao_descricao && $json.relacao_descricao !== 'undefined' ? $json.relacao_descricao : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c5",
+              "name": "nome_responsavel",
+              "value": "={{ $json.nome_responsavel && $json.nome_responsavel !== 'undefined' ? $json.nome_responsavel : ('Lead ' + (($json.telefone_responsavel||'').slice(-4))) }}",
+              "type": "string"
+            },
+            {
+              "id": "c6",
+              "name": "telefone_responsavel",
+              "value": "={{ ($json.telefone_responsavel || '').toString().replace(/\\D/g,'') }}",
+              "type": "string"
+            },
+            {
+              "id": "c7",
+              "name": "nome_jovem",
+              "value": "={{ $json.nome_jovem && $json.nome_jovem !== 'undefined' ? $json.nome_jovem : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c8",
+              "name": "idade_jovem",
+              "value": "={{ $json.idade_jovem && $json.idade_jovem !== 'undefined' ? $json.idade_jovem : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c9",
+              "name": "bairro",
+              "value": "={{ $json.bairro && $json.bairro !== 'undefined' ? $json.bairro : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c10",
+              "name": "status",
+              "value": "={{ $json.status && $json.status !== 'undefined' ? $json.status : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c11",
+              "name": "motivo_desclassificacao",
+              "value": "={{ $json.motivo_desclassificacao && $json.motivo_desclassificacao !== 'undefined' ? $json.motivo_desclassificacao : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c12",
+              "name": "observacoes",
+              "value": "={{ $json.observacoes && $json.observacoes !== 'undefined' ? $json.observacoes : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c13",
+              "name": "data_transferencia",
+              "value": "={{ $json.data_transferencia || null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000005",
+      "name": "Sanitize Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/functions/v1/redirect-capture",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"campaign_id\": \"{{ $vars.REDIRECT_CAMPAIGN_ID }}\",\n  \"tenant_id\": \"{{ $vars.TENANT_ID }}\",\n  \"phone\": \"{{ $json.telefone_responsavel }}\",\n  \"country_code\": \"55\",\n  \"utms\": {\n    \"utm_source\": \"n8n\",\n    \"utm_medium\": \"webhook\",\n    \"utm_campaign\": \"import_jovens\",\n    \"utm_term\": \"{{ $json.igsid }}\",\n    \"utm_content\": \"{{ $json.bairro }}\"\n  },\n  \"referrer\": \"n8n-import\",\n  \"user_agent\": \"n8n\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000006",
+      "name": "HTTP — redirect-capture",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/contacts?id=eq.{{ $json.contact_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $vars.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $vars.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"full_name\": \"{{ $('Sanitize Fields').item.json.nome_responsavel }}\",\n  \"referral_data\": {\n    \"igsid\": \"{{ $('Sanitize Fields').item.json.igsid }}\",\n    \"nome_contato\": \"{{ $('Sanitize Fields').item.json.nome_contato }}\",\n    \"relacao_contato\": \"{{ $('Sanitize Fields').item.json.relacao_contato }}\",\n    \"nome_jovem\": \"{{ $('Sanitize Fields').item.json.nome_jovem }}\",\n    \"idade_jovem\": \"{{ $('Sanitize Fields').item.json.idade_jovem }}\",\n    \"bairro\": \"{{ $('Sanitize Fields').item.json.bairro }}\",\n    \"status\": \"{{ $('Sanitize Fields').item.json.status }}\",\n    \"observacoes\": \"{{ $('Sanitize Fields').item.json.observacoes }}\",\n    \"source\": \"n8n-import\"\n  }\n}",
+        "options": {}
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000007",
+      "name": "PATCH — Enriquecer Contato",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/functions/v1/distribute-lead",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contact_id\": \"{{ $('HTTP — redirect-capture').item.json.contact_id }}\"\n}",
+        "options": {}
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000008",
+      "name": "HTTP — distribute-lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000009",
+      "name": "Throttle 1s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2020, 300],
+      "webhookId": "throttle-1s"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"processed\": {{ $items('Split Leads').length }}\n}",
+        "options": {}
+      },
+      "id": "9c1b9f1d-1111-4aaa-aaaa-000000000010",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 540]
+    }
+  ],
+  "connections": {
+    "Webhook In": {
+      "main": [[{ "node": "Normalize Input", "type": "main", "index": 0 }]]
+    },
+    "Normalize Input": {
+      "main": [[{ "node": "Split Leads", "type": "main", "index": 0 }]]
+    },
+    "Split Leads": {
+      "main": [[{ "node": "Loop Items", "type": "main", "index": 0 }]]
+    },
+    "Loop Items": {
+      "main": [
+        [{ "node": "Respond OK", "type": "main", "index": 0 }],
+        [{ "node": "Sanitize Fields", "type": "main", "index": 0 }]
+      ]
+    },
+    "Sanitize Fields": {
+      "main": [[{ "node": "HTTP — redirect-capture", "type": "main", "index": 0 }]]
+    },
+    "HTTP — redirect-capture": {
+      "main": [[{ "node": "PATCH — Enriquecer Contato", "type": "main", "index": 0 }]]
+    },
+    "PATCH — Enriquecer Contato": {
+      "main": [[{ "node": "HTTP — distribute-lead", "type": "main", "index": 0 }]]
+    },
+    "HTTP — distribute-lead": {
+      "main": [[{ "node": "Throttle 1s", "type": "main", "index": 0 }]]
+    },
+    "Throttle 1s": {
+      "main": [[{ "node": "Loop Items", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "crm-space-import"
+  },
+  "pinData": {},
+  "tags": [
+    { "name": "crm-space" },
+    { "name": "import" },
+    { "name": "leads" }
+  ]
+}
