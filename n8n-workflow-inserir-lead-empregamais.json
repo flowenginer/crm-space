@@ -1,0 +1,263 @@
+{
+  "name": "Inserir Lead no CRM e Distribuir para Emprega Mais",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://lkxrmjqrzhaivviuuamp.supabase.co/rest/v1/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "=eq.{{ $json.telefone }}"
+            },
+            {
+              "name": "tenant_id",
+              "value": "=eq.664dfcb4-5432-4c14-9838-7db14360cabf"
+            },
+            {
+              "name": "select",
+              "value": "id,full_name,phone"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUA_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [400, 300],
+      "id": "node-01-verificar-contato",
+      "name": "Verificar se Contato Existe"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-contato-existe",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [620, 300],
+      "id": "node-02-if-existe",
+      "name": "Contato ja existe?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lkxrmjqrzhaivviuuamp.supabase.co/rest/v1/contacts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUA_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"full_name\": \"{{ $('Trigger').item.json.nome }}\",\n  \"phone\": \"{{ $('Trigger').item.json.telefone }}\",\n  \"email\": \"{{ $('Trigger').item.json.email || '' }}\",\n  \"tenant_id\": \"664dfcb4-5432-4c14-9838-7db14360cabf\",\n  \"origin\": \"n8n\",\n  \"origin_campaign\": \"empregamais\",\n  \"lead_status\": \"new\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [860, 200],
+      "id": "node-03-criar-contato",
+      "name": "Criar Contato",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lkxrmjqrzhaivviuuamp.supabase.co/rest/v1/conversations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUA_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contact_id\": \"{{ $json[0].id }}\",\n  \"tenant_id\": \"664dfcb4-5432-4c14-9838-7db14360cabf\",\n  \"channel_id\": \"818a7e58-4076-447d-aa40-01cab1b91e0a\",\n  \"status\": \"pending\",\n  \"last_message_preview\": \"Novo lead - Emprega Mais\",\n  \"last_message_at\": \"{{ $now.toISO() }}\",\n  \"is_unread\": true,\n  \"unread_count\": 1\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1100, 200],
+      "id": "node-04-criar-conversa",
+      "name": "Criar Conversa",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/distribute-lead",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contact_id\": \"{{ $('Criar Contato').item.json[0].id }}\",\n  \"force_department_id\": \"SUBSTITUIR_PELO_UUID_DO_DEPARTAMENTO_EMPREGAMAIS\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1340, 200],
+      "id": "node-05-distribuir-lead",
+      "name": "Distribuir Lead Emprega Mais",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/distribute-lead",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contact_id\": \"{{ $('Verificar se Contato Existe').item.json[0].id }}\",\n  \"force_department_id\": \"SUBSTITUIR_PELO_UUID_DO_DEPARTAMENTO_EMPREGAMAIS\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [860, 420],
+      "id": "node-06-redistribuir-existente",
+      "name": "Redistribuir Contato Existente",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Verificar se Contato Existe": {
+      "main": [
+        [
+          {
+            "node": "Contato ja existe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contato ja existe?": {
+      "main": [
+        [
+          {
+            "node": "Criar Contato",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redistribuir Contato Existente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Contato": {
+      "main": [
+        [
+          {
+            "node": "Criar Conversa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Conversa": {
+      "main": [
+        [
+          {
+            "node": "Distribuir Lead Emprega Mais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
