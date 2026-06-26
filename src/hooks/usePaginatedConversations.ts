@@ -49,6 +49,21 @@ export type StatusFilter = 'active' | 'open' | 'pending' | 'closed' | 'all';
 
 export type AssignmentFilterExtended = 'all' | 'mine' | 'unassigned' | 'pending';
 
+/**
+ * Determina se o filtro de canais permitidos deve ser aplicado à query.
+ *
+ * Regra de negócio: "Minhas conversas são minhas, independente do canal."
+ * Quando assignment === 'mine', a query já está restrita por assigned_to = user.id,
+ * portanto não é necessário — nem correto — aplicar o filtro de canal.
+ */
+export function shouldRestrictByAllowedChannels(
+  assignment: AssignmentFilterExtended | undefined,
+  allowedChannelIds: string[] | undefined,
+): boolean {
+  if (!allowedChannelIds || allowedChannelIds.length === 0) return false;
+  return assignment !== 'mine';
+}
+
 export interface ConversationFilters {
   assignment?: AssignmentFilterExtended;
   sortBy?: SortFilter; // Legacy - still supported
@@ -400,10 +415,11 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
       }
 
       // CRÍTICO: Filtrar pelos canais permitidos do usuário (se configurado)
-      // Este filtro é aplicado ANTES do filtro de canal selecionado
-      if (allowedChannelIds && allowedChannelIds.length > 0) {
-        // Usuário só pode ver conversas dos canais que tem permissão
-        query = query.in('channel_id', allowedChannelIds);
+      // Este filtro é aplicado ANTES do filtro de canal selecionado.
+      // Exceção: quando assignment === 'mine', a query já está restrita por
+      // assigned_to = user.id — o filtro de canal não deve ser aplicado.
+      if (shouldRestrictByAllowedChannels(assignment, allowedChannelIds)) {
+        query = query.in('channel_id', allowedChannelIds ?? []);
       }
 
       // Apply channel filter (seleção manual do usuário)
