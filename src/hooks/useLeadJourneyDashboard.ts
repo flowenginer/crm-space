@@ -74,17 +74,67 @@ export interface LeadOriginData {
   color: string;
 }
 
+// As chaves são normalizadas (minúsculas, espaços/hífens -> "_") para que
+// variações como "Ia Instagram" ou "Site Emprega" também sejam reconhecidas.
 const ORIGIN_CONFIG: Record<string, { label: string; color: string }> = {
   meta_ads: { label: 'Meta Ads', color: '#1877F2' },
   ctwa_ad: { label: 'Meta Ads', color: '#1877F2' }, // Click-To-WhatsApp Ad from Cloud API
   linktree: { label: 'Orgânico Linktree', color: '#39E09B' },
   site: { label: 'Orgânico Site', color: '#F59E0B' },
+  site_emprega: { label: 'Site Emprega', color: '#F97316' },
   referral: { label: 'Indicação', color: '#EC4899' },
+  indicacao: { label: 'Indicação', color: '#EC4899' },
   manual: { label: 'Manual', color: '#8B5CF6' },
   organic_unknown: { label: 'Orgânico Outros', color: '#6B7280' },
   whatsapp: { label: 'WhatsApp Direto', color: '#25D366' },
+  instagram_direct: { label: 'Instagram Direto', color: '#E1306C' },
+  ia_instagram: { label: 'IA Instagram', color: '#C13584' },
+  redirect: { label: 'Redirecionamento', color: '#0EA5E9' },
+  n8n: { label: 'Automação (n8n)', color: '#EA4B71' },
+  'não_identificado': { label: 'Não identificado', color: '#94A3B8' },
+  nao_identificado: { label: 'Não identificado', color: '#94A3B8' },
   other: { label: 'Outros', color: '#94A3B8' },
 };
+
+// Paleta usada para origens desconhecidas, garantindo cores distintas e estáveis.
+const ORIGIN_FALLBACK_COLORS = [
+  '#F43F5E', '#0EA5E9', '#14B8A6', '#A855F7',
+  '#84CC16', '#EAB308', '#06B6D4', '#FB7185',
+];
+
+/** Normaliza a origem para lookup: minúsculas, espaços/hífens colapsados em "_". */
+function normalizeOriginKey(origin: string): string {
+  return origin.trim().toLowerCase().replace(/[\s_-]+/g, '_');
+}
+
+/** Transforma uma origem crua em um rótulo legível (ex: "site_emprega" -> "Site Emprega"). */
+function humanizeOrigin(origin: string): string {
+  const cleaned = origin.trim().replace(/[\s_-]+/g, ' ').trim();
+  if (!cleaned) return 'Não identificado';
+  return cleaned
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/** Cor determinística por origem, para que a mesma origem tenha sempre a mesma cor. */
+function colorForOrigin(normalizedKey: string): string {
+  let hash = 0;
+  for (let i = 0; i < normalizedKey.length; i++) {
+    hash = (hash * 31 + normalizedKey.charCodeAt(i)) >>> 0;
+  }
+  return ORIGIN_FALLBACK_COLORS[hash % ORIGIN_FALLBACK_COLORS.length];
+}
+
+/**
+ * Retorna rótulo e cor para qualquer origem. Origens conhecidas usam ORIGIN_CONFIG;
+ * as demais recebem um rótulo legível derivado do valor cru (em vez de cair em "Outros").
+ */
+export function getOriginConfig(origin: string): { label: string; color: string } {
+  const key = normalizeOriginKey(origin);
+  if (ORIGIN_CONFIG[key]) return ORIGIN_CONFIG[key];
+  return { label: humanizeOrigin(origin), color: colorForOrigin(key) };
+}
 
 export { ORIGIN_CONFIG };
 
@@ -116,7 +166,7 @@ export function useLeadsByOrigin(filters: DashboardFilters) {
 
       return (data || [])
         .map((row: { origin: string; total_leads: number; converted_leads: number; conversion_rate: number }) => {
-          const config = ORIGIN_CONFIG[row.origin] || ORIGIN_CONFIG.other;
+          const config = getOriginConfig(row.origin);
           return {
             origin: row.origin,
             label: config.label,
