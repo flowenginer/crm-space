@@ -4,6 +4,22 @@ Registro cronológico das alterações significativas. Sessão mais recente no t
 
 ---
 
+## 2026-07-23 — Fix: conversas "sumidas" da aba Todas (caso Waleska)
+
+**Sintoma:** usuária com 799 conversas fixadas via apenas 1 conversa na aba "Todas", apesar do contador mostrar 3498. Nenhum dado foi perdido.
+
+**Causa raiz (confirmada por query em produção):** a aba "Todas" busca páginas de 50 ordenadas por `last_message_at desc` e escondia TODAS as fixadas do corpo da lista (ficam na aba "Fixadas"). Como as fixadas dela dominavam o topo da ordenação (página 1 = 49/50 fixadas), a lista renderizava ~1 item — e sem rolagem a página 2 nunca era buscada. O contador vem do RPC `get_all_conversation_counts` (SECURITY DEFINER, sem filtro de canal/permissão), por isso "mentia" 3498.
+
+**O que foi feito** (commits `fcae478` + `5cda1a1`, branch `fix/aba-todas-fixadas-nao-lidas` → main):
+
+- `src/lib/conversationListVisibility.ts` (novo): funções puras `shouldShowPinnedInAllTab` (fixada com não-lida — `is_unread`/`unread_count>0`, inclusive marcação manual — aparece no corpo das abas Todas/Minhas/Pendentes/Não atribuídas; fixada lida continua escondida) e `shouldAutoFetchNextPage` (auto-busca a próxima página quando a lista filtrada fica com <20 itens; cap de 10; só nas abas que escondem fixadas — Fixadas/Compartilhadas ficam de fora).
+- `src/pages/Conversations.tsx`: filtro de tela (~linha 2431) passou a usar a função pura; dois `useEffect` novos (~linha 2480) para o auto-fetch com reset por mudança de filtros.
+- Testes: `src/lib/__tests__/conversationListVisibility.test.ts` — 18 casos, todos verdes. `tsc -b` limpo, build ok. As 7 falhas pré-existentes do Bling seguem intactas (arquivos não tocados).
+
+**Dívidas registradas (NÃO corrigidas aqui):** (1) `allowedChannelIds ?? []` não distingue "carregando/erro" de vazio — `channel_id IN ()` zera a lista silenciosamente (mesmo defeito que motivou o fix da aba Minhas em 26/06, commit `1a91885`); (2) o componente nunca lê `isError` da query da lista — erro renderiza como "Nenhuma conversa encontrada"; (3) contadores e lista têm fontes de verdade divergentes.
+
+---
+
 ## 2026-05-04 — Pause da edge `instagram-webhook` via stub (restauração do CRM)
 
 **Motivo:** solicitação de restauração do CRM. Meta já está bloqueado (não envia webhooks pra esse app), mas optamos por pausar a edge `instagram-webhook` mesmo assim — pra garantir que o endpoint não processe nada enquanto durar a restauração, mesmo se algum tráfego (teste, ping, ferramenta de monitoramento, etc) chegar nela.
