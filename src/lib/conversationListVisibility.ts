@@ -23,11 +23,15 @@ export interface PinnedConversationVisibilityParams {
 }
 
 /**
- * Decide se uma conversa FIXADA deve aparecer no corpo da aba "Todas"
- * (fora da aba "Fixadas"). Não-fixadas não passam por esta função.
+ * Decide se uma conversa FIXADA deve aparecer no corpo de uma aba que
+ * normalmente esconde fixadas (Todas, Minhas, Pendentes, Não atribuídas —
+ * elas moram por padrão na aba "Fixadas"). Não-fixadas não passam por esta
+ * função.
  *
- * Mostra quando: há busca ativa, é a conversa selecionada, ou tem mensagem
- * não lida do cliente. Fixadas já lidas continuam escondidas (design atual).
+ * Mostra quando: há busca ativa, é a conversa selecionada, ou está não lida
+ * — seja por mensagem nova do cliente (is_unread/unread_count) ou por
+ * marcação manual do atendente; ambas contam igualmente aqui, de propósito.
+ * Fixadas já lidas continuam escondidas (design atual).
  */
 export function shouldShowPinnedInAllTab(params: PinnedConversationVisibilityParams): boolean {
   const { conversation, isPinned, isSelected, hasActiveSearch } = params;
@@ -36,8 +40,8 @@ export function shouldShowPinnedInAllTab(params: PinnedConversationVisibilityPar
   if (hasActiveSearch) return true;
   if (isSelected) return true;
 
-  const hasUnreadFromClient = !!conversation.is_unread || (conversation.unread_count ?? 0) > 0;
-  return hasUnreadFromClient;
+  const hasUnread = !!conversation.is_unread || (conversation.unread_count ?? 0) > 0;
+  return hasUnread;
 }
 
 export interface AutoFetchNextPageParams {
@@ -51,6 +55,16 @@ export interface AutoFetchNextPageParams {
   autoFetchCount: number;
   /** Cap de segurança para nunca entrar em loop infinito. */
   maxAutoFetches: number;
+  /**
+   * Só faz sentido auto-buscar em abas onde o filtro de tela esconde
+   * fixadas/compartilhadas e pode "esvaziar" a página trazida do servidor
+   * (Todas, Minhas, Pendentes, Não atribuídas). Nas abas "Fixadas" e
+   * "Compartilhadas" o filtro de tela descarta a maioria das linhas por
+   * design — auto-fetch ali só gastaria requisições à toa, sem corrigir
+   * nenhuma lista "vazia por engano". O chamador decide isso a partir do
+   * quickFilter ativo.
+   */
+  tabUsesAutoFetch: boolean;
 }
 
 /**
@@ -59,8 +73,9 @@ export interface AutoFetchNextPageParams {
  * conteúdo sozinho.
  */
 export function shouldAutoFetchNextPage(params: AutoFetchNextPageParams): boolean {
-  const { visibleCount, minVisibleToScroll, hasNextPage, isFetchingNextPage, autoFetchCount, maxAutoFetches } = params;
+  const { visibleCount, minVisibleToScroll, hasNextPage, isFetchingNextPage, autoFetchCount, maxAutoFetches, tabUsesAutoFetch } = params;
 
+  if (!tabUsesAutoFetch) return false;
   if (!hasNextPage) return false;
   if (isFetchingNextPage) return false;
   if (autoFetchCount >= maxAutoFetches) return false;

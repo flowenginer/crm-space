@@ -2428,9 +2428,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           if (selectedConversationId && conv.id === selectedConversationId) {
             return true;
           }
-          // Fixadas: escondidas do corpo da aba "Todas", EXCETO quando têm
-          // mensagem não lida do cliente (evita que centenas de fixadas
-          // saturem a página do servidor e escondam quase tudo da lista)
+          // Fixadas: escondidas do corpo desta aba, EXCETO quando estão não
+          // lidas (mensagem nova do cliente ou marcação manual — ambas
+          // contam, de propósito). Evita que centenas de fixadas saturem a
+          // página do servidor e escondam quase tudo da lista. Vale também
+          // para Minhas/Pendentes/Não atribuídas, não só "Todas".
           if (!shouldShowPinnedInAllTab({
             conversation: conv,
             isPinned: isPinnedConv,
@@ -2485,7 +2487,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
   // Auto-carrega a próxima página quando o filtro de tela (ex.: ocultar
   // fixadas lidas) deixa a lista renderizada curta demais para o usuário
-  // rolar e disparar a paginação manual sozinho.
+  // rolar e disparar a paginação manual sozinho. Só faz sentido nas abas
+  // que escondem fixadas/compartilhadas por trás desse filtro — em
+  // "Fixadas" e "Compartilhadas" a lista curta é o resultado esperado do
+  // filtro, não um sintoma de página saturada.
+  const tabUsesAutoFetch = quickFilter !== 'pinned' && quickFilter !== 'shared';
   useEffect(() => {
     if (shouldAutoFetchNextPage({
       visibleCount: filteredConversations.length,
@@ -2494,11 +2500,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       isFetchingNextPage: isFetchingMoreConversations,
       autoFetchCount: autoFetchCountRef.current,
       maxAutoFetches: 10,
+      tabUsesAutoFetch,
     })) {
       autoFetchCountRef.current += 1;
       fetchNextConversations();
     }
-  }, [filteredConversations.length, hasMoreConversations, isFetchingMoreConversations, fetchNextConversations]);
+  }, [filteredConversations.length, hasMoreConversations, isFetchingMoreConversations, fetchNextConversations, tabUsesAutoFetch]);
 
   // Restaurar scroll após lista atualizar (sistema simples - mantém posição exata)
   useEffect(() => {

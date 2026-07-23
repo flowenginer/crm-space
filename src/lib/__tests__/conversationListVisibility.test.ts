@@ -94,6 +94,39 @@ describe('shouldShowPinnedInAllTab', () => {
     });
     expect(result).toBe(false);
   });
+
+  it('trata unread_count undefined como zero (não lida por unread_count)', () => {
+    const result = shouldShowPinnedInAllTab({
+      conversation: makeConversation({ is_unread: false, unread_count: undefined as unknown as number | null }),
+      isPinned: true,
+      isSelected: false,
+      hasActiveSearch: false,
+    });
+    expect(result).toBe(false);
+  });
+
+  it('marcação manual de não lida (is_unread=true sem unread_count) também conta — não é exclusivo de mensagem do cliente', () => {
+    const result = shouldShowPinnedInAllTab({
+      conversation: makeConversation({ is_unread: true, unread_count: 0 }),
+      isPinned: true,
+      isSelected: false,
+      hasActiveSearch: false,
+    });
+    expect(result).toBe(true);
+  });
+
+  it('a exceção de não-lida é intencional em qualquer aba que use esta função (Minhas/Pendentes/Não atribuídas, não só Todas) — a decisão não depende da aba', () => {
+    // A função não recebe a aba como parâmetro: quem decide "esta aba esconde
+    // fixadas lidas" é o chamador. O mesmo resultado vale para Todas, Minhas,
+    // Pendentes e Não atribuídas — comportamento pretendido, não um bug.
+    const result = shouldShowPinnedInAllTab({
+      conversation: makeConversation({ is_unread: true, unread_count: 0 }),
+      isPinned: true,
+      isSelected: false,
+      hasActiveSearch: false,
+    });
+    expect(result).toBe(true);
+  });
 });
 
 describe('shouldAutoFetchNextPage', () => {
@@ -104,6 +137,7 @@ describe('shouldAutoFetchNextPage', () => {
     isFetchingNextPage: false,
     autoFetchCount: 0,
     maxAutoFetches: 10,
+    tabUsesAutoFetch: true,
   };
 
   it('busca a próxima página quando a lista está curta e há mais páginas', () => {
@@ -128,5 +162,9 @@ describe('shouldAutoFetchNextPage', () => {
 
   it('busca quando visibleCount está exatamente no limite não é atingido (limite exclusivo)', () => {
     expect(shouldAutoFetchNextPage({ ...baseParams, visibleCount: 20 })).toBe(false);
+  });
+
+  it('não busca em aba inelegível (Fixadas/Compartilhadas), mesmo com lista curta e páginas disponíveis', () => {
+    expect(shouldAutoFetchNextPage({ ...baseParams, tabUsesAutoFetch: false })).toBe(false);
   });
 });
