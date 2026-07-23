@@ -124,6 +124,7 @@ import { usePaginatedConversations, useSortFilterCounts, type SortFilter, type S
 import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, useNoTagCount, useLeadStatusCounts, type CountFilters } from '@/hooks/useConversationCounts';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
+import { shouldShowPinnedInAllTab, shouldAutoFetchNextPage } from '@/lib/conversationListVisibility';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, useDeleteInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useConversationEvents, useReturnConversation, type ConversationEvent } from '@/hooks/useConversationEvents';
@@ -2427,8 +2428,15 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           if (selectedConversationId && conv.id === selectedConversationId) {
             return true;
           }
-          // Don't hide pinned conversations when there's an active search
-          if (isPinnedConv && !debouncedSearchQuery) return false;
+          // Fixadas: escondidas do corpo da aba "Todas", EXCETO quando têm
+          // mensagem não lida do cliente (evita que centenas de fixadas
+          // saturem a página do servidor e escondam quase tudo da lista)
+          if (!shouldShowPinnedInAllTab({
+            conversation: conv,
+            isPinned: isPinnedConv,
+            isSelected: false, // já tratado acima (early return)
+            hasActiveSearch: !!debouncedSearchQuery,
+          })) return false;
           // Don't hide shared conversations when there's an active search
           // Shared conversations only appear in "Compartilhadas" tab
           const isSharedConv = allSharedConversationIds.includes(conv.id);
@@ -2468,6 +2476,29 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     
     return filtered;
   }, [conversations, channelFilter, sortOrder, statusFiltersSelected, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, allSharedConversationIds]);
+
+  // Reseta o contador de auto-fetch sempre que a aba ou os filtros mudam
+  const autoFetchCountRef = useRef(0);
+  useEffect(() => {
+    autoFetchCountRef.current = 0;
+  }, [conversationFilters]);
+
+  // Auto-carrega a próxima página quando o filtro de tela (ex.: ocultar
+  // fixadas lidas) deixa a lista renderizada curta demais para o usuário
+  // rolar e disparar a paginação manual sozinho.
+  useEffect(() => {
+    if (shouldAutoFetchNextPage({
+      visibleCount: filteredConversations.length,
+      minVisibleToScroll: 20,
+      hasNextPage: !!hasMoreConversations,
+      isFetchingNextPage: isFetchingMoreConversations,
+      autoFetchCount: autoFetchCountRef.current,
+      maxAutoFetches: 10,
+    })) {
+      autoFetchCountRef.current += 1;
+      fetchNextConversations();
+    }
+  }, [filteredConversations.length, hasMoreConversations, isFetchingMoreConversations, fetchNextConversations]);
 
   // Restaurar scroll após lista atualizar (sistema simples - mantém posição exata)
   useEffect(() => {
