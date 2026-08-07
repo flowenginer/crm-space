@@ -12,11 +12,17 @@
 --   ao profile equivalente no tenant novo (Susana/Bruna/Nathalia/
 --   Sandra), e levando junto:
 --     - conversas e mensagens desses leads (trocando tenant/depto/canal)
---     - as TAGS usadas por esses leads (criadas no tenant novo por nome,
---       se ainda não existirem lá, e re-vinculadas)
---     - os STATUS (lead_statuses) usados por esses leads (criados no
---       tenant novo por nome, se ainda não existirem lá; o texto em
---       contacts.lead_status / conversations.lead_status é mantido)
+--     - as TAGS usadas por esses leads: reaproveita se já existir uma
+--       tag com esse nome no tenant novo; "muda de dono" a tag em si
+--       quando ela só é usada pelos leads migrados; e só duplica (com
+--       sufixo " (Cursos)") quando a tag é compartilhada com leads que
+--       ficam no tenant antigo — a tabela tags tem um nome ÚNICO GLOBAL
+--       (constraint tags_name_key), então não dá pra simplesmente criar
+--       uma cópia com o mesmo nome em outro tenant
+--     - os STATUS (lead_statuses) usados por esses leads, com a mesma
+--       lógica (reaproveita / muda de dono / duplica com sufixo se
+--       necessário); o texto em contacts.lead_status /
+--       conversations.lead_status é mantido como está
 --     - o histórico (lead_status_history, lead_assignment_history,
 --       conversation_events) para não sumir da timeline do lead
 --
@@ -56,6 +62,14 @@
 -- SELECT name, COUNT(*) FROM public.tags
 -- WHERE tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf'
 -- GROUP BY name HAVING COUNT(*) > 1;
+--
+-- 3) Conferir constraints de nome único em tags/lead_statuses (a tabela
+--    tags JÁ TEM uma constraint de nome único global — tratada no script;
+--    isso é só pra você ver o que existe):
+-- SELECT conrelid::regclass AS tabela, conname, pg_get_constraintdef(oid)
+-- FROM pg_constraint
+-- WHERE conrelid IN ('public.tags'::regclass, 'public.lead_statuses'::regclass)
+--   AND contype = 'u';
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -147,7 +161,20 @@ BEGIN
   RAISE NOTICE 'Conversas vinculadas a esses leads: %', v_count;
 
   -- ==========================================================
-  -- 3. TAGS: garantir equivalentes (por nome) no tenant novo
+  -- 3. TAGS
+  --    IMPORTANTE: a tabela public.tags tem uma constraint de nome
+  --    ÚNICO GLOBAL (tags_name_key) — não dá pra existir duas tags
+  --    com o mesmo nome em tenants diferentes. Por isso NÃO criamos
+  --    uma cópia "solta" por padrão; a estratégia é:
+  --      a) já existe tag com esse nome no tenant novo -> reaproveita
+  --      b) a tag só é usada pelos leads que estão migrando (nenhum
+  --         outro lead do tenant antigo usa) -> "muda de dono": a
+  --         própria linha de tags passa a pertencer ao tenant novo
+  --      c) a tag é compartilhada com leads que NÃO estão migrando
+  --         -> não dá pra mover (quebraria quem fica) nem duplicar
+  --         com o mesmo nome (constraint); cria uma cópia com sufixo
+  --         " (Cursos)" no tenant novo e usa essa cópia pros leads
+  --         migrados
   -- ==========================================================
   CREATE TEMP TABLE _tag_map ON COMMIT DROP AS
   SELECT DISTINCT old_t.id AS old_tag_id, old_t.name, old_t.color, old_t.visibility,
@@ -167,53 +194,151 @@ BEGIN
   SELECT COUNT(*) INTO v_count FROM _tag_map;
   RAISE NOTICE 'Tags distintas em uso pelos leads migrados: %', v_count;
 
-  INSERT INTO public.tags (tenant_id, name, color, visibility, department_id, order_position)
-  SELECT v_new_tenant, tm.name, tm.color, tm.visibility,
-         CASE WHEN tm.old_department_id = v_old_dept THEN v_new_dept ELSE NULL END,
-         COALESCE((SELECT MAX(order_position) FROM public.tags WHERE tenant_id = v_new_tenant), 0)
-           + ROW_NUMBER() OVER (ORDER BY tm.name)
-  FROM _tag_map tm
-  WHERE NOT EXISTS (
-    SELECT 1 FROM public.tags nt WHERE nt.tenant_id = v_new_tenant AND nt.name = tm.name
-  );
-  GET DIAGNOSTICS v_count = ROW_COUNT;
-  RAISE NOTICE 'Tags novas criadas no Tenant Master Cursos: %', v_count;
-
+  -- Mapa final old_tag_id -> new_tag_id. Por padrão mantém o mesmo id
+  -- (cobre o caso "b", onde a tag muda de dono mas o id não muda).
   CREATE TEMP TABLE _tag_id_map ON COMMIT DROP AS
-  SELECT tm.old_tag_id,
-         (SELECT nt.id FROM public.tags nt
-          WHERE nt.tenant_id = v_new_tenant AND nt.name = tm.name
-          ORDER BY nt.id LIMIT 1) AS new_tag_id
+  SELECT tm.old_tag_id, tm.old_tag_id AS new_tag_id
   FROM _tag_map tm;
 
-  -- ==========================================================
-  -- 4. STATUS: garantir que os lead_statuses usados existam no tenant novo
-  --    (contacts.lead_status / conversations.lead_status são texto livre
-  --    e continuam com o mesmo valor — só precisamos ter o "cartão" de
-  --    status correspondente no tenant novo)
-  -- ==========================================================
-  INSERT INTO public.lead_statuses (tenant_id, name, color, order_position, is_active)
-  SELECT v_new_tenant, s.name, s.color,
-         COALESCE((SELECT MAX(order_position) FROM public.lead_statuses WHERE tenant_id = v_new_tenant), 0)
-           + ROW_NUMBER() OVER (ORDER BY s.order_position),
-         true
-  FROM (
-    SELECT DISTINCT ls.name, ls.color, ls.order_position
-    FROM public.lead_statuses ls
-    WHERE ls.tenant_id = v_old_tenant
-      AND ls.name IN (
-        SELECT c.lead_status FROM public.contacts c
-        WHERE c.id IN (SELECT contact_id FROM _migrating_contacts) AND c.lead_status IS NOT NULL
-        UNION
-        SELECT cv.lead_status FROM public.conversations cv
-        WHERE cv.id IN (SELECT conversation_id FROM _migrating_conversations) AND cv.lead_status IS NOT NULL
-      )
-  ) s
-  WHERE NOT EXISTS (
-    SELECT 1 FROM public.lead_statuses nls WHERE nls.tenant_id = v_new_tenant AND nls.name = s.name
-  );
+  -- (a) já existe tag com esse nome no tenant novo -> reaproveita o id dela
+  UPDATE _tag_id_map tim
+  SET new_tag_id = existing.id
+  FROM _tag_map tm
+  JOIN public.tags existing
+    ON existing.tenant_id = v_new_tenant AND existing.name = tm.name
+  WHERE tim.old_tag_id = tm.old_tag_id;
   GET DIAGNOSTICS v_count = ROW_COUNT;
-  RAISE NOTICE 'Status novos criados no Tenant Master Cursos: %', v_count;
+  RAISE NOTICE 'Tags reaproveitadas (já existiam com esse nome no tenant novo): %', v_count;
+
+  -- (b) tag de uso exclusivo dos leads migrados -> muda de dono (UPDATE na própria linha)
+  CREATE TEMP TABLE _tags_to_move ON COMMIT DROP AS
+  SELECT tm.old_tag_id, tm.old_department_id
+  FROM _tag_map tm
+  WHERE tm.old_tag_id NOT IN (SELECT old_tag_id FROM _tag_id_map WHERE new_tag_id <> old_tag_id) -- não caiu no caso (a)
+    AND NOT EXISTS (
+      SELECT 1 FROM public.contact_tags ct
+      WHERE ct.tag_id = tm.old_tag_id
+        AND ct.contact_id NOT IN (SELECT contact_id FROM _migrating_contacts)
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.conversation_tags cvt
+      WHERE cvt.tag_id = tm.old_tag_id
+        AND cvt.conversation_id NOT IN (SELECT conversation_id FROM _migrating_conversations)
+    );
+
+  UPDATE public.tags t
+  SET tenant_id = v_new_tenant,
+      department_id = CASE WHEN t.department_id = v_old_dept THEN v_new_dept ELSE t.department_id END
+  FROM _tags_to_move ttm
+  WHERE t.id = ttm.old_tag_id;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RAISE NOTICE 'Tags movidas para o Tenant Master Cursos (uso exclusivo dos leads migrados): %', v_count;
+
+  -- (c) sobrou: compartilhada com leads que não migram -> duplica com sufixo
+  CREATE TEMP TABLE _tags_shared ON COMMIT DROP AS
+  SELECT tm.old_tag_id, tm.name, tm.color, tm.visibility, tm.old_department_id
+  FROM _tag_map tm
+  WHERE tm.old_tag_id NOT IN (SELECT old_tag_id FROM _tags_to_move)
+    AND tm.old_tag_id IN (SELECT old_tag_id FROM _tag_id_map WHERE new_tag_id = old_tag_id); -- não resolvida em (a) nem (b)
+
+  INSERT INTO public.tags (tenant_id, name, color, visibility, department_id, order_position)
+  SELECT v_new_tenant,
+         CASE
+           WHEN NOT EXISTS (SELECT 1 FROM public.tags x WHERE x.name = ts.name || ' (Cursos)')
+             THEN ts.name || ' (Cursos)'
+           ELSE ts.name || ' (Cursos ' || substr(ts.old_tag_id::text, 1, 8) || ')'
+         END,
+         ts.color, ts.visibility,
+         CASE WHEN ts.old_department_id = v_old_dept THEN v_new_dept ELSE NULL END,
+         COALESCE((SELECT MAX(order_position) FROM public.tags WHERE tenant_id = v_new_tenant), 0)
+           + ROW_NUMBER() OVER (ORDER BY ts.name)
+  FROM _tags_shared ts;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  IF v_count > 0 THEN
+    RAISE NOTICE 'ATENÇÃO: % tag(s) compartilhadas com leads que NÃO migraram — como o nome é único no sistema, foi criada uma cópia com sufixo "(Cursos)" no tenant novo: %',
+      v_count, (SELECT string_agg(name, ', ') FROM _tags_shared);
+  END IF;
+
+  UPDATE _tag_id_map tim
+  SET new_tag_id = created.id
+  FROM _tags_shared ts
+  JOIN public.tags created
+    ON created.tenant_id = v_new_tenant
+   AND (created.name = ts.name || ' (Cursos)' OR created.name = ts.name || ' (Cursos ' || substr(ts.old_tag_id::text, 1, 8) || ')')
+  WHERE tim.old_tag_id = ts.old_tag_id;
+
+  -- ==========================================================
+  -- 4. STATUS (lead_statuses)
+  --    contacts.lead_status / conversations.lead_status são texto
+  --    livre (não têm FK) e o valor é mantido como está; aqui só
+  --    garantimos que exista o "cartão" de status correspondente no
+  --    tenant novo, usando a mesma estratégia de mover-se-exclusivo /
+  --    reaproveitar-se-já-existir da seção de tags (por segurança,
+  --    caso lead_statuses também tenha alguma constraint de nome).
+  -- ==========================================================
+  CREATE TEMP TABLE _status_map ON COMMIT DROP AS
+  SELECT DISTINCT ls.id AS old_status_id, ls.name, ls.color, ls.order_position
+  FROM public.lead_statuses ls
+  WHERE ls.tenant_id = v_old_tenant
+    AND ls.name IN (
+      SELECT c.lead_status FROM public.contacts c
+      WHERE c.id IN (SELECT contact_id FROM _migrating_contacts) AND c.lead_status IS NOT NULL
+      UNION
+      SELECT cv.lead_status FROM public.conversations cv
+      WHERE cv.id IN (SELECT conversation_id FROM _migrating_conversations) AND cv.lead_status IS NOT NULL
+    );
+
+  SELECT COUNT(*) INTO v_count FROM _status_map;
+  RAISE NOTICE 'Status distintos em uso pelos leads migrados: %', v_count;
+
+  -- (a) já existe status com esse nome no tenant novo -> nada a fazer
+  -- (b) status de uso exclusivo dos leads migrados -> muda de dono
+  CREATE TEMP TABLE _status_to_move ON COMMIT DROP AS
+  SELECT sm.old_status_id
+  FROM _status_map sm
+  WHERE NOT EXISTS (SELECT 1 FROM public.lead_statuses x WHERE x.tenant_id = v_new_tenant AND x.name = sm.name)
+    AND NOT EXISTS (
+      SELECT 1 FROM public.contacts c
+      WHERE c.tenant_id = v_old_tenant AND c.lead_status = sm.name
+        AND c.id NOT IN (SELECT contact_id FROM _migrating_contacts)
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.conversations cv
+      WHERE cv.tenant_id = v_old_tenant AND cv.lead_status = sm.name
+        AND cv.id NOT IN (SELECT conversation_id FROM _migrating_conversations)
+    );
+
+  UPDATE public.lead_statuses ls
+  SET tenant_id = v_new_tenant
+  WHERE ls.id IN (SELECT old_status_id FROM _status_to_move);
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RAISE NOTICE 'Status movidos para o Tenant Master Cursos (uso exclusivo dos leads migrados): %', v_count;
+
+  -- (c) sobrou: compartilhado com leads que não migram -> tenta criar com
+  --     o mesmo nome; se houver alguma constraint de nome único (como em
+  --     tags), cai no fallback com sufixo "(Cursos)"
+  BEGIN
+    INSERT INTO public.lead_statuses (tenant_id, name, color, order_position, is_active)
+    SELECT v_new_tenant, sm.name, sm.color,
+           COALESCE((SELECT MAX(order_position) FROM public.lead_statuses WHERE tenant_id = v_new_tenant), 0)
+             + ROW_NUMBER() OVER (ORDER BY sm.order_position),
+           true
+    FROM _status_map sm
+    WHERE sm.old_status_id NOT IN (SELECT old_status_id FROM _status_to_move)
+      AND NOT EXISTS (SELECT 1 FROM public.lead_statuses x WHERE x.tenant_id = v_new_tenant AND x.name = sm.name);
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RAISE NOTICE 'Status compartilhados duplicados com o mesmo nome no Tenant Master Cursos: %', v_count;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE NOTICE 'ATENÇÃO: nome de status já existe em outro tenant (constraint única) — criando com sufixo "(Cursos)".';
+    INSERT INTO public.lead_statuses (tenant_id, name, color, order_position, is_active)
+    SELECT v_new_tenant, sm.name || ' (Cursos)', sm.color,
+           COALESCE((SELECT MAX(order_position) FROM public.lead_statuses WHERE tenant_id = v_new_tenant), 0)
+             + ROW_NUMBER() OVER (ORDER BY sm.order_position),
+           true
+    FROM _status_map sm
+    WHERE sm.old_status_id NOT IN (SELECT old_status_id FROM _status_to_move)
+      AND NOT EXISTS (SELECT 1 FROM public.lead_statuses x WHERE x.tenant_id = v_new_tenant AND x.name = sm.name || ' (Cursos)');
+  END;
 
   -- ==========================================================
   -- 5. MIGRAÇÃO DOS LEADS (contacts)
