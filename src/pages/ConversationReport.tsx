@@ -177,7 +177,7 @@ const DATE_COLUMN_KEYS = new Set(['created_at', 'last_interaction_at', 'closed_a
 
 function getExportFieldValue(conv: any, key: string): any {
   if (!DATE_COLUMN_KEYS.has(key)) return getFieldValue(conv, key);
-  const raw = key === 'arrival_time' ? conv.created_at
+  const raw = key === 'arrival_time' ? conv.last_interaction_at
     : key === 'first_response_datetime' ? conv.first_response_at
     : conv[key];
   return raw ? new Date(raw) : '';
@@ -201,7 +201,10 @@ function getFieldValue(conv: any, key: string): any {
     case 'created_at': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
     case 'last_interaction_at': return conv.last_interaction_at ? format(new Date(conv.last_interaction_at), 'dd/MM/yyyy HH:mm') : '';
     case 'closed_at': return conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '';
-    case 'arrival_time': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
+    // "Hora Chegada" = quando o lead de fato chegou/voltou a falar (última interação),
+    // não a data em que a conversa foi criada — leads antigos que retornam reaproveitam
+    // a mesma conversa, então created_at ficaria parado no primeiro contato.
+    case 'arrival_time': return conv.last_interaction_at ? format(new Date(conv.last_interaction_at), 'dd/MM/yyyy HH:mm') : '';
     case 'first_response_datetime': return conv.first_response_at ? format(new Date(conv.first_response_at), 'dd/MM/yyyy HH:mm') : '-';
     case 'first_message': return conv.first_message || '';
     case 'first_response_time': {
