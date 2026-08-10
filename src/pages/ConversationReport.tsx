@@ -78,6 +78,7 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'status', label: 'Status Conversa', enabled: true },
   { key: 'close_reason', label: 'Motivo Fechamento', enabled: true },
   { key: 'created_at', label: 'Data Abertura', enabled: true },
+  { key: 'last_interaction_at', label: 'Última Interação', enabled: true },
   { key: 'closed_at', label: 'Data Fechamento', enabled: true },
   { key: 'arrival_time', label: 'Hora Chegada', enabled: true },
   { key: 'first_response_datetime', label: 'Hora 1ª Resposta', enabled: true },
@@ -168,6 +169,20 @@ const formatOrigin = (origin: string | null | undefined) => {
   return origins[origin] || origin;
 };
 
+// Colunas de data: no export do Excel precisam ir como Date real (não texto
+// "dd/MM/yyyy"), senão o Excel tenta adivinhar o formato ao abrir o arquivo e
+// troca dia/mês em datas ambíguas (ex: 06/08 vira 08/06 dependendo do idioma
+// do Excel de quem abre).
+const DATE_COLUMN_KEYS = new Set(['created_at', 'last_interaction_at', 'closed_at', 'arrival_time', 'first_response_datetime']);
+
+function getExportFieldValue(conv: any, key: string): any {
+  if (!DATE_COLUMN_KEYS.has(key)) return getFieldValue(conv, key);
+  const raw = key === 'arrival_time' ? conv.created_at
+    : key === 'first_response_datetime' ? conv.first_response_at
+    : conv[key];
+  return raw ? new Date(raw) : '';
+}
+
 function getFieldValue(conv: any, key: string): any {
   switch (key) {
     case 'protocol_number': return conv.protocol_number;
@@ -184,6 +199,7 @@ function getFieldValue(conv: any, key: string): any {
     case 'status': return conv.status === 'open' ? 'Ativo' : conv.status === 'pending' ? 'Pendente' : 'Fechado';
     case 'close_reason': return conv.close_reason || '';
     case 'created_at': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
+    case 'last_interaction_at': return conv.last_interaction_at ? format(new Date(conv.last_interaction_at), 'dd/MM/yyyy HH:mm') : '';
     case 'closed_at': return conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '';
     case 'arrival_time': return conv.created_at ? format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm') : '';
     case 'first_response_datetime': return conv.first_response_at ? format(new Date(conv.first_response_at), 'dd/MM/yyyy HH:mm') : '-';
@@ -405,6 +421,7 @@ export default function ConversationReportPage() {
         status: row.status,
         lead_status: row.lead_status,
         created_at: row.created_at,
+        last_interaction_at: row.last_interaction_at,
         closed_at: row.closed_at,
         close_reason: row.close_reason,
         last_message_at: row.last_message_at,
@@ -564,6 +581,7 @@ export default function ConversationReportPage() {
           contact_id: row.contact_id,
           status: row.status,
           created_at: row.created_at,
+          last_interaction_at: row.last_interaction_at,
           closed_at: row.closed_at,
           close_reason: row.close_reason,
           first_response_at: row.first_response_at,
@@ -619,14 +637,27 @@ export default function ConversationReportPage() {
       }
 
       const excelData = dataToExport.map((conv: any) =>
-        Object.fromEntries(activeColumns.map(col => [col.label, getFieldValue(conv, col.key)]))
+        Object.fromEntries(activeColumns.map(col => [col.label, getExportFieldValue(conv, col.key)]))
       );
 
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const worksheet = XLSX.utils.json_to_sheet(excelData, { cellDates: true });
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Atendimentos');
       const colWidths = activeColumns.map(col => ({ wch: Math.max(col.label.length, 15) }));
       worksheet['!cols'] = colWidths;
+
+      // Fixa o formato de exibição das colunas de data (independe do idioma/locale do Excel de quem abrir)
+      const dateColIndexes = activeColumns
+        .map((col, idx) => ({ key: col.key, idx }))
+        .filter(({ key }) => DATE_COLUMN_KEYS.has(key))
+        .map(({ idx }) => idx);
+      dataToExport.forEach((_: any, rowIdx: number) => {
+        dateColIndexes.forEach((colIdx) => {
+          const cellRef = XLSX.utils.encode_cell({ r: rowIdx + 1, c: colIdx });
+          const cell = worksheet[cellRef];
+          if (cell && cell.t === 'd') cell.z = 'dd/mm/yyyy hh:mm';
+        });
+      });
 
       const fileName = `atendimentos_${format(new Date(), 'yyyy-MM-dd_HH-mm')}.xlsx`;
       XLSX.writeFile(workbook, fileName);
