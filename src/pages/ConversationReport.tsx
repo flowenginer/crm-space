@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
+import { cn } from '@/lib/utils';
 import { DateRangePicker } from '@/components/reports/DateRangePicker';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 import { BulkActionsBar } from '@/components/conversations/BulkActionsBar';
@@ -126,9 +127,12 @@ function SortableColumnItem({ col, onToggle }: { col: ColumnDef; onToggle: (key:
 }
 
 // ---- Main Component ----
+type DateFilterMode = 'opened' | 'last_interaction';
+
 interface Filters {
   startDate: string;
   endDate: string;
+  dateFilterMode: DateFilterMode;
   name: string;
   phone: string;
   leadStatus: string[];
@@ -142,6 +146,10 @@ interface Filters {
 const initialFilters: Filters = {
   startDate: format(new Date(), 'yyyy-MM-dd'),
   endDate: format(new Date(), 'yyyy-MM-dd'),
+  // 'opened' bate com a coluna "Data Abertura" e com a contagem de "leads hoje" do
+  // Dashboard (que também filtra por data de abertura da conversa). Um lead que
+  // chegou ontem e só respondeu hoje continua contando como "ontem" nesse modo.
+  dateFilterMode: 'opened',
   name: '',
   phone: '',
   leadStatus: [],
@@ -408,7 +416,8 @@ export default function ConversationReportPage() {
         p_tag_ids: appliedFilters.tag.length > 0 ? appliedFilters.tag : null,
         p_conversation_status: appliedFilters.conversationStatus.length > 0 ? appliedFilters.conversationStatus : null,
         p_page: page,
-        p_page_size: pageSize
+        p_page_size: pageSize,
+        p_date_filter_mode: appliedFilters.dateFilterMode
       });
       if (error) throw error;
       const total = data?.[0]?.total_count || 0;
@@ -572,7 +581,8 @@ export default function ConversationReportPage() {
           p_tag_ids: appliedFilters.tag.length > 0 ? appliedFilters.tag : null,
           p_conversation_status: appliedFilters.conversationStatus.length > 0 ? appliedFilters.conversationStatus : null,
           p_page: 1,
-          p_page_size: reportData.total
+          p_page_size: reportData.total,
+          p_date_filter_mode: appliedFilters.dateFilterMode
         });
         if (error) throw error;
 
@@ -755,15 +765,47 @@ export default function ConversationReportPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-2">
-              <label className="block text-xs text-muted-foreground mb-1">
-                Período (filtra pela Última Interação, não pela Data de Abertura)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs text-muted-foreground">Período</label>
+                <div className="flex items-center gap-1 text-xs" role="radiogroup" aria-label="Filtrar período por">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={filters.dateFilterMode === 'opened'}
+                    onClick={() => setFilters(prev => ({ ...prev, dateFilterMode: 'opened' }))}
+                    className={cn(
+                      'px-2 py-0.5 rounded transition-colors',
+                      filters.dateFilterMode === 'opened' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    Data de Abertura
+                  </button>
+                  <span className="text-muted-foreground">/</span>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={filters.dateFilterMode === 'last_interaction'}
+                    onClick={() => setFilters(prev => ({ ...prev, dateFilterMode: 'last_interaction' }))}
+                    className={cn(
+                      'px-2 py-0.5 rounded transition-colors',
+                      filters.dateFilterMode === 'last_interaction' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    Última Interação
+                  </button>
+                </div>
+              </div>
               <DateRangePicker
                 startDate={filters.startDate}
                 endDate={filters.endDate}
                 onStartDateChange={(date) => setFilters(prev => ({ ...prev, startDate: date }))}
                 onEndDateChange={(date) => setFilters(prev => ({ ...prev, endDate: date }))}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                {filters.dateFilterMode === 'opened'
+                  ? 'Mostra leads cuja conversa foi aberta no período (bate com o Dashboard).'
+                  : 'Mostra leads que enviaram mensagem no período, mesmo que a conversa tenha aberto antes.'}
+              </p>
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Nome</label>
