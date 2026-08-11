@@ -755,6 +755,9 @@ export default function ConversationReportPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-2">
+              <label className="block text-xs text-muted-foreground mb-1">
+                Período (filtra pela Última Interação, não pela Data de Abertura)
+              </label>
               <DateRangePicker
                 startDate={filters.startDate}
                 endDate={filters.endDate}
@@ -875,7 +878,7 @@ export default function ConversationReportPage() {
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-sm">
+            <table className="w-full min-w-[1250px] text-sm">
               <thead>
                 <tr className="bg-muted/50 border-b border-border">
                   <th className="px-3 py-3 text-left">
@@ -890,6 +893,7 @@ export default function ConversationReportPage() {
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Departamento</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Etiquetas</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Data Abertura</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Última Interação</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Data Fechamento</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">1ª Mensagem</th>
                   <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Ações</th>
@@ -898,14 +902,14 @@ export default function ConversationReportPage() {
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center">
+                    <td colSpan={14} className="px-4 py-12 text-center">
                       <Loader2 size={24} className="animate-spin mx-auto text-primary" />
                       <p className="mt-2 text-sm text-muted-foreground">Carregando atendimentos...</p>
                     </td>
                   </tr>
                 ) : reportData?.conversations.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-muted-foreground">
+                    <td colSpan={14} className="px-4 py-12 text-center text-muted-foreground">
                       <ClipboardList size={40} className="mx-auto mb-3 opacity-50" />
                       <p>Nenhum atendimento encontrado</p>
                       <p className="text-sm">Ajuste os filtros e clique em GERAR</p>
@@ -942,6 +946,7 @@ export default function ConversationReportPage() {
                         </div>
                       </td>
                       <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">{format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm')}</td>
+                      <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">{conv.last_interaction_at ? format(new Date(conv.last_interaction_at), 'dd/MM/yyyy HH:mm') : '-'}</td>
                       <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">{conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '-'}</td>
                       <td className="px-3 py-3 text-muted-foreground max-w-[200px]">
                         <span className="truncate block" title={conv.first_message || ''}>
