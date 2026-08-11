@@ -12476,6 +12476,7 @@ export type Database = {
           p_agent_ids?: string[]
           p_channel_ids?: string[]
           p_conversation_status?: string[]
+          p_date_filter_mode?: string
           p_department_ids?: string[]
           p_end_date?: string
           p_lead_status?: string[]
@@ -12506,6 +12507,7 @@ export type Database = {
           first_response_at: string
           id: string
           internal_notes_text: string
+          last_interaction_at: string
           lead_status: string
           protocol_number: string
           received_messages_count: number
