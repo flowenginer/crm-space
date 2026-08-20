@@ -25,6 +25,11 @@ const CONTACT_VARIABLES = [
   { value: '{{notes}}', label: 'Observações' },
   { value: '{{lead_score}}', label: 'Pontuação' },
   { value: '{{negotiated_value}}', label: 'Valor negociado' },
+  { value: '{{ad_headline}}', label: 'Anúncio: título' },
+  { value: '{{ad_body}}', label: 'Anúncio: texto' },
+  { value: '{{ad_source_id}}', label: 'Anúncio: ID' },
+  { value: '{{ad_source_url}}', label: 'Anúncio: URL' },
+  { value: '{{ctwa_clid}}', label: 'Anúncio: Click ID (CTWA)' },
 ];
 
 export interface BodyField {

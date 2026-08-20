@@ -49,6 +49,10 @@ interface FlowExecution {
     lead_score?: number | null;
     negotiated_value?: number | null;
   } | null;
+  conversation?: {
+    referral_source: string | null;
+    referral_data: Record<string, unknown> | null;
+  } | null;
 }
 
 function formatDate(date: Date): string {
@@ -74,6 +78,7 @@ function replaceVariables(text: string, execution: FlowExecution): string {
   const contact = execution.contact;
   const fullName = contact?.full_name || '';
   const firstName = fullName.split(' ')[0] || '';
+  const referralData = execution.conversation?.referral_data;
 
   return text
     // Variáveis em português
@@ -104,7 +109,13 @@ function replaceVariables(text: string, execution: FlowExecution): string {
     .replace(/\{\{origin\}\}/g, contact?.origin || '')
     .replace(/\{\{notes\}\}/g, contact?.notes || '')
     .replace(/\{\{lead_score\}\}/g, String(contact?.lead_score ?? ''))
-    .replace(/\{\{negotiated_value\}\}/g, String(contact?.negotiated_value ?? ''));
+    .replace(/\{\{negotiated_value\}\}/g, String(contact?.negotiated_value ?? ''))
+    // Variáveis de anúncio (Meta Click-to-WhatsApp)
+    .replace(/\{\{ad_source_id\}\}/g, (referralData?.source_id as string) || '')
+    .replace(/\{\{ad_headline\}\}/g, (referralData?.headline as string) || '')
+    .replace(/\{\{ad_body\}\}/g, (referralData?.body as string) || '')
+    .replace(/\{\{ad_source_url\}\}/g, (referralData?.source_url as string) || '')
+    .replace(/\{\{ctwa_clid\}\}/g, (referralData?.ctwa_clid as string) || '');
 }
 
 async function logExecution(
@@ -238,7 +249,8 @@ Deno.serve(async (req) => {
       .from('flow_executions')
       .select(`
         *,
-        contact:contacts(full_name, phone, email, cpf_cnpj, birth_date, zip_code, street, number, complement, neighborhood, city, state, country, lead_status, origin, notes, lead_score, negotiated_value)
+        contact:contacts(full_name, phone, email, cpf_cnpj, birth_date, zip_code, street, number, complement, neighborhood, city, state, country, lead_status, origin, notes, lead_score, negotiated_value),
+        conversation:conversations(referral_source, referral_data)
       `)
       .eq('id', execution_id)
       .single();
@@ -900,6 +912,18 @@ async function executeAction(
           }
         }
         
+        // Dados do anúncio Meta (Click-to-WhatsApp), quando o lead veio de um anúncio
+        const referralData = execution.conversation?.referral_data;
+        const ad = referralData ? {
+          source_type: (referralData.source_type as string) || null,
+          source_id: (referralData.source_id as string) || null,
+          source_url: (referralData.source_url as string) || null,
+          headline: (referralData.headline as string) || null,
+          body: (referralData.body as string) || null,
+          media_type: (referralData.media_type as string) || null,
+          ctwa_clid: (referralData.ctwa_clid as string) || null,
+        } : null;
+
         // Adicionar dados do contato e execução ao body
         const enrichedBody = {
           ...processedBody,
@@ -908,6 +932,9 @@ async function executeAction(
           contact_name: execution.contact?.full_name,
           conversation_id: execution.conversation_id,
           variables: execution.variables,
+          referral_source: execution.conversation?.referral_source || null,
+          ad,
+          referral_data: referralData || null,
         };
 
         const response = await fetch(config.url as string, {
