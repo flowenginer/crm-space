@@ -333,6 +333,7 @@ async function processMessages(supabase: any, value: any) {
       .maybeSingle();
 
     let contactId = existingContact?.id;
+    let isNewContact = false;
 
     if (existingContact) {
       console.log(`[CloudAPI] ✅ Found existing contact with phone ${existingContact.phone} (searched: ${from})`);
@@ -362,6 +363,7 @@ async function processMessages(supabase: any, value: any) {
         .select('id')
         .single();
       contactId = newContact?.id;
+      isNewContact = true;
     }
 
     // Find or create conversation - COM MIGRAÇÃO AUTOMÁTICA DE CANAL
@@ -889,6 +891,65 @@ async function processMessages(supabase: any, value: any) {
         console.log('[CloudAPI] ✅ First message automation check completed');
       } catch (flowError) {
         console.error('[CloudAPI] ⚠️ Error triggering first_message automation:', flowError);
+      }
+    }
+
+    // ============================================================
+    // TRIGGER NEW_CONTACT AUTOMATIONS + WEBHOOK (se contato novo)
+    // ============================================================
+    if (isNewContact) {
+      try {
+        console.log(`[CloudAPI] 🆕 New contact detected, triggering new_contact automation...`);
+
+        await supabase.functions.invoke('process-flow-triggers', {
+          body: {
+            trigger_type: 'new_contact',
+            tenant_id: config.tenant_id,
+            contact_id: contactId,
+            channel_id: config.channel_id,
+            conversation_id: conversationId,
+            message_content: content,
+          }
+        });
+
+        console.log('[CloudAPI] ✅ New contact automation check completed');
+      } catch (flowError) {
+        console.error('[CloudAPI] ⚠️ Error triggering new_contact automation:', flowError);
+      }
+
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+        await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
+            action: 'dispatch',
+            event: {
+              type: 'contact.created',
+              data: {
+                contact: {
+                  id: contactId,
+                  name: contactName,
+                  phone: from,
+                },
+                conversation: conversationId ? { id: conversationId } : null,
+                channel: { id: config.channel_id },
+              },
+              context: {
+                channel: { id: config.channel_id },
+                tenant_id: config.tenant_id,
+              },
+            },
+          }),
+        });
+        console.log('[CloudAPI] Webhook dispatched for contact.created');
+      } catch (webhookError) {
+        console.error('[CloudAPI] ⚠️ Error dispatching contact.created webhook:', webhookError);
       }
     }
   }
