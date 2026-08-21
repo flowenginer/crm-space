@@ -369,6 +369,7 @@ async function processMessages(supabase: any, value: any) {
           phone: normalizedPhone,
           full_name: contactName,
           tenant_id: config.tenant_id,
+          origin: isCTWA ? 'meta_ads' : 'whatsapp',
         })
         .select('id')
         .single();
@@ -963,6 +964,27 @@ async function processMessages(supabase: any, value: any) {
           ctwa_clid: referral.ctwa_clid || null,
         } : null;
 
+        // Buscar atendente atribuído (a distribuição automática, se configurada, já rodou
+        // antes deste ponto, pois o trigger new_contact acima é aguardado de forma síncrona)
+        let agent: { id: string; name: string | null } | null = null;
+        if (conversationId) {
+          const { data: convData } = await supabase
+            .from('conversations')
+            .select('assigned_to')
+            .eq('id', conversationId)
+            .maybeSingle();
+          if (convData?.assigned_to) {
+            const { data: agentData } = await supabase
+              .from('profiles')
+              .select('id, full_name')
+              .eq('id', convData.assigned_to)
+              .maybeSingle();
+            if (agentData) {
+              agent = { id: agentData.id, name: agentData.full_name };
+            }
+          }
+        }
+
         await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
           method: 'POST',
           headers: {
@@ -978,9 +1000,11 @@ async function processMessages(supabase: any, value: any) {
                   id: contactId,
                   name: contactName,
                   phone: from,
+                  origin: isCTWA ? 'meta_ads' : 'whatsapp',
                 },
                 conversation: conversationId ? { id: conversationId } : null,
                 channel: { id: config.channel_id },
+                agent,
                 referral_source: isCTWA ? 'ctwa_ad' : (referral?.source_type || null),
                 ad,
                 referral_data: referral || null,

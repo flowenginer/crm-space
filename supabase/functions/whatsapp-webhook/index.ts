@@ -2144,14 +2144,14 @@ serve(async (req) => {
     // IMPORTANTE: Buscar TODOS os matches para depois escolher o melhor (priorizar telefone com 13 dígitos)
     let { data: contactMatches } = await supabase
       .from("contacts")
-      .select("id, full_name, phone, department_id, lead_status")
+      .select("id, full_name, phone, department_id, lead_status, origin, origin_campaign")
       .in("phone", phoneVariations)
       .eq("tenant_id", channel.tenant_id)
       .limit(10);
     
     // Selecionar o melhor contato: priorizar telefone com 13 dígitos (55 + DDD + 9 + 8)
     // Isso evita duplicatas onde um contato tem o 9º dígito e outro não
-    let contact: { id: any; full_name: any; phone: any; department_id: any; lead_status: any; } | null = null;
+    let contact: { id: any; full_name: any; phone: any; department_id: any; lead_status: any; origin?: any; origin_campaign?: any; } | null = null;
     let isNewContact = false;
     if (contactMatches && contactMatches.length > 0) {
       if (contactMatches.length === 1) {
@@ -2221,7 +2221,7 @@ serve(async (req) => {
           onConflict: 'phone,tenant_id',
           ignoreDuplicates: false
         })
-        .select("id, full_name, phone, department_id, lead_status")
+        .select("id, full_name, phone, department_id, lead_status, origin, origin_campaign")
         .single();
 
       if (contactError) {
@@ -2230,7 +2230,7 @@ serve(async (req) => {
           console.log(`[Webhook] Contact already exists (race condition handled), fetching...`);
           const { data: existingContact } = await supabase
             .from("contacts")
-            .select("id, full_name, phone, department_id, lead_status")
+            .select("id, full_name, phone, department_id, lead_status, origin, origin_campaign")
             .in("phone", phoneVariations)
             .eq("tenant_id", channel.tenant_id)
             .limit(1)
@@ -2799,6 +2799,25 @@ serve(async (req) => {
                 campaign_name: referralInfo.campaignName || null,
               } : null;
 
+              // Buscar atendente atribuído (a distribuição automática, se configurada, já rodou
+              // antes deste ponto, pois o trigger new_contact acima é aguardado de forma síncrona)
+              let dispatchAgent: { id: string; name: string | null } | null = null;
+              const { data: convForAgent } = await supabase
+                .from('conversations')
+                .select('assigned_to')
+                .eq('id', newConversation.id)
+                .maybeSingle();
+              if (convForAgent?.assigned_to) {
+                const { data: agentData } = await supabase
+                  .from('profiles')
+                  .select('id, full_name')
+                  .eq('id', convForAgent.assigned_to)
+                  .maybeSingle();
+                if (agentData) {
+                  dispatchAgent = { id: agentData.id, name: agentData.full_name };
+                }
+              }
+
               await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
                 method: 'POST',
                 headers: {
@@ -2814,9 +2833,12 @@ serve(async (req) => {
                         id: contact.id,
                         name: contact.full_name,
                         phone: contact.phone,
+                        origin: contact.origin || null,
+                        origin_campaign: contact.origin_campaign || null,
                       },
                       conversation: { id: newConversation.id },
                       channel: { id: channel.id },
+                      agent: dispatchAgent,
                       referral_source: referralInfo ? 'ctwa_ad' : null,
                       ad,
                       referral_data: referralInfo || null,
