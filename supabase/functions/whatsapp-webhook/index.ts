@@ -2146,6 +2146,7 @@ serve(async (req) => {
     // Selecionar o melhor contato: priorizar telefone com 13 dígitos (55 + DDD + 9 + 8)
     // Isso evita duplicatas onde um contato tem o 9º dígito e outro não
     let contact: { id: any; full_name: any; phone: any; department_id: any; lead_status: any; } | null = null;
+    let isNewContact = false;
     if (contactMatches && contactMatches.length > 0) {
       if (contactMatches.length === 1) {
         contact = contactMatches[0];
@@ -2249,6 +2250,7 @@ serve(async (req) => {
         }
       } else {
         contact = upsertedContact;
+        isNewContact = true;
         console.log(`[Webhook] Created/upserted contact: ${contact?.full_name} (${contact?.phone})${origin === 'meta_ads' ? ' [Meta Ads]' : ''}`);
       }
     }
@@ -2752,6 +2754,60 @@ serve(async (req) => {
             console.log('[Webhook] ✅ First message automation check completed');
           } catch (flowError) {
             console.error('[Webhook] ⚠️ Error triggering first_message automation:', flowError);
+          }
+
+          // 🆕 TRIGGER NEW_CONTACT AUTOMATION + WEBHOOK (contato realmente novo)
+          if (isNewContact) {
+            try {
+              console.log(`[Webhook] 🆕 New contact detected, triggering new_contact automation for channel ${channel.id}...`);
+              await supabase.functions.invoke('process-flow-triggers', {
+                body: {
+                  trigger_type: 'new_contact',
+                  tenant_id: channel.tenant_id,
+                  contact_id: contact.id,
+                  channel_id: channel.id,
+                  conversation_id: newConversation.id,
+                  message_content: normalizedMessage.content,
+                }
+              });
+              console.log('[Webhook] ✅ New contact automation check completed');
+            } catch (flowError) {
+              console.error('[Webhook] ⚠️ Error triggering new_contact automation:', flowError);
+            }
+
+            try {
+              const supabaseUrl = Deno.env.get('SUPABASE_URL');
+              const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+              await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${serviceRoleKey}`,
+                },
+                body: JSON.stringify({
+                  action: 'dispatch',
+                  event: {
+                    type: 'contact.created',
+                    data: {
+                      contact: {
+                        id: contact.id,
+                        name: contact.full_name,
+                        phone: contact.phone,
+                      },
+                      conversation: { id: newConversation.id },
+                      channel: { id: channel.id },
+                    },
+                    context: {
+                      channel: { id: channel.id },
+                      tenant_id: channel.tenant_id,
+                    },
+                  },
+                }),
+              });
+              console.log('[Webhook] Webhook dispatched for contact.created');
+            } catch (webhookError) {
+              console.error('[Webhook] ⚠️ Error dispatching contact.created webhook:', webhookError);
+            }
           }
         }
       }
