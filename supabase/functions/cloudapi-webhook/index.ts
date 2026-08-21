@@ -921,6 +921,17 @@ async function processMessages(supabase: any, value: any) {
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
         const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
+        // Dados do anúncio Meta (Click-to-WhatsApp), quando o lead veio de um anúncio
+        const ad = referral ? {
+          source_type: referral.source_type || null,
+          source_id: referral.source_id || null,
+          source_url: referral.source_url || null,
+          headline: referral.headline || null,
+          body: referral.body || null,
+          media_type: referral.media_type || null,
+          ctwa_clid: referral.ctwa_clid || null,
+        } : null;
+
         await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
           method: 'POST',
           headers: {
@@ -939,6 +950,9 @@ async function processMessages(supabase: any, value: any) {
                 },
                 conversation: conversationId ? { id: conversationId } : null,
                 channel: { id: config.channel_id },
+                referral_source: isCTWA ? 'ctwa_ad' : (referral?.source_type || null),
+                ad,
+                referral_data: referral || null,
               },
               context: {
                 channel: { id: config.channel_id },

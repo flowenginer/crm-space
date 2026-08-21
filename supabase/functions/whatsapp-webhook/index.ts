@@ -2778,6 +2778,21 @@ serve(async (req) => {
             try {
               const supabaseUrl = Deno.env.get('SUPABASE_URL');
               const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+              // Dados do anúncio Meta (Click-to-WhatsApp), quando o lead veio de um anúncio
+              const referralInfo = normalizedMessage.referralData;
+              const ad = referralInfo ? {
+                source_type: referralInfo.sourceType || null,
+                source_id: referralInfo.sourceId || null,
+                source_url: referralInfo.sourceUrl || null,
+                headline: referralInfo.headline || null,
+                body: referralInfo.body || null,
+                media_type: referralInfo.mediaType || null,
+                ctwa_clid: referralInfo.ctwaClid || null,
+                ad_name: referralInfo.adName || null,
+                campaign_name: referralInfo.campaignName || null,
+              } : null;
+
               await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
                 method: 'POST',
                 headers: {
@@ -2796,6 +2811,9 @@ serve(async (req) => {
                       },
                       conversation: { id: newConversation.id },
                       channel: { id: channel.id },
+                      referral_source: referralInfo ? 'ctwa_ad' : null,
+                      ad,
+                      referral_data: referralInfo || null,
                     },
                     context: {
                       channel: { id: channel.id },
