@@ -10,6 +10,12 @@ const corsHeaders = {
 type WhatsAppProvider = "zapi" | "uazapi" | "evolution";
 type MessageType = "text" | "image" | "audio" | "video" | "document" | "sticker" | "location" | "contact" | "contacts";
 
+// Detecta se um conteúdo é um placeholder de mensagem não decifrável, vindo cru do provedor
+function isUndecryptablePlaceholder(content: string | null | undefined): boolean {
+  if (!content) return false;
+  return content.includes('[Undecryptable]') || content.includes('descriptografar');
+}
+
 // =====================================================
 // REFERRAL DATA - Meta Ads / Click-to-WhatsApp
 // =====================================================
@@ -2984,10 +2990,21 @@ serve(async (req) => {
 
     // =====================================================
     // CORREÇÃO: Mensagem editada pelo cliente - fazer UPDATE
+    // Também cobre o reenvio de uma mensagem que chegou antes como "não decifrável"
+    // (mesmo whatsapp_message_id) e agora chegou com o conteúdo real
     // =====================================================
-    if (existingReceivedMsg && normalizedMessage.isEdited) {
-      console.log(`[Webhook] ✏️ Updating edited message from client (id: ${existingReceivedMsg.id})`);
-      
+    const recoveredRealContent = existingReceivedMsg
+      && isUndecryptablePlaceholder(existingReceivedMsg.content)
+      && !isUndecryptablePlaceholder(normalizedMessage.content)
+      && normalizedMessage.content?.trim() !== '';
+
+    if (existingReceivedMsg && (normalizedMessage.isEdited || recoveredRealContent)) {
+      if (recoveredRealContent) {
+        console.log(`[Webhook] ✅ Real content recovered for previously undecryptable message (id: ${existingReceivedMsg.id})`);
+      } else {
+        console.log(`[Webhook] ✏️ Updating edited message from client (id: ${existingReceivedMsg.id})`);
+      }
+
       const { error: updateError } = await supabase
         .from("messages")
         .update({
@@ -2995,13 +3012,13 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingReceivedMsg.id);
-      
+
       if (updateError) {
         console.error(`[Webhook] Error updating edited message:`, updateError);
       } else {
         console.log(`[Webhook] ✅ Message updated successfully`);
       }
-      
+
       return new Response(JSON.stringify({ success: true, message: "Edited message updated" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

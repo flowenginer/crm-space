@@ -6,6 +6,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Detecta se um conteúdo é um placeholder de mensagem não decifrável (nosso ou do provedor)
+function isUndecryptablePlaceholder(content: string | null | undefined): boolean {
+  if (!content) return false;
+  return content.includes('[Undecryptable]')
+    || content.includes('descriptografar')
+    || content.startsWith('📢 Mensagem inicial do lead (conteúdo não disponível')
+    || content.startsWith('📢 Mensagem via anúncio')
+    || content.startsWith('📢 Lead chegou via anúncio');
+}
+
 // Gera variações do telefone para busca (com e sem 9º dígito brasileiro)
 function getPhoneVariations(phone: string): string[] {
   const digits = phone.replace(/\D/g, '');
@@ -639,7 +649,7 @@ async function processMessages(supabase: any, value: any) {
     }
 
     // Handle undecryptable messages - replace with CTWA ad info when available
-    if (content.includes('[Undecryptable]') || content.includes('descriptografar')) {
+    if (isUndecryptablePlaceholder(content)) {
       console.log('[CloudAPI] ⚠️ Undecryptable message detected, checking for CTWA referral data...');
       if (referral) {
         const headline = referral.headline || '';
@@ -679,15 +689,26 @@ async function processMessages(supabase: any, value: any) {
     // Check idempotency - prevent duplicate inserts from repeated webhooks
     const { data: existingMsg } = await supabase
       .from('messages')
-      .select('id')
+      .select('id, content')
       .eq('whatsapp_message_id', message.id)
       .maybeSingle();
-    
+
     let insertedMessage: { id: string } | null = null;
     let insertError: any = null;
-    
+
     if (existingMsg) {
-      console.log('[CloudAPI] ⚠️ Message already exists, skipping insert:', message.id);
+      // Se a mensagem salva era um placeholder de "não decifrável" e agora chegou o conteúdo
+      // real (reenvio da Meta após a sessão de criptografia sincronizar), recuperar o conteúdo
+      // real em vez de descartá-lo para sempre
+      if (isUndecryptablePlaceholder(existingMsg.content) && !isUndecryptablePlaceholder(content) && content.trim() !== '') {
+        console.log('[CloudAPI] ✅ Real content recovered for previously undecryptable message:', message.id);
+        await supabase
+          .from('messages')
+          .update({ content, message_type: messageType, media_url: mediaUrl })
+          .eq('id', existingMsg.id);
+      } else {
+        console.log('[CloudAPI] ⚠️ Message already exists, skipping insert:', message.id);
+      }
       insertedMessage = existingMsg;
     } else {
       // Insert message (usando whatsapp_message_id que é a coluna correta)
