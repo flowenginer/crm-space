@@ -706,6 +706,16 @@ async function processMessages(supabase: any, value: any) {
           .from('messages')
           .update({ content, message_type: messageType, media_url: mediaUrl })
           .eq('id', existingMsg.id);
+
+        // Se essa era a última mensagem da conversa, atualizar o preview também
+        // (evita que a lista de conversas continue mostrando o placeholder indecifrável)
+        if (conversationId) {
+          await supabase
+            .from('conversations')
+            .update({ last_message_preview: content.substring(0, 100) })
+            .eq('id', conversationId)
+            .eq('last_message_preview', (existingMsg.content ?? '').substring(0, 100));
+        }
       } else {
         console.log('[CloudAPI] ⚠️ Message already exists, skipping insert:', message.id);
       }
