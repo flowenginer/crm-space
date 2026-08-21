@@ -92,12 +92,12 @@ async function handleDispatch(supabase: any, params: { event: DispatchEvent }) {
     }
 
     // Build payload - spread dos dados enriquecidos diretamente no root
+    // NOTA: tenant_id é interno (usado só no registro de delivery abaixo) e não deve ir no payload externo
     const payload = {
       event: event.type,
       timestamp: new Date().toISOString(),
       webhook_id: webhook.id,
       ...(event.data as Record<string, unknown>),
-      tenant_id: (event.context as any)?.tenant_id,
     };
 
     // Determinar tenant_id do contexto ou do webhook
