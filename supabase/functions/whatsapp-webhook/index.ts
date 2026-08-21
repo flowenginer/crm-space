@@ -3019,6 +3019,16 @@ serve(async (req) => {
         console.log(`[Webhook] ✅ Message updated successfully`);
       }
 
+      // Se essa era a última mensagem da conversa, atualizar o preview também
+      // (evita que a lista de conversas continue mostrando o placeholder indecifrável)
+      if (recoveredRealContent) {
+        await supabase
+          .from("conversations")
+          .update({ last_message_preview: normalizedMessage.content.substring(0, 100) })
+          .eq("id", conversation.id)
+          .eq("last_message_preview", existingReceivedMsg.content?.substring(0, 100) || '');
+      }
+
       return new Response(JSON.stringify({ success: true, message: "Edited message updated" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
