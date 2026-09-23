@@ -435,6 +435,7 @@ Deno.serve(async (req) => {
               media_url: mediaUrl,
               status: 'pending',
               whatsapp_message_id: null,
+              tenant_id: activeCampaign.tenant_id,
             })
             .select('id')
             .single();
