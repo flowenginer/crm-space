@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -447,6 +447,273 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      backup_conversations_a3_assignee_inheritance_20260506: {
+        Row: {
+          analysis_status: string | null
+          assigned_to: string | null
+          backup_taken_at: string | null
+          channel_id: string | null
+          close_reason: string | null
+          closed_at: string | null
+          closed_by: string | null
+          contact_id: string | null
+          created_at: string | null
+          department_id: string | null
+          first_response_at: string | null
+          id: string | null
+          is_new_transfer: boolean | null
+          is_unread: boolean | null
+          last_client_message_at: string | null
+          last_message_at: string | null
+          last_message_is_from_me: boolean | null
+          last_message_preview: string | null
+          lead_status: string | null
+          origin_detection_method: string | null
+          previous_close_reason: string | null
+          previous_closed_at: string | null
+          previous_closed_by: string | null
+          priority: string | null
+          queue_id: string | null
+          referral_data: Json | null
+          referral_source: string | null
+          reopen_count: number | null
+          reopened_at: string | null
+          sla_status: string | null
+          status: string | null
+          status_ia: string | null
+          tenant_id: string | null
+          total_active_time_seconds: number | null
+          transfer_note: string | null
+          transferred_at: string | null
+          transferred_from: string | null
+          unread_count: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          analysis_status?: string | null
+          assigned_to?: string | null
+          backup_taken_at?: string | null
+          channel_id?: string | null
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          first_response_at?: string | null
+          id?: string | null
+          is_new_transfer?: boolean | null
+          is_unread?: boolean | null
+          last_client_message_at?: string | null
+          last_message_at?: string | null
+          last_message_is_from_me?: boolean | null
+          last_message_preview?: string | null
+          lead_status?: string | null
+          origin_detection_method?: string | null
+          previous_close_reason?: string | null
+          previous_closed_at?: string | null
+          previous_closed_by?: string | null
+          priority?: string | null
+          queue_id?: string | null
+          referral_data?: Json | null
+          referral_source?: string | null
+          reopen_count?: number | null
+          reopened_at?: string | null
+          sla_status?: string | null
+          status?: string | null
+          status_ia?: string | null
+          tenant_id?: string | null
+          total_active_time_seconds?: number | null
+          transfer_note?: string | null
+          transferred_at?: string | null
+          transferred_from?: string | null
+          unread_count?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          analysis_status?: string | null
+          assigned_to?: string | null
+          backup_taken_at?: string | null
+          channel_id?: string | null
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          first_response_at?: string | null
+          id?: string | null
+          is_new_transfer?: boolean | null
+          is_unread?: boolean | null
+          last_client_message_at?: string | null
+          last_message_at?: string | null
+          last_message_is_from_me?: boolean | null
+          last_message_preview?: string | null
+          lead_status?: string | null
+          origin_detection_method?: string | null
+          previous_close_reason?: string | null
+          previous_closed_at?: string | null
+          previous_closed_by?: string | null
+          priority?: string | null
+          queue_id?: string | null
+          referral_data?: Json | null
+          referral_source?: string | null
+          reopen_count?: number | null
+          reopened_at?: string | null
+          sla_status?: string | null
+          status?: string | null
+          status_ia?: string | null
+          tenant_id?: string | null
+          total_active_time_seconds?: number | null
+          transfer_note?: string | null
+          transferred_at?: string | null
+          transferred_from?: string | null
+          unread_count?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      backup_conversations_orphan_cleanup_20260506: {
+        Row: {
+          analysis_status: string | null
+          assigned_to: string | null
+          backup_taken_at: string | null
+          channel_department_id: string | null
+          channel_id: string | null
+          channel_name: string | null
+          channel_status: string | null
+          channel_type: string | null
+          cleanup_op: string | null
+          close_reason: string | null
+          closed_at: string | null
+          closed_by: string | null
+          contact_id: string | null
+          created_at: string | null
+          department_id: string | null
+          first_response_at: string | null
+          id: string | null
+          is_new_transfer: boolean | null
+          is_unread: boolean | null
+          last_client_message_at: string | null
+          last_message_at: string | null
+          last_message_is_from_me: boolean | null
+          last_message_preview: string | null
+          lead_status: string | null
+          origin_detection_method: string | null
+          previous_close_reason: string | null
+          previous_closed_at: string | null
+          previous_closed_by: string | null
+          priority: string | null
+          queue_id: string | null
+          referral_data: Json | null
+          referral_source: string | null
+          reopen_count: number | null
+          reopened_at: string | null
+          sla_status: string | null
+          status: string | null
+          status_ia: string | null
+          tenant_id: string | null
+          total_active_time_seconds: number | null
+          transfer_note: string | null
+          transferred_at: string | null
+          transferred_from: string | null
+          unread_count: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          analysis_status?: string | null
+          assigned_to?: string | null
+          backup_taken_at?: string | null
+          channel_department_id?: string | null
+          channel_id?: string | null
+          channel_name?: string | null
+          channel_status?: string | null
+          channel_type?: string | null
+          cleanup_op?: string | null
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          first_response_at?: string | null
+          id?: string | null
+          is_new_transfer?: boolean | null
+          is_unread?: boolean | null
+          last_client_message_at?: string | null
+          last_message_at?: string | null
+          last_message_is_from_me?: boolean | null
+          last_message_preview?: string | null
+          lead_status?: string | null
+          origin_detection_method?: string | null
+          previous_close_reason?: string | null
+          previous_closed_at?: string | null
+          previous_closed_by?: string | null
+          priority?: string | null
+          queue_id?: string | null
+          referral_data?: Json | null
+          referral_source?: string | null
+          reopen_count?: number | null
+          reopened_at?: string | null
+          sla_status?: string | null
+          status?: string | null
+          status_ia?: string | null
+          tenant_id?: string | null
+          total_active_time_seconds?: number | null
+          transfer_note?: string | null
+          transferred_at?: string | null
+          transferred_from?: string | null
+          unread_count?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          analysis_status?: string | null
+          assigned_to?: string | null
+          backup_taken_at?: string | null
+          channel_department_id?: string | null
+          channel_id?: string | null
+          channel_name?: string | null
+          channel_status?: string | null
+          channel_type?: string | null
+          cleanup_op?: string | null
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          first_response_at?: string | null
+          id?: string | null
+          is_new_transfer?: boolean | null
+          is_unread?: boolean | null
+          last_client_message_at?: string | null
+          last_message_at?: string | null
+          last_message_is_from_me?: boolean | null
+          last_message_preview?: string | null
+          lead_status?: string | null
+          origin_detection_method?: string | null
+          previous_close_reason?: string | null
+          previous_closed_at?: string | null
+          previous_closed_by?: string | null
+          priority?: string | null
+          queue_id?: string | null
+          referral_data?: Json | null
+          referral_source?: string | null
+          reopen_count?: number | null
+          reopened_at?: string | null
+          sla_status?: string | null
+          status?: string | null
+          status_ia?: string | null
+          tenant_id?: string | null
+          total_active_time_seconds?: number | null
+          transfer_note?: string | null
+          transferred_at?: string | null
+          transferred_from?: string | null
+          unread_count?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       bling_id_mappings: {
         Row: {
@@ -1495,7 +1762,7 @@ export type Database = {
           {
             foreignKeyName: "company_settings_tenant_id_fkey"
             columns: ["tenant_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -9202,11 +9469,16 @@ export type Database = {
           id: string
           media_url: string | null
           message_type: string | null
+          meta_template_id: string | null
           recurrence_rule: string | null
           scheduled_for: string
           sent_at: string | null
           status: string | null
+          template_components: Json | null
+          template_header_media_url: string | null
           template_id: string | null
+          template_language: string | null
+          template_name: string | null
           tenant_id: string | null
           variables: Json | null
         }
@@ -9222,11 +9494,16 @@ export type Database = {
           id?: string
           media_url?: string | null
           message_type?: string | null
+          meta_template_id?: string | null
           recurrence_rule?: string | null
           scheduled_for: string
           sent_at?: string | null
           status?: string | null
+          template_components?: Json | null
+          template_header_media_url?: string | null
           template_id?: string | null
+          template_language?: string | null
+          template_name?: string | null
           tenant_id?: string | null
           variables?: Json | null
         }
@@ -9242,11 +9519,16 @@ export type Database = {
           id?: string
           media_url?: string | null
           message_type?: string | null
+          meta_template_id?: string | null
           recurrence_rule?: string | null
           scheduled_for?: string
           sent_at?: string | null
           status?: string | null
+          template_components?: Json | null
+          template_header_media_url?: string | null
           template_id?: string | null
+          template_language?: string | null
+          template_name?: string | null
           tenant_id?: string | null
           variables?: Json | null
         }
@@ -9284,6 +9566,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_meta_template_id_fkey"
+            columns: ["meta_template_id"]
+            isOneToOne: false
+            referencedRelation: "meta_message_templates"
             referencedColumns: ["id"]
           },
           {
@@ -12653,12 +12942,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12682,11 +12971,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12707,11 +12996,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12732,11 +13021,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12749,11 +13038,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
