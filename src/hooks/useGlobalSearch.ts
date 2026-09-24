@@ -57,6 +57,83 @@ export interface SearchFilters {
 const MIN_SEARCH_LENGTH = 3;
 const MESSAGES_PER_PAGE = 50;
 
+/**
+ * Mensagens recentes das conversas dos contatos encontrados pelo nome/telefone.
+ * Duas consultas em vez de messages→conversations!inner filtrado pelo embed:
+ * o filtro no embed faz o Postgres varrer todas as mensagens do tenant e
+ * estourar o statement_timeout (500), o que zerava a busca por nome.
+ */
+export async function fetchRecentContactMessages(contactIds: string[]) {
+  if (contactIds.length === 0) return [];
+
+  const { data: contactConversations, error: convError } = await supabase
+    .from('conversations')
+    .select(`
+      id,
+      contact_id,
+      assigned_to,
+      department_id,
+      channel_id,
+      status,
+      referral_source,
+      contacts!inner (
+        id,
+        full_name,
+        phone,
+        avatar_url,
+        lead_status
+      ),
+      whatsapp_channels (
+        id,
+        name
+      )
+    `)
+    .in('contact_id', contactIds);
+
+  if (convError) {
+    console.error('Error fetching conversations of matching contacts:', convError);
+  }
+
+  const conversationMap = new Map(
+    (contactConversations ?? []).map((conv) => [conv.id, conv])
+  );
+
+  let recentContactMsgs: { id: string; content: string | null; created_at: string; is_from_me: boolean; conversation_id: string }[] = [];
+  if (conversationMap.size > 0) {
+    const { data, error: msgError } = await supabase
+      .from('messages')
+      .select('id, content, created_at, is_from_me, conversation_id')
+      .in('conversation_id', Array.from(conversationMap.keys()))
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (msgError) {
+      console.error('Error fetching messages of matching contacts:', msgError);
+    }
+    recentContactMsgs = data ?? [];
+  }
+
+  return recentContactMsgs.map((msg) => {
+    const conv = conversationMap.get(msg.conversation_id);
+    return {
+      message_id: msg.id,
+      conversation_id: msg.conversation_id,
+      contact_id: conv?.contact_id,
+      contact_name: conv?.contacts?.full_name,
+      contact_phone: conv?.contacts?.phone,
+      contact_avatar_url: conv?.contacts?.avatar_url,
+      content: msg.content,
+      created_at: msg.created_at,
+      is_from_me: msg.is_from_me,
+      match_highlight: msg.content?.substring(0, 100),
+      _matchType: 'contact' as const,
+      _conversation: conv,
+      channel_id: conv?.channel_id,
+      channel_name: conv?.whatsapp_channels?.name || null,
+    };
+  });
+}
+
 export function useGlobalSearch(
   searchTerm: string, 
   enabled: boolean = true,
@@ -119,58 +196,7 @@ export function useGlobalSearch(
       }
 
       // Step 3: Get recent messages from matching contacts (if any found)
-      let contactMessages: any[] = [];
-      if (matchingContactIds.size > 0) {
-        const { data: recentContactMsgs } = await supabase
-          .from('messages')
-          .select(`
-            id,
-            content,
-            created_at,
-            is_from_me,
-            conversation_id,
-            conversations!inner (
-              id,
-              contact_id,
-              assigned_to,
-              department_id,
-              channel_id,
-              status,
-              referral_source,
-              contacts!inner (
-                id,
-                full_name,
-                phone,
-                avatar_url,
-                lead_status
-              ),
-              whatsapp_channels (
-                id,
-                name
-              )
-            )
-          `)
-          .in('conversations.contact_id', Array.from(matchingContactIds))
-          .order('created_at', { ascending: false })
-          .limit(200);
-
-        contactMessages = (recentContactMsgs || []).map((msg: any) => ({
-          message_id: msg.id,
-          conversation_id: msg.conversation_id,
-          contact_id: msg.conversations?.contact_id,
-          contact_name: msg.conversations?.contacts?.full_name,
-          contact_phone: msg.conversations?.contacts?.phone,
-          contact_avatar_url: msg.conversations?.contacts?.avatar_url,
-          content: msg.content,
-          created_at: msg.created_at,
-          is_from_me: msg.is_from_me,
-          match_highlight: msg.content?.substring(0, 100),
-          _matchType: 'contact' as const,
-          _conversation: msg.conversations,
-          channel_id: msg.conversations?.channel_id,
-          channel_name: msg.conversations?.whatsapp_channels?.name || null,
-        }));
-      }
+      const contactMessages = await fetchRecentContactMessages(Array.from(matchingContactIds));
 
       // Step 4: Combine and deduplicate
       const seenMessageIds = new Set<string>();
