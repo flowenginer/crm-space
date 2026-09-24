@@ -333,6 +333,154 @@ export default function Contacts() {
     }
   };
 
+  // Ações em massa (atribuir / adicionar tags / mudar status)
+  const [bulkAction, setBulkAction] = useState<'assign' | 'tags' | 'status' | null>(null);
+  const [bulkAssignee, setBulkAssignee] = useState('');
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkTagIds, setBulkTagIds] = useState<string[]>([]);
+  const [isBulkApplying, setIsBulkApplying] = useState(false);
+  const [isBulkExporting, setIsBulkExporting] = useState(false);
+
+  const openBulkAction = (action: 'assign' | 'tags' | 'status') => {
+    if (selectedContacts.length === 0) {
+      toast.error('Nenhum contato selecionado');
+      return;
+    }
+    setBulkAssignee('');
+    setBulkStatus('');
+    setBulkTagIds([]);
+    setBulkAction(action);
+  };
+
+  const invalidateContactQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['contacts'] });
+    queryClient.invalidateQueries({ queryKey: ['contacts-paginated'] });
+    queryClient.invalidateQueries({ queryKey: ['contacts-filtered-count'] });
+    queryClient.invalidateQueries({ queryKey: ['contacts-filter-counts'] });
+    queryClient.invalidateQueries({ queryKey: ['all-kanban-contacts'] });
+    queryClient.invalidateQueries({ queryKey: ['lead-status-summary'] });
+  };
+
+  const applyBulkAction = async () => {
+    if (!bulkAction || selectedContacts.length === 0) return;
+    const ids = selectedContacts;
+    setIsBulkApplying(true);
+
+    try {
+      if (bulkAction === 'assign') {
+        if (!bulkAssignee) {
+          toast.error('Selecione um atendente');
+          return;
+        }
+        const { error } = await supabase
+          .from('contacts')
+          .update({ assigned_to: bulkAssignee === '__none__' ? null : bulkAssignee })
+          .in('id', ids);
+        if (error) throw error;
+        toast.success(`${ids.length} contato(s) atribuído(s)`);
+      } else if (bulkAction === 'status') {
+        if (!bulkStatus) {
+          toast.error('Selecione um status');
+          return;
+        }
+        const { error } = await supabase
+          .from('contacts')
+          .update({
+            lead_status: bulkStatus === '__none__' ? null : bulkStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', ids);
+        if (error) throw error;
+        toast.success(`Status de ${ids.length} contato(s) atualizado`);
+      } else if (bulkAction === 'tags') {
+        if (bulkTagIds.length === 0) {
+          toast.error('Selecione ao menos uma etiqueta');
+          return;
+        }
+        // Um a um via hook para manter o disparo das automações de tag_added
+        const pairs = ids.flatMap((contactId) => bulkTagIds.map((tagId) => ({ contactId, tagId })));
+        let errors = 0;
+        for (let i = 0; i < pairs.length; i += 10) {
+          const results = await Promise.allSettled(
+            pairs.slice(i, i + 10).map((pair) => addTagToContact.mutateAsync(pair)),
+          );
+          errors += results.filter((r) => r.status === 'rejected').length;
+        }
+        if (errors > 0) {
+          toast.warning(`Etiquetas aplicadas com ${errors} erro(s)`);
+        } else {
+          toast.success(`Etiquetas adicionadas a ${ids.length} contato(s)`);
+        }
+      }
+
+      invalidateContactQueries();
+      setBulkAction(null);
+      setSelectedContacts([]);
+    } catch (error: any) {
+      console.error('Erro na ação em massa:', error);
+      toast.error(error?.message || 'Erro ao aplicar ação em massa');
+    } finally {
+      setIsBulkApplying(false);
+    }
+  };
+
+  const handleBulkExport = async () => {
+    if (selectedContacts.length === 0) {
+      toast.error('Nenhum contato selecionado');
+      return;
+    }
+    setIsBulkExporting(true);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, phone, email, state, city, lead_status, origin, created_at, assignee:profiles!contacts_assigned_to_fkey(full_name)')
+        .in('id', selectedContacts);
+      if (error) throw error;
+
+      const { data: tagRows } = await supabase
+        .from('contact_tags')
+        .select('contact_id, tag:tags(name)')
+        .in('contact_id', selectedContacts);
+      const tagMap: Record<string, string[]> = {};
+      (tagRows || []).forEach((row: any) => {
+        if (!row.tag?.name) return;
+        (tagMap[row.contact_id] ||= []).push(row.tag.name);
+      });
+
+      const escape = (value: unknown) => {
+        const text = value == null ? '' : String(value);
+        return /[";\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      };
+      const header = ['Nome', 'WhatsApp', 'Email', 'Estado', 'Cidade', 'Status', 'Atendente', 'Etiquetas', 'Origem', 'Cadastro'];
+      const lines = (data || []).map((c: any) => [
+        c.full_name,
+        c.phone,
+        c.email,
+        c.state,
+        c.city,
+        c.lead_status,
+        c.assignee?.full_name,
+        (tagMap[c.id] || []).join(', '),
+        c.origin,
+        c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '',
+      ].map(escape).join(';'));
+
+      const csv = '\uFEFF' + [header.join(';'), ...lines].join('\r\n');
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `contatos-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success(`${lines.length} contato(s) exportado(s)`);
+    } catch (error: any) {
+      console.error('Erro ao exportar contatos:', error);
+      toast.error(error?.message || 'Erro ao exportar contatos');
+    } finally {
+      setIsBulkExporting(false);
+    }
+  };
+
   // Função para criar conversa com canal selecionado
   const createConversationWithChannel = async (contact: Contact, channelId: string, userId: string | undefined) => {
     // *** CRITICAL: Buscar departamento primário do usuário ***
@@ -745,20 +893,20 @@ export default function Contacts() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
+            <button onClick={() => openBulkAction('assign')} className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
               <UserCheck size={16} />
               Atribuir
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
+            <button onClick={() => openBulkAction('tags')} className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
               <Tag size={16} />
               Adicionar tags
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
+            <button onClick={() => openBulkAction('status')} className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
               <RefreshCw size={16} />
               Mudar status
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
-              <Download size={16} />
+            <button onClick={handleBulkExport} disabled={isBulkExporting} className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors disabled:opacity-60">
+              {isBulkExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
               Exportar
             </button>
             {isAdmin && selectedContacts.length === 1 && (
@@ -1356,6 +1504,74 @@ export default function Contacts() {
               </Button>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Action Dialog (atribuir / tags / status) */}
+      <Dialog open={bulkAction !== null} onOpenChange={(open) => !open && !isBulkApplying && setBulkAction(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {bulkAction === 'assign' && 'Atribuir contatos'}
+              {bulkAction === 'tags' && 'Adicionar etiquetas'}
+              {bulkAction === 'status' && 'Mudar status'}
+            </DialogTitle>
+            <DialogDescription>
+              Aplicar a {selectedContacts.length} contato(s) selecionado(s).
+            </DialogDescription>
+          </DialogHeader>
+
+          {bulkAction === 'assign' && (
+            <select value={bulkAssignee} onChange={(e) => setBulkAssignee(e.target.value)} className="w-full px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20">
+              <option value="">Selecione o atendente</option>
+              <option value="__none__">Sem atendente</option>
+              {team.map((member) => (
+                <option key={member.id} value={member.id}>{member.full_name}</option>
+              ))}
+            </select>
+          )}
+
+          {bulkAction === 'status' && (
+            <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="w-full px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20">
+              <option value="">Selecione o status</option>
+              <option value="__none__">Sem status</option>
+              {leadStatuses.map((status) => (
+                <option key={status.id} value={status.name}>{status.name}</option>
+              ))}
+            </select>
+          )}
+
+          {bulkAction === 'tags' && (
+            <div className="space-y-1 max-h-72 overflow-y-auto">
+              {tags.length === 0 && (
+                <p className="text-sm text-muted-foreground">Nenhuma etiqueta cadastrada.</p>
+              )}
+              {tags.map((tag) => (
+                <label key={tag.id} className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-muted cursor-pointer">
+                  <Checkbox
+                    checked={bulkTagIds.includes(tag.id)}
+                    onCheckedChange={() =>
+                      setBulkTagIds((prev) =>
+                        prev.includes(tag.id) ? prev.filter((id) => id !== tag.id) : [...prev, tag.id],
+                      )
+                    }
+                  />
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color || '#8B5CF6' }} />
+                  <span className="text-sm">{tag.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkAction(null)} disabled={isBulkApplying}>
+              Cancelar
+            </Button>
+            <Button onClick={applyBulkAction} disabled={isBulkApplying}>
+              {isBulkApplying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Aplicar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
