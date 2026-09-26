@@ -310,7 +310,8 @@ async function sendMetaTemplateMessage(
   phone: string,
   metaTemplate: any,
   metaVariables: Record<string, string> | null,
-  contact: { full_name?: string; phone?: string; email?: string }
+  contact: { full_name?: string; phone?: string; email?: string },
+  tenantId?: string | null
 ): Promise<void> {
   console.log(`[BulkDispatch] Sending Meta template to ${phone} using template: ${metaTemplate.name}`);
   
@@ -496,6 +497,7 @@ async function sendMetaTemplateMessage(
       is_from_me: true,
       message_type: 'template',
       status: 'pending',
+      tenant_id: tenantId,
     })
     .select('id')
     .single();
@@ -1063,6 +1065,7 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
           .from('conversations')
           .select('id, channel_id, channel:whatsapp_channels(id, status)')
           .eq('contact_id', contact.id)
+          .eq('tenant_id', dispatch.tenant_id)
           .not('channel_id', 'is', null)
           .order('last_message_at', { ascending: false })
           .limit(1)
@@ -1136,6 +1139,7 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
           .select('id')
           .eq('contact_id', contact.id)
           .eq('channel_id', effectiveChannelId)
+          .eq('tenant_id', dispatch.tenant_id)
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
@@ -1148,6 +1152,7 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
             .from('conversations')
             .select('assigned_to, department_id')
             .eq('contact_id', contact.id)
+            .eq('tenant_id', dispatch.tenant_id)
             .not('channel_id', 'is', null)
             .order('last_message_at', { ascending: false })
             .limit(1)
@@ -1173,7 +1178,10 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
               channel_id: effectiveChannelId, 
               status: 'open',
               assigned_to: inheritedAssignedTo,
-              department_id: inheritedDepartmentId
+              department_id: inheritedDepartmentId,
+              // Edge function roda como service_role: sem tenant_id explícito o trigger
+              // auto_set_tenant_id grava o tenant padrão e a conversa some da lista.
+              tenant_id: dispatch.tenant_id,
             })
             .select()
             .single();
@@ -1202,7 +1210,8 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
           contact.phone,
           metaTemplate,
           dispatch.meta_template_variables,
-          contact
+          contact,
+          dispatch.tenant_id
         );
 
         console.log(`[BulkDispatch] Meta template sent successfully to ${contact.phone}`);
