@@ -1,4 +1,5 @@
 import { getLamejs } from './lamejs-loader';
+import { VOICE_NOTE_MIC } from './voiceNoteMic';
 
 /**
  * Mp3Recorder - Records audio directly to MP3 format
@@ -37,11 +38,7 @@ export class Mp3Recorder {
     
     try {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: { 
-          echoCancellation: true, 
-          noiseSuppression: true,
-          sampleRate: this.sampleRate 
-        } 
+        audio: { ...VOICE_NOTE_MIC, sampleRate: this.sampleRate }
       });
       
       this.audioContext = new AudioContext({ sampleRate: this.sampleRate });

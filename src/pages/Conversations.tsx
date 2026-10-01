@@ -170,6 +170,7 @@ import { BulkCloseModal } from '@/components/conversations/BulkCloseModal';
 import { useBulkReturnToOriginalAgent } from '@/hooks/useBulkConversationActions';
 import { use24hWindow, formatRemainingTime } from '@/hooks/use24hWindow';
 import type { Profile } from '@/types';
+import { VOICE_NOTE_MIC } from '@/lib/audio/voiceNoteMic';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
 const formatWhatsAppText = (text: string): React.ReactNode => {
@@ -3734,7 +3735,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       } else {
         // Instagram + non-official APIs: use native MediaRecorder
         // Instagram will be converted to WAV later; others to MP3
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_NOTE_MIC });
         mediaRecorderRef.current = new MediaRecorder(stream);
         audioChunksRef.current = [];
         
