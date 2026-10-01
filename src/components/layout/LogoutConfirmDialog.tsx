@@ -13,6 +13,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useUserStore } from '@/store/userStore';
 import { resetQueryCache } from '@/lib/queryClient';
+import { pauseOnLogout } from '@/lib/logoutPause';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -36,10 +37,15 @@ export function LogoutConfirmDialog({ open, onOpenChange }: LogoutConfirmDialogP
           .from('profiles')
           .update({
             is_online: false,
-            is_available: false,
             last_seen_at: new Date().toISOString(),
           })
           .eq('id', profile.id);
+
+        try {
+          await pauseOnLogout(supabase, profile.id);
+        } catch (pauseError) {
+          console.error('[Logout] Falha ao pausar recebimento de leads:', pauseError);
+        }
       }
 
       // 2. End current session in database

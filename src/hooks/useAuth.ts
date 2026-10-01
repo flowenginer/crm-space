@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserStore } from '@/store/userStore';
 import { resetQueryCache } from '@/lib/queryClient';
+import { resumeAfterLogoutPause } from '@/lib/logoutPause';
 import type { Profile, AppRole, Tenant } from '@/types';
 
 export function useAuth() {
@@ -79,6 +80,13 @@ export function useAuth() {
     console.log('[useAuth] Fetching profile+roles for userId:', userId);
 
     try {
+      // Antes de ler o perfil, para a tela já abrir com o recebimento retomado.
+      try {
+        await resumeAfterLogoutPause(supabase, userId);
+      } catch (resumeError) {
+        console.error('[useAuth] Falha ao retomar recebimento após logout:', resumeError);
+      }
+
       const [profileResult, rolesResult] = await Promise.all([
         supabase
           .from('profiles')
