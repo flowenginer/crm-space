@@ -2008,12 +2008,21 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     [pinnedConversations]
   );
 
-  const { data: pinnedConversationsData = [] } = useQuery({
+  const { data: pinnedConversationsData = [], error: pinnedConversationsError } = useQuery({
     queryKey: ['pinned-conversations-full', pinnedConversationIds],
     queryFn: async () => {
       if (pinnedConversationIds.length === 0) return [];
-      
-      const { data, error } = await supabase
+
+      // Os IDs vão na URL (filtro "in"). Acima de ~650 UUIDs a URL estoura o
+      // limite do servidor (HTTP 400) e a aba "Fixadas" ficava vazia. Buscamos
+      // em lotes pequenos, em paralelo, e juntamos o resultado.
+      const CHUNK_SIZE = 200;
+      const chunks: string[][] = [];
+      for (let i = 0; i < pinnedConversationIds.length; i += CHUNK_SIZE) {
+        chunks.push(pinnedConversationIds.slice(i, i + CHUNK_SIZE));
+      }
+
+      const results = await Promise.all(chunks.map((ids) => supabase
         .from('conversations')
         .select(`
           id,
@@ -2034,19 +2043,33 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           assignee:profiles!conversations_assigned_to_fkey(id, full_name),
           channel:whatsapp_channels(id, name)
         `)
-        .in('id', pinnedConversationIds)
-        .order('last_message_at', { ascending: false });
-      
-      if (error) {
-        console.error('Error fetching pinned conversations:', error);
-        return [];
+        .in('id', ids)
+      ));
+
+      const failed = results.find((r) => r.error);
+      if (failed?.error) {
+        // Não devolve lista vazia em silêncio: isso fazia as fixadas "sumirem".
+        console.error('Error fetching pinned conversations:', failed.error);
+        throw failed.error;
       }
-      
-      return data as unknown as Conversation[];
+
+      const merged = results.flatMap((r) => (r.data ?? []) as unknown as Conversation[]);
+      merged.sort((a, b) => {
+        const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+        const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+        return tb - ta;
+      });
+      return merged;
     },
     enabled: pinnedConversationIds.length > 0,
     staleTime: 10000, // 10 seconds cache - reduced for fresher validation data
   });
+
+  useEffect(() => {
+    if (pinnedConversationsError) {
+      toast.error('Não foi possível carregar suas conversas fixadas. Elas continuam salvas — tente atualizar a página.');
+    }
+  }, [pinnedConversationsError]);
 
   // Merge paginated conversations with directly fetched selected conversation, pinned conversations, AND shared conversations
   // This ensures selected, pinned, and shared conversations ALWAYS appear in the list

@@ -19,14 +19,24 @@ export function usePinnedConversations() {
     queryFn: async () => {
       if (!currentUser?.id) return [];
 
-      const { data, error } = await supabase
-        .from('pinned_conversations')
-        .select('id, user_id, conversation_id, pinned_at')
-        .eq('user_id', currentUser.id)
-        .order('pinned_at', { ascending: false });
+      // O PostgREST devolve no máximo 1000 linhas por requisição. Usuários com
+      // mais de 1000 fixadas perdiam as mais antigas — por isso paginamos.
+      const PAGE_SIZE = 1000;
+      const all: PinnedConversation[] = [];
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from('pinned_conversations')
+          .select('id, user_id, conversation_id, pinned_at')
+          .eq('user_id', currentUser.id)
+          .order('pinned_at', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
 
-      if (error) throw error;
-      return data as PinnedConversation[];
+        if (error) throw error;
+        all.push(...((data ?? []) as PinnedConversation[]));
+        if (!data || data.length < PAGE_SIZE) break;
+      }
+      return all;
     },
     enabled: !!currentUser?.id,
     staleTime: 2 * 60 * 1000, // OTIMIZAÇÃO: 2 minutos de cache
