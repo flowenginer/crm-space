@@ -20,6 +20,7 @@ import {
   File,
   X,
   Video,
+  Download,
 } from 'lucide-react';
 import {
   Dialog,
@@ -58,6 +59,7 @@ import { useUserQuickTemplates, useAddQuickTemplate } from '@/hooks/useQuickTemp
 import { useApprovedMetaTemplates, MetaMessageTemplate, getTemplateBody } from '@/hooks/useMetaTemplates';
 import { MetaTemplateUseModal } from '@/components/meta-templates';
 import { Shield } from 'lucide-react';
+import { exportQuickMessagesZip } from '@/lib/exportQuickMessages';
 
 const categoryConfig = [
   { id: 'messages', icon: MessageSquare, label: 'Mensagens' },
@@ -435,6 +437,31 @@ export default function QuickMessages() {
 
   const isSaving = createTemplate.isPending || updateTemplate.isPending;
 
+  // Exportar todas as mensagens da categoria (ignora a busca) em um .zip
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null);
+  const handleExport = async () => {
+    const toExport = templates.filter((t) => t.category === activeCategory);
+    if (toExport.length === 0) {
+      toast({ title: 'Nada para exportar', description: 'Não há mensagens nesta categoria.' });
+      return;
+    }
+    setExportProgress({ done: 0, total: 0 });
+    try {
+      const { mediaOk, mediaFailed } = await exportQuickMessagesZip(toExport, setExportProgress);
+      toast({
+        title: 'Exportação concluída',
+        description: mediaFailed
+          ? `${toExport.length} mensagens. ${mediaFailed} anexo(s) não puderam ser baixados — veja o LEIA-ME.txt.`
+          : `${toExport.length} mensagens e ${mediaOk} anexo(s) exportados.`,
+      });
+    } catch (e) {
+      console.error('Erro ao exportar mensagens rápidas:', e);
+      toast({ title: 'Erro ao exportar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setExportProgress(null);
+    }
+  };
+
   return (
     <div className="flex h-[calc(100vh-72px)]">
       {/* Left Sidebar - Categories */}
@@ -507,6 +534,29 @@ export default function QuickMessages() {
                 className="pl-9 pr-4 py-2 w-64 bg-muted border-0 rounded-lg text-sm focus:ring-2 focus:ring-primary/20"
               />
             </div>
+
+            {/* Export Button (só Mensagens; Templates Meta ficam fora) */}
+            {activeCategory !== 'meta_templates' && (
+            <Button
+              onClick={handleExport}
+              size="sm"
+              variant="outline"
+              disabled={!!exportProgress || isLoading}
+              title="Baixar todas as mensagens (planilha, dados completos e anexos) em um .zip"
+            >
+              {exportProgress ? (
+                <>
+                  <Loader2 size={16} className="mr-1 animate-spin" />
+                  {exportProgress.total > 0 ? `ANEXOS ${exportProgress.done}/${exportProgress.total}` : 'EXPORTANDO...'}
+                </>
+              ) : (
+                <>
+                  <Download size={16} className="mr-1" />
+                  EXPORTAR
+                </>
+              )}
+            </Button>
+            )}
 
             {/* New Template Button */}
             <Button onClick={handleNewTemplate} size="sm">
